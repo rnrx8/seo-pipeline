@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 load_dotenv()
@@ -27,6 +28,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SEO Pipeline API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
+)
 
 
 # ---------- Request / Response models ----------
