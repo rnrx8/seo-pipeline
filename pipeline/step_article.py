@@ -1,7 +1,7 @@
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -126,6 +126,44 @@ def _call(client: anthropic.Anthropic, messages: list) -> tuple[str, int, int]:
     return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
 
 
+def _build_company_prompt(companies: list) -> str:
+    """企業設定リストをプロンプト文字列に変換する（step_outlineと同じロジック）"""
+    if not companies:
+        return ""
+    level_map = {
+        5: ("最強おすすめ", "比較表1位・強い推薦文・CTA誘導を含める"),
+        4: ("おすすめ", "比較表上位・推薦文あり"),
+        3: ("条件付きおすすめ", "「〜な人向け」として条件付きで紹介"),
+        2: ("消極的紹介", "特定ニーズがある人向けとして軽く触れる程度"),
+        1: ("比較用掲載", "名前と特徴のみ記載・推薦文なし・他社を引き立てる文脈で登場"),
+    }
+    by_level: dict[int, list] = {}
+    for c in companies:
+        lv = c.get("recommend_level", 0)
+        if lv == 0:
+            continue
+        by_level.setdefault(lv, []).append(c)
+
+    if not by_level:
+        return ""
+
+    lines = ["", "【紹介企業設定】",
+             "構成案で決まった比較表の順番・紹介文の方針を守りながら、以下の企業を本文に反映してください。",
+             "おすすめレベルに応じて紹介文の強さを調整してください。",
+             ""]
+    for lv in sorted(by_level.keys(), reverse=True):
+        label, instruction = level_map.get(lv, (str(lv), ""))
+        lines.append(f"レベル{lv}（{label}）：")
+        for c in by_level[lv]:
+            name = c.get("name", "")
+            url = c.get("affiliate_url", "")
+            notes = c.get("notes", "")
+            lines.append(f"- 会社名：{name} / URL：{url} / notes：{notes}")
+        lines.append(f"  → {instruction}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def run(job_id: str, keyword: str) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
@@ -134,12 +172,26 @@ def run(job_id: str, keyword: str) -> dict:
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
 
+    # 企業設定を取得
+    company_prompt = ""
+    try:
+        job = get_job(job_id)
+        user_id = job.get("tenant_id")
+        category = job.get("category")
+        if user_id and category:
+            companies = get_company_settings(user_id, category)
+            company_prompt = _build_company_prompt(companies)
+            if company_prompt:
+                print(f"[article] Loaded {len(companies)} company settings for category='{category}'")
+    except Exception as e:
+        print(f"[article] Warning: could not load company settings: {e}")
+
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    )
+    ) + company_prompt
 
     client = anthropic.Anthropic()
     total_input = total_output = 0

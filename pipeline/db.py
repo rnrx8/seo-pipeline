@@ -75,6 +75,36 @@ def upsert_artifact(
     return resp.json()[0]
 
 
+def get_job(job_id: str) -> dict:
+    """Fetch a single job by id. Raises if not found."""
+    url = f"{_base()}/jobs"
+    resp = requests.get(
+        url,
+        params={"id": f"eq.{job_id}", "limit": "1"},
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    if not rows:
+        raise ValueError(f"Job not found: job_id={job_id}")
+    return rows[0]
+
+
+def get_company_settings(user_id: str, category: str) -> list:
+    """カテゴリに一致する企業設定を取得（レベル降順）"""
+    resp = requests.get(
+        f"{_base()}/company_settings",
+        headers=_headers(),
+        params={
+            "tenant_id": f"eq.{user_id}",
+            "category": f"eq.{category}",
+            "order": "recommend_level.desc",
+            "select": "*",
+        },
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
 def get_artifact(job_id: str, step: str) -> dict:
     """Fetch a single artifact by job_id and step. Raises if not found."""
     url = f"{_base()}/artifacts"
