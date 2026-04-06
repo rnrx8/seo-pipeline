@@ -1,3 +1,4 @@
+import json
 import os
 import requests
 from .db import upsert_artifact
@@ -23,22 +24,44 @@ def run(job_id: str, keyword: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
 
-    # Build a compact text summary of organic results
     organic = data.get("organic_results", [])
-    lines = []
-    for i, r in enumerate(organic, 1):
-        title = r.get("title", "")
-        snippet = r.get("snippet", "")
-        link = r.get("link", "")
-        lines.append(f"{i}. {title}\n   URL: {link}\n   {snippet}")
-    content_text = "\n\n".join(lines)
+
+    # related_searches: [{"query": "..."}] → ["..."] に平坦化
+    related = [
+        r.get("query", "")
+        for r in data.get("related_searches", [])
+        if r.get("query")
+    ]
+
+    # people_also_ask: question + snippet のみ抽出
+    paa = [
+        {"question": r.get("question", ""), "snippet": r.get("snippet", "")}
+        for r in data.get("people_also_ask", [])
+        if r.get("question")
+    ]
+
+    structured = {
+        "organic_results": [
+            {
+                "title":   r.get("title", ""),
+                "link":    r.get("link", ""),
+                "snippet": r.get("snippet", ""),
+            }
+            for r in organic
+        ],
+        "related_searches": related,
+        "people_also_ask":  paa,
+    }
 
     artifact = upsert_artifact(
         job_id=job_id,
         step="serp",
         content_type="application/json",
-        content_text=content_text,
+        content_text=json.dumps(structured, ensure_ascii=False),
         payload=data,
     )
-    print(f"[serp] Saved {len(organic)} results → artifact id={artifact['id']}")
+    print(
+        f"[serp] Saved {len(organic)} organic / {len(paa)} PAA / {len(related)} related"
+        f" → artifact id={artifact['id']}"
+    )
     return artifact
