@@ -1,5 +1,5 @@
 import anthropic
-from .db import get_artifact, upsert_artifact
+from .db import get_artifact, get_job, get_primary_sources, upsert_artifact
 from .ai import create_with_retry, get_step_config
 
 MODEL, MAX_TOKENS = get_step_config("fact_sheet")
@@ -74,12 +74,50 @@ AI単独では用意できないが、あると記事の信頼性・差別化に
 """
 
 
+def _build_primary_sources_prompt(sources: list) -> str:
+    """一次情報リストをプロンプト文字列に変換する"""
+    active = [s for s in sources if s.get("content_text")]
+    if not active:
+        return ""
+
+    lines = [
+        "",
+        "【自社一次情報】",
+        "以下は自社・クライアントが保有する独自の調査データです。",
+        "記事の内容に関連するデータがあれば、[confirmed]タグをつけて積極的に活用してください。",
+        "他のweb検索データよりも優先して使用してください。",
+        "",
+    ]
+    for s in active:
+        title = s.get("title", "（タイトルなし）")
+        text = (s.get("content_text") or "")[:2000]
+        lines.append(f"{title}：")
+        lines.append(text)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def run(job_id: str, keyword: str) -> dict:
     """Generate a fact sheet with real-time web search verification via Claude."""
     print("[fact_sheet] Generating fact sheet with web search...")
 
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
+
+    # 一次情報を取得
+    primary_sources_prompt = ""
+    try:
+        job = get_job(job_id)
+        user_id = job.get("tenant_id")
+        category = job.get("category")
+        if user_id and category:
+            sources = get_primary_sources(user_id, category)
+            primary_sources_prompt = _build_primary_sources_prompt(sources)
+            if primary_sources_prompt:
+                print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
+    except Exception as e:
+        print(f"[fact_sheet] Warning: could not load primary sources: {e}")
 
     client = anthropic.Anthropic()
     messages = [
@@ -89,7 +127,7 @@ def run(job_id: str, keyword: str) -> dict:
                 keyword=keyword,
                 serp_text=serp["content_text"],
                 intent_text=intent["content_text"],
-            ),
+            ) + primary_sources_prompt,
         }
     ]
 

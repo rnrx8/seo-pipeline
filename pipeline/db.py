@@ -105,6 +105,20 @@ def get_company_settings(user_id: str, category: str) -> list:
     return resp.json() if resp.status_code == 200 else []
 
 
+def get_primary_sources(user_id: str, category: str) -> list:
+    """カテゴリに一致する一次情報を取得"""
+    resp = requests.get(
+        f"{_base()}/primary_sources",
+        headers=_headers(),
+        params={
+            "tenant_id": f"eq.{user_id}",
+            "category": f"eq.{category}",
+            "select": "title,content_text",
+        },
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
 def get_job_company_restriction(job_id: str) -> str:
     """jobsテーブルからcompany_restrictionを取得"""
     response = requests.get(
