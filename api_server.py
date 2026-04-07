@@ -1,9 +1,13 @@
 """FastAPI wrapper for the SEO pipeline."""
+import io
+import os
 import time
 from contextlib import asynccontextmanager
 
+import pypdf
+import requests as req
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -87,6 +91,38 @@ async def generate(req: GenerateRequest, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run_pipeline, job_id, req.keyword)
     return GenerateResponse(job_id=job_id, status="started")
+
+
+@app.post("/extract-pdf")
+async def extract_pdf(body: dict):
+    file_path = body.get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path is required")
+
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
+
+        response = req.get(
+            f"{supabase_url}/storage/v1/object/documents/{file_path}",
+            headers={"Authorization": f"Bearer {supabase_key}"},
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        pdf_file = io.BytesIO(response.content)
+        reader = pypdf.PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+
+        return {"text": text.strip()}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/health")
