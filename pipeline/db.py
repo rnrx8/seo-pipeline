@@ -105,6 +105,21 @@ def get_company_settings(user_id: str, category: str) -> list:
     return resp.json() if resp.status_code == 200 else []
 
 
+def get_job_company_restriction(job_id: str) -> str:
+    """jobsテーブルからcompany_restrictionを取得"""
+    response = requests.get(
+        f"{_base()}/jobs",
+        headers=_headers(),
+        params={
+            "id": f"eq.{job_id}",
+            "select": "company_restriction",
+        },
+    )
+    if response.status_code == 200 and response.json():
+        return response.json()[0].get("company_restriction", "ai")
+    return "ai"
+
+
 def get_artifact(job_id: str, step: str) -> dict:
     """Fetch a single artifact by job_id and step. Raises if not found."""
     url = f"{_base()}/artifacts"

@@ -55,7 +55,7 @@ USER_TEMPLATE = """\
 """
 
 
-def _build_company_prompt(companies: list) -> str:
+def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     """企業設定リストをプロンプト文字列に変換する"""
     if not companies:
         return ""
@@ -77,10 +77,26 @@ def _build_company_prompt(companies: list) -> str:
     if not by_level:
         return ""
 
-    lines = ["", "【紹介企業設定】",
-             "以下の企業を記事内で紹介してください。",
-             "おすすめレベルに応じて比較表の順番・紹介文の強さを調整してください。",
-             ""]
+    if restriction == "registered_only":
+        intro = [
+            "",
+            "【紹介企業設定】",
+            "【重要】記事内で紹介・比較する企業は以下のリストに含まれる企業のみとしてください。",
+            "リストにない企業は一切紹介・言及しないでください。",
+            "おすすめレベルに応じて比較表の順番・紹介文の強さを調整してください。",
+            "",
+        ]
+    else:
+        intro = [
+            "",
+            "【紹介企業設定】",
+            "以下の企業を優先的に紹介してください。",
+            "リスト外の企業も状況に応じて紹介してOKです。",
+            "おすすめレベルに応じて比較表の順番・紹介文の強さを調整してください。",
+            "",
+        ]
+
+    lines = intro
     for lv in sorted(by_level.keys(), reverse=True):
         label, instruction = level_map.get(lv, (str(lv), ""))
         lines.append(f"レベル{lv}（{label}）：")
@@ -110,7 +126,8 @@ def run(job_id: str, keyword: str) -> dict:
         category = job.get("category")
         if user_id and category:
             companies = get_company_settings(user_id, category)
-            company_prompt = _build_company_prompt(companies)
+            restriction = job.get("company_restriction", "ai")
+            company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
                 print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
     except Exception as e:
