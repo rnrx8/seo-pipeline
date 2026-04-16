@@ -21,7 +21,7 @@ from pipeline import (  # noqa: E402  (after load_dotenv)
     step_review,
     step_serp,
 )
-from pipeline.db import insert_job, update_job_status  # noqa: E402
+from pipeline.db import get_job, insert_job, update_job_status  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
 
@@ -56,15 +56,21 @@ class GenerateResponse(BaseModel):
 # ---------- Background task ----------
 
 def _run_pipeline(job_id: str, keyword: str) -> None:
-    """Run all pipeline steps for an existing job."""
-    steps = [
-        step_serp.run,
-        step_intent.run,
-        step_fact_sheet.run,
-        step_outline.run,
-        step_article.run,
-        step_review.run,
-    ]
+    """Run pipeline steps for an existing job, respecting delivery_type."""
+    try:
+        job = get_job(job_id)
+    except Exception:
+        job = {}
+    delivery_type = job.get("delivery_type") or "full"
+
+    if delivery_type == "research_only":
+        steps = [step_serp.run, step_intent.run, step_fact_sheet.run]
+    elif delivery_type == "outline_only":
+        steps = [step_serp.run, step_intent.run, step_fact_sheet.run, step_outline.run]
+    else:
+        steps = [step_serp.run, step_intent.run, step_fact_sheet.run, step_outline.run, step_article.run, step_review.run]
+
+    print(f"[pipeline] delivery_type={delivery_type}, steps={len(steps)}")
     try:
         update_job_status(job_id, "running")
         for i, step_fn in enumerate(steps):
