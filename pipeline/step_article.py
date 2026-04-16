@@ -33,7 +33,7 @@ SYSTEM_PROMPT = """\
 - 市場規模・背景などの数値的な前置きは書かない
 
 ▼ H2見出し
-- 疑問詞を積極的に使う（〜とは？いくら？なぜ？どのくらい？向いてる人は？）
+- 疑問詞を積極的に使う（〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？）
 
 ▼ H2直下の構成（必須・例外なし）
   ①章の結論を1文で断言（主語＋述語）
@@ -182,6 +182,32 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     return "\n".join(lines)
 
 
+def _build_extra_instructions(job: dict) -> str:
+    """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
+    lines = []
+
+    purpose = job.get("article_purpose")
+    if purpose:
+        lines.append(f"\n【記事目的】{purpose}")
+        lines.append("上記の目的に合わせてCTA・誘導文・CV導線を本文中に自然に組み込むこと。")
+
+    word_count = job.get("word_count_setting")
+    if word_count:
+        lines.append(f"\n【文字数指定】目標文字数は「{word_count}」とすること。")
+        lines.append("調整が必要な場合は、まとめ・FAQ・CV導線を除き、潜在ニーズ対応セクションから優先的に増減すること。")
+
+    target = job.get("target_audience")
+    if target:
+        lines.append(f"\n【ターゲット層】{target}")
+        lines.append("上記のターゲットに合わせた言葉選び・視点・事例を使うこと。")
+
+    custom = job.get("custom_prompt")
+    if custom:
+        lines.append(f"\n【追加指示】\n{custom}")
+
+    return "\n".join(lines)
+
+
 def run(job_id: str, keyword: str) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
@@ -192,6 +218,7 @@ def run(job_id: str, keyword: str) -> dict:
 
     # 企業設定を取得
     company_prompt = ""
+    extra_instructions = ""
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
@@ -202,6 +229,7 @@ def run(job_id: str, keyword: str) -> dict:
             company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
                 print(f"[article] Loaded {len(companies)} company settings for category='{category}'")
+        extra_instructions = _build_extra_instructions(job)
     except Exception as e:
         print(f"[article] Warning: could not load company settings: {e}")
 
@@ -210,7 +238,7 @@ def run(job_id: str, keyword: str) -> dict:
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    ) + company_prompt
+    ) + company_prompt + extra_instructions
 
     client = anthropic.Anthropic()
     total_input = total_output = 0

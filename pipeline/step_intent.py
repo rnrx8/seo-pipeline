@@ -1,8 +1,29 @@
+import json
 import anthropic
 from .ai import create_with_retry, get_step_config
 from .db import get_artifact, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("search_intent")
+
+QUERY_ATTRS_PROMPT = """\
+以下の検索結果データから、このキーワードのクエリ属性を分析してJSON形式のみで返してください。
+
+キーワード: {keyword}
+
+検索結果:
+{serp_text}
+
+以下のJSON形式のみを返してください（説明文不要）：
+{{
+  "gender_tendency": "男性多め|女性多め|混在（均等）|不明",
+  "age_range": "推定年齢層（例：20〜30代中心、40代以上）",
+  "content_types": ["まとめ・比較記事", "体験談・口コミ", "公式サイト・LP", "専門家コラム", "動画コンテンツ"],
+  "searcher_stage": "情報収集|比較検討|購入・申込直前|複数混在",
+  "key_concerns": ["読者が最も気にしていること1", "気にしていること2", "気にしていること3"],
+  "competition_level": "高|中|低",
+  "notes": "その他の特記事項（任意、なければnull）"
+}}
+"""
 
 SYSTEM_PROMPT = """\
 あなたはSEOの専門家です。検索結果から検索意図を深く分析してください。
@@ -99,4 +120,32 @@ def run(job_id: str, keyword: str) -> dict:
         meta={"model": MODEL, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens},
     )
     print(f"[search_intent] Done → artifact id={artifact['id']}")
+
+    # クエリ属性をHaikuで生成
+    try:
+        print("[search_intent] Generating query attributes...")
+        attrs_msg = create_with_retry(
+            client,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            system="SEOの専門家として、検索クエリの属性をJSONで分析してください。",
+            messages=[{
+                "role": "user",
+                "content": QUERY_ATTRS_PROMPT.format(keyword=keyword, serp_text=serp["content_text"][:3000]),
+            }],
+        )
+        attrs_text = attrs_msg.content[0].text.strip()
+        match = __import__("re").search(r"\{[\s\S]*\}", attrs_text)
+        if match:
+            attrs_json = json.loads(match.group(0))
+            upsert_artifact(
+                job_id=job_id,
+                step="query_attrs",
+                content_type="application/json",
+                content_text=json.dumps(attrs_json, ensure_ascii=False),
+            )
+            print("[search_intent] Query attributes saved.")
+    except Exception as e:
+        print(f"[search_intent] Warning: could not generate query attributes: {e}")
+
     return artifact

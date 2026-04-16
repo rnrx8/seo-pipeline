@@ -44,7 +44,7 @@ USER_TEMPLATE = """\
 ### H1 / H2 / H3 構成
 
 各H2には以下を必ず記載すること：
-- H2タイトル（疑問詞を積極使用：〜とは？いくら？なぜ？向いてる人は？など）
+- H2タイトル（疑問詞を積極使用：〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？など）
 - H2直下方針：①章の結論（1文断言）→②配下H3の概要箇条書き→③読者の不安に寄り添う補完1文
 - 配下のH3リスト
 
@@ -52,6 +52,15 @@ USER_TEMPLATE = """\
 - 向き不向き・適性に関するH2（潜在ニーズ対応）
 - 後悔しない・失敗しないための注意点H2（感情的障壁の解消）
 - 差別化H2（競合が扱っていない視点、step5の差別化ポイントから1つ以上）
+
+### FAQ（任意）
+- H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する
+- ①本文の見出しで扱っていない内容であること
+- ②ファクトシートの[confirmed]タグのある内容で回答できること
+- ③以下のいずれかに該当すること：
+  - 競合が扱っていて検索意図とも合致するのに、本文で扱っていない疑問
+  - 競合が扱っていない質問で、検索意図と合致する疑問（独自性のある切り口）
+- 上記を満たさない場合はFAQを設けない
 """
 
 
@@ -110,6 +119,32 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     return "\n".join(lines)
 
 
+def _build_extra_instructions(job: dict) -> str:
+    """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
+    lines = []
+
+    purpose = job.get("article_purpose")
+    if purpose:
+        lines.append(f"\n【記事目的】{purpose}")
+        lines.append("上記の目的に合わせてCTA・誘導文・CV導線の設計を行うこと。")
+
+    word_count = job.get("word_count_setting")
+    if word_count:
+        lines.append(f"\n【文字数指定】目標文字数は「{word_count}」とすること。")
+        lines.append("調整が必要な場合は、まとめ・FAQ・CV導線を除き、潜在ニーズ対応セクションから優先的に増減すること。")
+
+    target = job.get("target_audience")
+    if target:
+        lines.append(f"\n【ターゲット層】{target}")
+        lines.append("上記のターゲットに合わせた言葉選び・視点・事例を使うこと。")
+
+    custom = job.get("custom_prompt")
+    if custom:
+        lines.append(f"\n【追加指示】\n{custom}")
+
+    return "\n".join(lines)
+
+
 def run(job_id: str, keyword: str) -> dict:
     """Generate article outline using Claude."""
     print("[outline] Generating outline...")
@@ -120,6 +155,7 @@ def run(job_id: str, keyword: str) -> dict:
 
     # 企業設定を取得
     company_prompt = ""
+    extra_instructions = ""
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
@@ -130,6 +166,7 @@ def run(job_id: str, keyword: str) -> dict:
             company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
                 print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
+        extra_instructions = _build_extra_instructions(job)
     except Exception as e:
         print(f"[outline] Warning: could not load company settings: {e}")
 
@@ -147,7 +184,7 @@ def run(job_id: str, keyword: str) -> dict:
                     intent_text=intent["content_text"],
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
-                ) + company_prompt,
+                ) + company_prompt + extra_instructions,
             }
         ],
     )
