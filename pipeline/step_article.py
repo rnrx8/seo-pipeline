@@ -205,6 +205,14 @@ def _build_extra_instructions(job: dict) -> str:
     if custom:
         lines.append(f"\n【追加指示】\n{custom}")
 
+    must_urls = job.get("must_reference_urls")
+    if must_urls:
+        lines.append(f"\n【参照必須URL】\n以下のURLの内容を記事中で必ず参照・引用・リンクしてください：\n{must_urls}")
+
+    never_urls = job.get("never_reference_urls")
+    if never_urls:
+        lines.append(f"\n【参照・言及禁止URL/サイト】\n以下のURLまたはドメインは記事中で一切紹介・リンク・言及しないでください：\n{never_urls}")
+
     return "\n".join(lines)
 
 
