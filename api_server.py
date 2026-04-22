@@ -21,7 +21,7 @@ from pipeline import (  # noqa: E402  (after load_dotenv)
     step_review,
     step_serp,
 )
-from pipeline.db import get_job, insert_job, update_job_status  # noqa: E402
+from pipeline.db import get_job, insert_job, update_job_status, update_job_step  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
 
@@ -63,6 +63,15 @@ def _run_pipeline(job_id: str, keyword: str) -> None:
         job = {}
     delivery_type = job.get("delivery_type") or "full"
 
+    STEP_KEYS = {
+        step_serp.run:       "serp",
+        step_intent.run:     "search_intent",
+        step_fact_sheet.run: "fact_sheet",
+        step_outline.run:    "outline",
+        step_article.run:    "article",
+        step_review.run:     "review",
+    }
+
     if delivery_type == "research_only":
         steps = [step_serp.run, step_intent.run, step_fact_sheet.run]
     elif delivery_type == "outline_only":
@@ -74,13 +83,16 @@ def _run_pipeline(job_id: str, keyword: str) -> None:
     try:
         update_job_status(job_id, "running")
         for i, step_fn in enumerate(steps):
+            update_job_step(job_id, STEP_KEYS[step_fn])
             step_fn(job_id, keyword)
             if i < len(steps) - 1:
                 print(f"  (waiting {STEP_DELAY}s for rate limit...)")
                 time.sleep(STEP_DELAY)
+        update_job_step(job_id, None)
         update_job_status(job_id, "done")
         print(f"\n=== Done (job_id={job_id}) ===\n")
     except Exception as exc:
+        update_job_step(job_id, None)
         update_job_status(job_id, "failed")
         print(f"[pipeline] ERROR job_id={job_id}: {exc}")
         raise

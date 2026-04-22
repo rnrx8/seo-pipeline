@@ -41,6 +41,17 @@ def update_job_status(job_id: str, status: str) -> None:
     resp.raise_for_status()
 
 
+def update_job_step(job_id: str, step: str | None) -> None:
+    """現在実行中のステップ名を更新する。完了・失敗時はNoneを渡してクリアする。"""
+    resp = requests.patch(
+        f"{_base()}/jobs",
+        json={"current_step": step},
+        params={"id": f"eq.{job_id}"},
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+
+
 def upsert_artifact(
     job_id: str,
     step: str,
