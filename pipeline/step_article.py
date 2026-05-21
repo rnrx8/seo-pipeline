@@ -127,36 +127,49 @@ def _parse_word_count(word_count_setting: str | None) -> int | None:
     return (nums[0] + nums[1]) // 2
 
 
+def _calc_part_max_tokens(word_count_setting: str | None) -> int:
+    """Per-PART max_tokens based on target word count.
+
+    Japanese text: ~1.5 tokens/char. Add 1.5x buffer so Claude can finish
+    a PART gracefully without being cut off mid-sentence.
+    """
+    total = _parse_word_count(word_count_setting)
+    if total is None:
+        return MAX_TOKENS
+    per_part_chars = total // 3
+    tokens = int(per_part_chars * 1.5 * 1.5)
+    return max(2000, min(tokens, MAX_TOKENS))
+
+
 def _build_part_instructions(word_count_setting: str | None) -> tuple[str, str, str]:
-    """word_count_settingが設定されている場合、各PARTに目安文字数を付与した指示を返す。"""
+    """各PARTの指示文を返す。word_count_settingがある場合は各パートの目安字数を明示する。"""
     total = _parse_word_count(word_count_setting)
     if total is None:
         return PART1_INSTRUCTION, PART2_INSTRUCTION, PART3_INSTRUCTION
 
     p1 = total // 3
-    p2 = (total * 2) // 3
     part1 = (
         f"上記の構成案に沿って、Markdownで記事本文を執筆してください。\n"
-        f"今回はリード文〜H2の3つ目程度（目安: 約{p1:,}字）を書いてください。\n"
-        f"途中で終わってよいです。最後に【PART1_END】と書いてください。"
+        f"今回はリード文〜H2の3つ目程度を書いてください。このパートは約{p1:,}字で止めてください。\n"
+        f"自然に区切れる箇所で終えて構いません。最後に【PART1_END】と書いてください。"
     )
     part2 = (
-        f"上記の続きから、残りの約半分（H2の4つ目〜6つ目程度）を書いてください。\n"
-        f"目安: 累計約{p2:,}字。途中で終わってよいです。最後に【PART2_END】と書いてください。"
+        f"上記の続きから、H2の4つ目〜6つ目程度を書いてください。このパートも約{p1:,}字を目安にしてください。\n"
+        f"自然に区切れる箇所で終えて構いません。最後に【PART2_END】と書いてください。"
     )
     part3 = (
         f"上記の続きから最後のまとめセクションまで書いてください。\n"
-        f"目安: 合計約{total:,}字。必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"
+        f"記事全体の目標は約{total:,}字です。必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"
     )
     return part1, part2, part3
 
 
-def _call(client: anthropic.Anthropic, messages: list) -> tuple[str, int, int]:
+def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = None) -> tuple[str, int, int]:
     """Single API call. Returns (text, input_tokens, output_tokens)."""
     msg = create_with_retry(
         client,
         model=MODEL,
-        max_tokens=MAX_TOKENS,
+        max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=messages,
     )
@@ -281,8 +294,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     word_count_setting = job.get("word_count_setting") if job else None
     part1_inst, part2_inst, part3_inst = _build_part_instructions(word_count_setting)
+    part_max_tokens = _calc_part_max_tokens(word_count_setting)
     if word_count_setting:
-        print(f"[article] word_count_setting={word_count_setting!r} → per-part targets set")
+        print(f"[article] word_count_setting={word_count_setting!r} → max_tokens per PART = {part_max_tokens}")
 
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
@@ -297,10 +311,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _call(client, messages)
+    part1_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
     total_input += ti
     total_output += to
-    print(f"[article] Part 1 done ({to} tokens)")
+    print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
 
     print(f"  (waiting {PART_DELAY}s...)")
     time.sleep(PART_DELAY)
@@ -311,10 +325,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part1_text},
         {"role": "user", "content": part2_inst},
     ]
-    part2_text, ti, to = _call(client, messages)
+    part2_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
     total_input += ti
     total_output += to
-    print(f"[article] Part 2 done ({to} tokens)")
+    print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
 
     print(f"  (waiting {PART_DELAY}s...)")
     time.sleep(PART_DELAY)
@@ -325,10 +339,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _call(client, messages)
+    part3_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
     total_input += ti
     total_output += to
-    print(f"[article] Part 3 done ({to} tokens)")
+    print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")
 
     # --- Combine & clean markers ---
     combined = part1_text + "\n" + part2_text + "\n" + part3_text
@@ -348,5 +362,5 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "parts": 3,
         },
     )
-    print(f"[article] Done (total output: {total_output} tokens) → artifact id={artifact['id']}")
+    print(f"[article] Done ({total_output} tokens total, {len(article_text)}字) → artifact id={artifact['id']}")
     return artifact
