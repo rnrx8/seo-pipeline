@@ -171,7 +171,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
         word_count = job.get("word_count_setting")
         if word_count:
-            word_count_instruction = f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）"
+            word_count_instruction = (
+                f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
+                f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
+                f"- 必須H2（向き不向き・注意点・差別化）は残し、補足・潜在ニーズ対応などの優先度が低いセクションから削る\n"
+                f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
+            )
             print(f"[outline] word_count_setting={word_count!r}")
         extra_instructions = _build_extra_instructions(job)
     except Exception as e:
