@@ -1,7 +1,7 @@
 import re
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, upsert_artifact
+from .db import get_artifact, get_job, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -63,10 +63,36 @@ SYSTEM_PROMPT = """\
 
 REVIEW_TEMPLATE = """\
 以下の記事をレビューし、チェック・修正を行ってください。
-
+{word_count_instruction}
 ## 記事本文
 {article_text}
 """
+
+WORD_COUNT_INSTRUCTION = """\
+## 文字数調整（最優先）
+現在の記事は {actual:,}字です。目標は「{target}」です。
+{action}
+
+"""
+
+def _word_count_action(actual: int, target_str: str) -> str | None:
+    """目標文字数と実文字数を比較し、調整指示文を返す。範囲内ならNone。"""
+    import re as _re
+    nums = [int(n.replace(',', '')) for n in _re.findall(r'[\d,]+', target_str)]
+    if not nums:
+        return None
+    lo = nums[0] if len(nums) >= 1 else 0
+    hi = nums[1] if len(nums) >= 2 else nums[0]
+    if actual <= hi * 1.1:
+        return None  # ±10%以内は調整不要
+    # 超過している場合
+    excess = actual - hi
+    return (
+        f"目標上限（{hi:,}字）を約{excess:,}字超過しています。\n"
+        f"以下の優先順位でH2またはH3セクションを丸ごと削除し、{hi:,}字以内に収めてください。\n"
+        f"削除優先順位（低優先から）: 補足・コラム系 > 潜在ニーズ対応 > 差別化 > 注意点・後悔しない系 > 向き不向き\n"
+        f"セクションを薄く書き直すのではなく、優先度の低いセクションを丸ごと削除してください。"
+    )
 
 
 def _parse_response(text: str) -> tuple[str, str]:
@@ -86,14 +112,32 @@ def _parse_response(text: str) -> tuple[str, str]:
     return article, summary
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Review and auto-fix the generated article."""
     print("[review] Starting article review...")
 
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
+    actual_count = len(article_text)
 
-    client = anthropic.Anthropic()
+    # 文字数調整指示を構築
+    word_count_instruction = ""
+    try:
+        job = get_job(job_id)
+        target_str = job.get("word_count_setting")
+        if target_str:
+            action = _word_count_action(actual_count, target_str)
+            if action:
+                word_count_instruction = WORD_COUNT_INSTRUCTION.format(
+                    actual=actual_count, target=target_str, action=action
+                )
+                print(f"[review] 文字数調整あり: {actual_count}字 → 目標「{target_str}」")
+            else:
+                print(f"[review] 文字数OK: {actual_count}字（目標「{target_str}」）")
+    except Exception as e:
+        print(f"[review] Warning: could not load job: {e}")
+
+    client = anthropic.Anthropic(api_key=api_key)
     msg = create_with_retry(
         client,
         model=MODEL,
@@ -102,7 +146,10 @@ def run(job_id: str, keyword: str) -> dict:
         messages=[
             {
                 "role": "user",
-                "content": REVIEW_TEMPLATE.format(article_text=article_text),
+                "content": REVIEW_TEMPLATE.format(
+                    article_text=article_text,
+                    word_count_instruction=word_count_instruction,
+                ),
             }
         ],
     )
