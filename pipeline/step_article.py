@@ -114,6 +114,33 @@ PART3_INSTRUCTION = """\
 必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"""
 
 
+def _parse_word_count(word_count_setting: str | None) -> int | None:
+    """'3,000〜5,000字' などの文字列を数値（目標文字数）に変換する。相対指定はNoneを返す。"""
+    import re
+    if not word_count_setting:
+        return None
+    nums = [int(n.replace(',', '')) for n in re.findall(r'[\d,]+', word_count_setting)]
+    if not nums:
+        return None
+    if len(nums) == 1:
+        return nums[0]
+    return (nums[0] + nums[1]) // 2
+
+
+def _build_part_instructions(word_count_setting: str | None) -> tuple[str, str, str]:
+    """word_count_settingが設定されている場合、各PARTに目安文字数を付与した指示を返す。"""
+    total = _parse_word_count(word_count_setting)
+    if total is None:
+        return PART1_INSTRUCTION, PART2_INSTRUCTION, PART3_INSTRUCTION
+
+    p1 = total // 3
+    p2 = (total * 2) // 3
+    part1 = f"上記の構成案に沿って、Markdownで記事本文を執筆してください。\n今回はリード文〜H2の3つ目程度を書いてください。この時点で約{p1:,}字を目安にしてください。\n途中で終わってよいです。最後に【PART1_END】と書いてください。"
+    part2 = f"上記の続きから、残りの約半分（H2の4つ目〜6つ目程度）を書いてください。この時点で累計約{p2:,}字を目安にしてください。\n途中で終わってよいです。最後に【PART2_END】と書いてください。"
+    part3 = f"上記の続きから最後のまとめセクションまで書いてください。合計が約{total:,}字になるよう調整してください。\n必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"
+    return part1, part2, part3
+
+
 def _call(client: anthropic.Anthropic, messages: list) -> tuple[str, int, int]:
     """Single API call. Returns (text, input_tokens, output_tokens)."""
     msg = create_with_retry(
@@ -216,7 +243,7 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
 
@@ -227,6 +254,7 @@ def run(job_id: str, keyword: str) -> dict:
     # 企業設定を取得
     company_prompt = ""
     extra_instructions = ""
+    job = {}
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
@@ -241,6 +269,11 @@ def run(job_id: str, keyword: str) -> dict:
     except Exception as e:
         print(f"[article] Warning: could not load company settings: {e}")
 
+    word_count_setting = job.get("word_count_setting") if job else None
+    part1_inst, part2_inst, part3_inst = _build_part_instructions(word_count_setting)
+    if word_count_setting:
+        print(f"[article] word_count_setting={word_count_setting!r} → per-part targets set")
+
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
         intent_text=intent["content_text"],
@@ -248,12 +281,12 @@ def run(job_id: str, keyword: str) -> dict:
         fact_text=fact["content_text"],
     ) + company_prompt + extra_instructions
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=api_key)
     total_input = total_output = 0
 
     # --- Part 1 ---
     print("[article] Part 1/3...")
-    messages = [{"role": "user", "content": base_user + PART1_INSTRUCTION}]
+    messages = [{"role": "user", "content": base_user + part1_inst}]
     part1_text, ti, to = _call(client, messages)
     total_input += ti
     total_output += to
@@ -266,7 +299,7 @@ def run(job_id: str, keyword: str) -> dict:
     print("[article] Part 2/3...")
     messages += [
         {"role": "assistant", "content": part1_text},
-        {"role": "user", "content": PART2_INSTRUCTION},
+        {"role": "user", "content": part2_inst},
     ]
     part2_text, ti, to = _call(client, messages)
     total_input += ti
@@ -280,7 +313,7 @@ def run(job_id: str, keyword: str) -> dict:
     print("[article] Part 3/3...")
     messages += [
         {"role": "assistant", "content": part2_text},
-        {"role": "user", "content": PART3_INSTRUCTION},
+        {"role": "user", "content": part3_inst},
     ]
     part3_text, ti, to = _call(client, messages)
     total_input += ti
