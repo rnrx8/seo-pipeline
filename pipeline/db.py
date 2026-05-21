@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timedelta, timezone
+
 import requests
 
 
@@ -46,6 +48,17 @@ def update_job_step(job_id: str, step: str | None) -> None:
     resp = requests.patch(
         f"{_base()}/jobs",
         json={"current_step": step},
+        params={"id": f"eq.{job_id}"},
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+
+
+def update_job_error(job_id: str, error_message: str) -> None:
+    """失敗時のエラーメッセージをjobsテーブルに保存する。"""
+    resp = requests.patch(
+        f"{_base()}/jobs",
+        json={"error_message": error_message[:2000]},  # 上限2000文字
         params={"id": f"eq.{job_id}"},
         headers=_headers(),
     )
@@ -145,6 +158,18 @@ def get_job_company_restriction(job_id: str) -> str:
     return "ai"
 
 
+def get_user_credits_total(tenant_id: str) -> float:
+    """Return the user's credits_total (0 if not found)."""
+    resp = requests.get(
+        f"{_base()}/user_profiles",
+        params={"id": f"eq.{tenant_id}", "select": "credits_total", "limit": "1"},
+        headers=_headers(),
+    )
+    if resp.status_code == 200 and resp.json():
+        return float(resp.json()[0].get("credits_total") or 0)
+    return 0
+
+
 def get_artifact(job_id: str, step: str) -> dict:
     """Fetch a single artifact by job_id and step. Raises if not found."""
     url = f"{_base()}/artifacts"
@@ -158,3 +183,37 @@ def get_artifact(job_id: str, step: str) -> dict:
     if not rows:
         raise ValueError(f"Artifact not found: job_id={job_id}, step={step}")
     return rows[0]
+
+
+def get_user_email(tenant_id: str) -> str:
+    """auth.users からメールアドレスを取得する。取得できなければ空文字を返す。"""
+    if not tenant_id:
+        return ""
+    base_url = os.environ["SUPABASE_URL"].rstrip("/")
+    resp = requests.get(
+        f"{base_url}/auth/v1/admin/users/{tenant_id}",
+        headers={
+            "apikey": os.environ["SUPABASE_KEY"],
+            "Authorization": f"Bearer {os.environ['SUPABASE_KEY']}",
+        },
+        timeout=10,
+    )
+    if resp.status_code == 200:
+        return resp.json().get("email", "")
+    return ""
+
+
+def get_stale_queued_jobs(threshold_minutes: int) -> list[dict]:
+    """queued のまま threshold_minutes 以上経過しているジョブを返す。"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)).isoformat()
+    resp = requests.get(
+        f"{_base()}/jobs",
+        params={
+            "status": "eq.queued",
+            "created_at": f"lt.{cutoff}",
+            "select": "id,main_keyword,tenant_id",
+        },
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+    return resp.json()
