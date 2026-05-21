@@ -28,8 +28,7 @@ USER_TEMPLATE = """\
 ## 記事構成案
 
 ### 目標文字数
-- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する
-- （推定できない場合は「4,000〜6,000字」とする）
+{word_count_instruction}
 
 ### タイトル案（3パターン）
 - 対策キーワードを左端に配置
@@ -120,18 +119,13 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
 
 
 def _build_extra_instructions(job: dict) -> str:
-    """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
+    """記事目的・ターゲット層・自由記述をプロンプトに追加する（文字数は目標文字数セクションで設定済みのため除外）"""
     lines = []
 
     purpose = job.get("article_purpose")
     if purpose:
         lines.append(f"\n【記事目的】{purpose}")
         lines.append("上記の目的に合わせてCTA・誘導文・CV導線の設計を行うこと。")
-
-    word_count = job.get("word_count_setting")
-    if word_count:
-        lines.append(f"\n【文字数指定】目標文字数は「{word_count}」とすること。")
-        lines.append("調整が必要な場合は、まとめ・FAQ・CV導線を除き、潜在ニーズ対応セクションから優先的に増減すること。")
 
     target = job.get("target_audience")
     if target:
@@ -153,7 +147,7 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate article outline using Claude."""
     print("[outline] Generating outline...")
 
@@ -164,6 +158,7 @@ def run(job_id: str, keyword: str) -> dict:
     # 企業設定を取得
     company_prompt = ""
     extra_instructions = ""
+    word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
@@ -174,11 +169,15 @@ def run(job_id: str, keyword: str) -> dict:
             company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
                 print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
+        word_count = job.get("word_count_setting")
+        if word_count:
+            word_count_instruction = f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）"
+            print(f"[outline] word_count_setting={word_count!r}")
         extra_instructions = _build_extra_instructions(job)
     except Exception as e:
         print(f"[outline] Warning: could not load company settings: {e}")
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=api_key)
     message = create_with_retry(
         client,
         model=MODEL,
@@ -192,6 +191,7 @@ def run(job_id: str, keyword: str) -> dict:
                     intent_text=intent["content_text"],
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
+                    word_count_instruction=word_count_instruction,
                 ) + company_prompt + extra_instructions,
             }
         ],
