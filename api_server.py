@@ -26,6 +26,7 @@ from pipeline.db import get_job, get_stale_queued_jobs, get_user_credits_total, 
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
+MAX_AUTO_RETRIES = 2
 WATCHDOG_INTERVAL_SECONDS = 300   # 5分ごとにチェック
 STALE_THRESHOLD_MINUTES = 5       # 5分以上 queued なら再実行対象
 
@@ -108,7 +109,7 @@ def _resolve_api_key(job: dict) -> str | None:
     return None
 
 
-def _run_pipeline(job_id: str, keyword: str) -> None:
+def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
     """Run pipeline steps for an existing job, respecting delivery_type."""
     try:
         job = get_job(job_id)
@@ -148,6 +149,19 @@ def _run_pipeline(job_id: str, keyword: str) -> None:
         update_job_status(job_id, "done")
         print(f"\n=== Done (job_id={job_id}) ===\n")
     except Exception as exc:
+        from pipeline.autofix import classify_error, create_github_issue
+        error_info = classify_error(exc)
+
+        # 一時的なエラーは自動リトライ
+        if error_info["retryable"] and _retry < MAX_AUTO_RETRIES:
+            delay = 30 * (2 ** _retry)  # 30s → 60s
+            print(f"[pipeline] Auto-retry ({_retry + 1}/{MAX_AUTO_RETRIES}) in {delay}s: {error_info['reason']}")
+            time.sleep(delay)
+            update_job_step(job_id, None)
+            update_job_status(job_id, "queued")
+            _run_pipeline(job_id, keyword, _retry=_retry + 1)
+            return
+
         update_job_step(job_id, None)
         update_job_status(job_id, "failed")
         try:
@@ -155,6 +169,14 @@ def _run_pipeline(job_id: str, keyword: str) -> None:
         except Exception:
             pass
         print(f"[pipeline] ERROR job_id={job_id}: {exc}")
+
+        # コードバグは GitHub Issue を自動作成して auto-fix ワークフローへ
+        if error_info["type"] == "code_bug":
+            try:
+                create_github_issue(job_id, keyword, str(exc), failed_step, error_info)
+            except Exception as e:
+                print(f"[pipeline] autofix issue creation failed: {e}")
+
         try:
             user_email = get_user_email(job.get("tenant_id", ""))
             alert_failed_job(job_id, keyword, user_email, error_msg=str(exc), failed_step=failed_step)

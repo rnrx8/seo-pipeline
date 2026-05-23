@@ -1,0 +1,101 @@
+name: Auto Fix Bug
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    if: github.event.label.name == 'bugfix'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ステータスラベルをリセット
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "bugfix:pr-ready" \
+            --remove-label "bugfix:pr-lint-error" \
+            --remove-label "bugfix:manual" 2>/dev/null || true
+
+      - name: Claude Code で修正
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--max-turns 40 --model claude-sonnet-4-6 --allowedTools Edit,Write,Read,Bash(git:*),Bash(gh:*),Bash(python3:*),Bash(pip:*)"
+          prompt: |
+            Issue #${{ github.event.issue.number }} のバグを修正してください。
+            Issue本文に該当ファイル名が書かれているので、まずそのファイルを開いてエラー箇所を特定してください。
+
+            このリポジトリは FastAPI + Python の SEO記事生成パイプラインです。
+            Railway にデプロイされており、メインエントリは `api_server.py`、パイプラインロジックは `pipeline/` 以下にあります。
+
+            手順:
+            1. Issue本文を読み、該当ファイル・該当箇所を特定する
+            2. このリポジトリのコードで修正できると判断したら:
+               - ブランチ名は必ず fix/issue-${{ github.event.issue.number }} にする
+               - 修正を行い、変更を説明したPRを作成する。PR本文に Closes #${{ github.event.issue.number }} を含める
+            3. このリポジトリでは修正できないと判断した場合（外部サービスの設定変更・APIクレジット不足など）:
+               - PRは作成しない
+               - Issue #${{ github.event.issue.number }} に、原因と対処方法をコメントとして残す
+
+            変更は小さく安全に。確信が持てない箇所は修正しないこと。
+
+      - name: Ruff lint チェック（PRがあれば）
+        if: always()
+        id: lint
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="fix/issue-${{ github.event.issue.number }}"
+          if git fetch origin "$BRANCH" 2>/dev/null; then
+            git checkout "$BRANCH"
+            pip install ruff --quiet
+            if ruff check pipeline/ api_server.py 2>&1; then
+              echo "result=passed" >> $GITHUB_OUTPUT
+            else
+              echo "result=failed" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "result=no_branch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: ステータスラベル更新 & Discord通知
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          LINT_RESULT: ${{ steps.lint.outputs.result }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "bugfix:pr-ready" \
+            --remove-label "bugfix:pr-lint-error" \
+            --remove-label "bugfix:manual" 2>/dev/null || true
+
+          ISSUE_URL="https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
+          PR_URL=$(gh pr list --state open --head "fix/issue-${{ github.event.issue.number }}" --json url --jq '.[0].url // empty')
+
+          if [ -z "$PR_URL" ]; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "bugfix:manual" 2>/dev/null || true
+            MSG="❌ Issue #${{ github.event.issue.number }} は自動修正できませんでした。ClaudeがIssueに原因と手動修正の手順をコメントしています。\n$ISSUE_URL"
+          elif [ "$LINT_RESULT" = "failed" ]; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "bugfix:pr-lint-error" 2>/dev/null || true
+            MSG="⚠️ Issue #${{ github.event.issue.number }} のPRを作成しましたが、lintエラーがあります。手動確認が必要です。\n$PR_URL"
+          else
+            gh issue edit ${{ github.event.issue.number }} --add-label "bugfix:pr-ready" 2>/dev/null || true
+            MSG="✅ Issue #${{ github.event.issue.number }} の修正PRができました。確認して問題なければマージしてください。\n$PR_URL"
+          fi
+
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"content\":\"$MSG\"}" \
+            "$DISCORD_WEBHOOK_URL"
