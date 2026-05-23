@@ -94,13 +94,13 @@ USER_TEMPLATE = """\
 """
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Extract search intent from SERP results using Claude."""
     print("[search_intent] Analyzing search intent...")
 
     serp = get_artifact(job_id, "serp")
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=api_key)
     message = create_with_retry(
         client,
         model=MODEL,

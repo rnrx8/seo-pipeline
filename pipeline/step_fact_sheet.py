@@ -98,7 +98,7 @@ def _build_primary_sources_prompt(sources: list) -> str:
     return "\n".join(lines)
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate a fact sheet with real-time web search verification via Claude."""
     print("[fact_sheet] Generating fact sheet with web search...")
 
@@ -119,7 +119,7 @@ def run(job_id: str, keyword: str) -> dict:
     except Exception as e:
         print(f"[fact_sheet] Warning: could not load primary sources: {e}")
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=api_key)
     messages = [
         {
             "role": "user",

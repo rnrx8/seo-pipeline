@@ -47,7 +47,7 @@ def _fetch_headings(item: dict) -> dict:
         return base
 
 
-def run(job_id: str, keyword: str) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Search Google via SerpApi, fetch competitor headings, and store results."""
     print(f"[serp] Searching: {keyword!r}")
 
