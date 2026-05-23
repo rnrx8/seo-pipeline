@@ -73,14 +73,17 @@ def alert_failed_job(job_id: str, keyword: str, user_email: str, error_msg: str 
         f"seo-saasのジョブ（{keyword}）が failed になりました。"
         f"job_id: {job_id} の失敗原因を調べて修正してください"
     )
+    is_credit_error = "credit balance" in error_msg.lower() or "billing" in error_msg.lower()
     step_line = f"**失敗ステップ**: `{failed_step}`\n" if failed_step else ""
     error_line = f"**エラー**:\n```\n{error_msg[:500]}\n```\n" if error_msg else ""
+    credit_line = "💳 **APIクレジットを追加**: https://console.anthropic.com/settings/billing\n" if is_credit_error else ""
     discord_body = (
         f"**キーワード**: {keyword}\n"
         f"**ユーザー**: {user_email or '不明'}\n"
         f"**job\\_id**: `{job_id}`\n"
         f"{step_line}"
-        f"{error_line}\n"
+        f"{error_line}"
+        f"{credit_line}\n"
         f"**Claudeへの指示**\n```\n{instruction}\n```"
     )
     step_row = f"<tr><td><b>失敗ステップ</b></td><td><code>{failed_step}</code></td></tr>" if failed_step else ""
