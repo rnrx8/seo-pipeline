@@ -1,0 +1,82 @@
+name: Service Health Check
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 毎時0分（JST 9時 = UTC 0時）
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: pip install anthropic requests --quiet
+
+      - name: SerpAPI 残量チェック
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python3 << 'PYEOF'
+          import os, requests, json
+
+          key = os.environ["SERPAPI_KEY"]
+          webhook = os.environ["DISCORD_WEBHOOK_URL"]
+          THRESHOLD = 3
+
+          resp = requests.get("https://serpapi.com/account", params={"api_key": key}, timeout=10)
+          d = resp.json()
+
+          left  = d.get("plan_searches_left", 0)
+          total = d.get("searches_per_month", "?")
+          used  = d.get("this_month_usage", "?")
+          plan  = d.get("plan_id", "?")
+          extra = d.get("extra_credits", 0)
+          total_left = left + extra
+
+          print(f"SerpAPI: 残り {total_left} 回 (プラン: {left}, extra: {extra}) / {total}回")
+
+          if total_left <= THRESHOLD:
+              msg = (
+                  f"⚠️ **SerpAPI 残量警告**\n"
+                  f"残り **{total_left}** 回（プラン: {left} + エクストラ: {extra}）/ 月{total}回\n"
+                  f"今月の使用量: {used} 回 / プラン: {plan}\n"
+                  f"🔗 追加: <https://serpapi.com/manage-api-key>"
+              )
+              requests.post(webhook, json={"content": msg}, timeout=10)
+              print("Discord通知を送信しました")
+          PYEOF
+
+      - name: Anthropic API 疎通チェック
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python3 << 'PYEOF'
+          import os, requests
+          import anthropic
+
+          webhook = os.environ["DISCORD_WEBHOOK_URL"]
+
+          try:
+              client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+              client.messages.create(
+                  model="claude-haiku-4-5-20251001",
+                  max_tokens=1,
+                  messages=[{"role": "user", "content": "Hi"}],
+              )
+              print("Anthropic API: OK")
+          except anthropic.BadRequestError as e:
+              if "credit balance" in str(e).lower() or "billing" in str(e).lower():
+                  msg = (
+                      "❌ **Anthropic APIクレジット切れ**\n"
+                      "記事生成が失敗し続けています。\n"
+                      "💳 クレジット追加: <https://console.anthropic.com/settings/billing>"
+                  )
+                  requests.post(webhook, json={"content": msg}, timeout=10)
+                  print("Discord通知を送信しました")
+              else:
+                  print(f"Anthropic API エラー（クレジット以外）: {e}")
+          except Exception as e:
+              print(f"Anthropic API チェック失敗: {e}")
+          PYEOF

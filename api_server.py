@@ -231,6 +231,29 @@ async def extract_pdf(body: dict):
 
 
 
+@app.get("/service-status")
+async def service_status():
+    serpapi_key = os.getenv("SERPAPI_KEY", "")
+    try:
+        r = req.get(
+            "https://serpapi.com/account",
+            params={"api_key": serpapi_key},
+            timeout=5,
+        )
+        d = r.json() if r.status_code == 200 else {}
+        serpapi = {
+            "searches_left":      d.get("plan_searches_left"),
+            "searches_per_month": d.get("searches_per_month"),
+            "this_month_usage":   d.get("this_month_usage"),
+            "plan_name":          d.get("plan_id"),
+            "extra_credits":      d.get("extra_credits", 0),
+        }
+    except Exception as e:
+        serpapi = {"error": str(e)}
+
+    return {"serpapi": serpapi}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
