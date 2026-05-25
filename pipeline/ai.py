@@ -9,6 +9,7 @@ STEP_CONFIG: dict[str, dict] = {
     "fact_sheet":    {"model": "claude-sonnet-4-6", "max_tokens": 30000},
     "article":       {"model": "claude-opus-4-7",   "max_tokens": 8000},
     "review":        {"model": "claude-sonnet-4-6", "max_tokens": 28000},
+    "fact_review":   {"model": "claude-sonnet-4-6", "max_tokens": 28000},
 }
 
 
