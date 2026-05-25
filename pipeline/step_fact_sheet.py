@@ -4,7 +4,7 @@ from .ai import create_with_retry, get_step_config
 
 MODEL, MAX_TOKENS = get_step_config("fact_sheet")
 
-WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 8}
+WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 15}
 
 SYSTEM_PROMPT = """\
 あなたはSEOライティングの専門家です。
@@ -18,7 +18,24 @@ SYSTEM_PROMPT = """\
 - [confirmed] : web_searchで実際に確認できた情報
 - [hypothesis] : SERPや推測に基づく情報（web_searchで未確認）
 
-web_searchを最低3回は実行してから、ファクトシートをまとめてください。
+web_searchを最低5回は実行してから、ファクトシートをまとめてください。
+
+【出典信頼性の基準】
+以下の基準でソースの信頼性を判断し、[confirmed] / [hypothesis] を付記してください：
+
+▼ Tier 1（高権威ソース）：1件のソースで確認できれば [confirmed] とする
+- 企業・サービスの公式サイト（about / press / ir 等のページ）
+- 政府・行政機関（厚生労働省、総務省、内閣府、各省庁等）
+- 学術論文・査読付き研究（Google Scholar、J-STAGE 等）
+- 業界団体・統計機関の公式発表（矢野経済研究所、帝国データバンク等の公式レポート）
+
+▼ Tier 2（一般ソース）：同じ数値・情報を複数サイトで確認できた場合のみ [confirmed] とする
+- ニュースサイト・メディア（IT媒体、業界専門誌等）
+- まとめサイト・比較サイト
+- SNS・掲示板・口コミサイト
+- その他一般サイト
+
+Tier 2のソース1件のみで確認できた情報は [hypothesis] とすること。
 """
 
 USER_TEMPLATE = """\

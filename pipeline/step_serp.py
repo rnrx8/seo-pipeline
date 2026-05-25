@@ -22,25 +22,31 @@ HEADERS = {
 
 
 def _fetch_headings(item: dict) -> dict:
-    """Fetch a single URL and extract h2/h3 headings. Always returns a result dict."""
+    """Fetch a single URL and extract h2/h3 headings and character count."""
     url = item.get("link", "")
     title = item.get("title", "")
-    base = {"url": url, "title": title, "headings": [], "heading_count": 0, "fetch_status": "failed"}
+    base = {"url": url, "title": title, "headings": [], "heading_count": 0, "word_count": 0, "fetch_status": "failed"}
     if not url:
         return base
     try:
         resp = requests.get(url, headers=HEADERS, timeout=FETCH_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, "lxml")
+        for tag in soup.find_all(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
         headings = [
             {"level": tag.name, "text": tag.get_text(strip=True)}
             for tag in soup.find_all(["h2", "h3"])
             if tag.get_text(strip=True)
         ]
+        body = soup.find("body")
+        body_text = body.get_text() if body else soup.get_text()
+        char_count = len([c for c in body_text if not c.isspace()])
         return {
             **base,
             "headings": headings,
             "heading_count": len(headings),
+            "word_count": char_count,
             "fetch_status": "success",
         }
     except Exception:
@@ -54,15 +60,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     resp = requests.get(
         SERPAPI_ENDPOINT,
         params={
+            "engine": "google",
             "q": keyword,
             "api_key": os.environ["SERPAPI_KEY"],
             "hl": "ja",
             "gl": "jp",
+            "google_domain": "google.co.jp",
             "num": "10",
+            "no_cache": "true",
         },
     )
     resp.raise_for_status()
     data = resp.json()
+
+    print(f"[serp] API response keys: {list(data.keys())}")
 
     organic = data.get("organic_results", [])
 
@@ -73,12 +84,42 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if r.get("query")
     ]
 
-    # people_also_ask: question + snippet のみ抽出
+    # people_also_ask / related_questions: question + snippet のみ抽出
+    paa_raw = data.get("people_also_ask") or data.get("related_questions") or []
+    print(f"[serp] PAA raw count from API: {len(paa_raw)}")
     paa = [
         {"question": r.get("question", ""), "snippet": r.get("snippet", "")}
-        for r in data.get("people_also_ask", [])
+        for r in paa_raw
         if r.get("question")
     ]
+
+    # PAA が空の場合、疑問文クエリで追加検索して補完
+    if not paa:
+        print("[serp] No PAA found, trying question-focused query...")
+        try:
+            resp2 = requests.get(
+                SERPAPI_ENDPOINT,
+                params={
+                    "engine": "google",
+                    "q": f"{keyword} とは",
+                    "api_key": os.environ["SERPAPI_KEY"],
+                    "hl": "ja",
+                    "gl": "jp",
+                    "google_domain": "google.co.jp",
+                    "no_cache": "true",
+                },
+            )
+            if resp2.ok:
+                data2 = resp2.json()
+                paa_raw2 = data2.get("people_also_ask") or data2.get("related_questions") or []
+                print(f"[serp] PAA from question query: {len(paa_raw2)}")
+                paa = [
+                    {"question": r.get("question", ""), "snippet": r.get("snippet", "")}
+                    for r in paa_raw2
+                    if r.get("question")
+                ]
+        except Exception as e:
+            print(f"[serp] Question-focused query failed: {e}")
 
     # 競合サイトの見出しを並列取得（上位10件）
     print(f"[serp] Fetching headings for {len(organic)} URLs...")

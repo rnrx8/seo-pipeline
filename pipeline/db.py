@@ -143,6 +143,28 @@ def get_primary_sources(user_id: str, category: str) -> list:
     return resp.json() if resp.status_code == 200 else []
 
 
+def get_service_by_id(service_id: str) -> dict | None:
+    """IDでサービス設定を1件取得"""
+    resp = requests.get(
+        f"{_base()}/services",
+        headers=_headers(),
+        params={"id": f"eq.{service_id}", "limit": "1", "select": "*"},
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    return rows[0] if rows else None
+
+
+def get_cta_by_id(cta_id: str) -> dict | None:
+    """IDでCTAブロックを1件取得"""
+    resp = requests.get(
+        f"{_base()}/cta_blocks",
+        headers=_headers(),
+        params={"id": f"eq.{cta_id}", "limit": "1", "select": "*"},
+    )
+    rows = resp.json() if resp.status_code == 200 else []
+    return rows[0] if rows else None
+
+
 def get_job_company_restriction(job_id: str) -> str:
     """jobsテーブルからcompany_restrictionを取得"""
     response = requests.get(

@@ -1,7 +1,7 @@
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -232,6 +232,39 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     return "\n".join(lines)
 
 
+def _build_service_prompt(service: dict) -> str:
+    lines = ["\n【紹介サービス設定】"]
+    lines.append(f"サービス名：{service.get('name', '')}")
+    if service.get("url"):
+        lines.append(f"URL：{service['url']}")
+    sps = service.get("selling_points") or []
+    if sps:
+        lines.append("セールスポイント：")
+        for sp in sps:
+            lines.append(f"  - {sp}")
+    if service.get("raw_content"):
+        lines.append(f"サービス詳細情報：\n{service['raw_content'][:1200]}")
+    if service.get("must_include"):
+        lines.append(f"必ず本文に含める内容：{service['must_include']}")
+    if service.get("must_exclude"):
+        lines.append(f"本文への記載禁止事項：{service['must_exclude']}")
+    lines.append("上記のサービスを記事の主要な紹介対象として自然に取り上げてください。")
+    return "\n".join(lines)
+
+
+def _build_cta_prompt(cta: dict) -> str:
+    lines = ["\n【CTA設定】"]
+    lines.append(f"CTA名称：{cta.get('name', '')}")
+    if cta.get("body"):
+        lines.append(f"CTAの本文（原則そのまま使用すること）：\n{cta['body']}")
+    if cta.get("button_text"):
+        lines.append(f"ボタンテキスト：{cta['button_text']}")
+    if cta.get("url"):
+        lines.append(f"ボタンURL：{cta['url']}")
+    lines.append("上記のCTAを記事の適切な箇所（H2末尾・まとめ直前など）に自然に組み込んでください。")
+    return "\n".join(lines)
+
+
 def _build_extra_instructions(job: dict) -> str:
     """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
     lines = []
@@ -263,6 +296,31 @@ def _build_extra_instructions(job: dict) -> str:
     if never_urls:
         lines.append(f"\n【参照・言及禁止URL/サイト】\n以下のURLまたはドメインは記事中で一切紹介・リンク・言及しないでください：\n{never_urls}")
 
+    citation_style = job.get("citation_style") or "none"
+    if citation_style == "inline_footnote":
+        lines.append(
+            "\n【出典表示】インライン注記スタイル"
+            "\n- ファクトシートの[confirmed]情報を引用した箇所の直後に ※1、※2 … と連番で注記を付ける"
+            "\n- 記事末尾に ## 出典一覧 セクションを追加し、番号順に「※N: URL（確認日）」を列挙する"
+            "\n- [hypothesis]の情報は引用しないこと"
+        )
+    elif citation_style == "bottom_list":
+        lines.append(
+            "\n【出典表示】末尾リストスタイル"
+            "\n- 本文中に注記は付けない"
+            "\n- 記事末尾に ## 出典一覧 セクションを追加し、本文中で参照した[confirmed]情報のURLを箇条書きで列挙する"
+            "\n- [hypothesis]の情報は引用しないこと"
+        )
+    elif citation_style == "h2_block":
+        lines.append(
+            "\n【出典表示】H2セクション末尾ブロックスタイル"
+            "\n- 本文中に注記は付けない"
+            "\n- 各H2セクションの末尾（次のH2の前）に **参考情報** として、そのセクションで参照した[confirmed]情報のURLを箇条書きで追加する"
+            "\n- 参照情報がないH2セクションには追加不要"
+            "\n- [hypothesis]の情報は引用しないこと"
+        )
+    # citation_style == "none" の場合は出典表示なし（現在の動作）
+
     return "\n".join(lines)
 
 
@@ -274,9 +332,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
 
-    # 企業設定を取得
+    # 企業設定・サービス・CTA を取得
     company_prompt = ""
     extra_instructions = ""
+    service_prompt = ""
+    cta_prompt = ""
     job = {}
     try:
         job = get_job(job_id)
@@ -289,8 +349,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             if company_prompt:
                 print(f"[article] Loaded {len(companies)} company settings for category='{category}'")
         extra_instructions = _build_extra_instructions(job)
+        service_id = job.get("service_id")
+        if service_id:
+            service = get_service_by_id(service_id)
+            if service:
+                service_prompt = _build_service_prompt(service)
+                print(f"[article] Loaded service: {service.get('name')}")
+        cta_id = job.get("cta_id")
+        if cta_id:
+            cta = get_cta_by_id(cta_id)
+            if cta:
+                cta_prompt = _build_cta_prompt(cta)
+                print(f"[article] Loaded CTA: {cta.get('name')}")
     except Exception as e:
-        print(f"[article] Warning: could not load company settings: {e}")
+        print(f"[article] Warning: could not load job settings: {e}")
 
     word_count_setting = job.get("word_count_setting") if job else None
     part1_inst, part2_inst, part3_inst = _build_part_instructions(word_count_setting)
@@ -303,7 +375,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    ) + company_prompt + extra_instructions
+    ) + company_prompt + service_prompt + cta_prompt + extra_instructions
 
     client = anthropic.Anthropic(api_key=api_key)
     total_input = total_output = 0
@@ -349,6 +421,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     for marker in ("【PART1_END】", "【PART2_END】", "【PART3_END】"):
         combined = combined.replace(marker, "")
     article_text = combined.strip()
+
+    # --- A: [hypothesis] validation ---
+    import re as _re
+    hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
+    if hypothesis_hits:
+        print(f"[article] WARNING: {len(hypothesis_hits)} [hypothesis] tag(s) found in article — Claude may have included unverified facts.")
+        raise ValueError(
+            f"Article contains {len(hypothesis_hits)} [hypothesis] tag(s). "
+            "Only [confirmed] facts are allowed in the article body. "
+            "Please retry or review the fact sheet."
+        )
 
     artifact = upsert_artifact(
         job_id=job_id,

@@ -1,6 +1,6 @@
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("outline")
 
@@ -118,6 +118,33 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     return "\n".join(lines)
 
 
+def _build_service_prompt(service: dict) -> str:
+    lines = ["\n【紹介サービス設定】"]
+    lines.append(f"サービス名：{service.get('name', '')}")
+    if service.get("url"):
+        lines.append(f"URL：{service['url']}")
+    sps = service.get("selling_points") or []
+    if sps:
+        lines.append("セールスポイント：")
+        for sp in sps:
+            lines.append(f"  - {sp}")
+    if service.get("must_include"):
+        lines.append(f"必ず構成に含める内容：{service['must_include']}")
+    if service.get("must_exclude"):
+        lines.append(f"構成への記載禁止事項：{service['must_exclude']}")
+    lines.append("上記のサービスを記事の主要な紹介対象として構成を設計してください。")
+    return "\n".join(lines)
+
+
+def _build_cta_prompt(cta: dict) -> str:
+    lines = ["\n【CTA設定】"]
+    lines.append(f"CTA名称：{cta.get('name', '')}")
+    if cta.get("button_text") and cta.get("url"):
+        lines.append(f"ボタンテキスト：{cta['button_text']} / URL：{cta['url']}")
+    lines.append("上記のCTAを記事の適切なH2末尾に挿入することを構成案に明記してください。")
+    return "\n".join(lines)
+
+
 def _build_extra_instructions(job: dict) -> str:
     """記事目的・ターゲット層・自由記述をプロンプトに追加する（文字数は目標文字数セクションで設定済みのため除外）"""
     lines = []
@@ -155,8 +182,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     intent = get_artifact(job_id, "search_intent")
     fact = get_artifact(job_id, "fact_sheet")
 
-    # 企業設定を取得
+    # 企業設定・サービス・CTA を取得
     company_prompt = ""
+    service_prompt = ""
+    cta_prompt = ""
     extra_instructions = ""
     word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
@@ -179,8 +208,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             )
             print(f"[outline] word_count_setting={word_count!r}")
         extra_instructions = _build_extra_instructions(job)
+        service_id = job.get("service_id")
+        if service_id:
+            service = get_service_by_id(service_id)
+            if service:
+                service_prompt = _build_service_prompt(service)
+                print(f"[outline] Loaded service: {service.get('name')}")
+        cta_id = job.get("cta_id")
+        if cta_id:
+            cta = get_cta_by_id(cta_id)
+            if cta:
+                cta_prompt = _build_cta_prompt(cta)
+                print(f"[outline] Loaded CTA: {cta.get('name')}")
     except Exception as e:
-        print(f"[outline] Warning: could not load company settings: {e}")
+        print(f"[outline] Warning: could not load job settings: {e}")
 
     client = anthropic.Anthropic(api_key=api_key)
     message = create_with_retry(
@@ -197,7 +238,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
                     word_count_instruction=word_count_instruction,
-                ) + company_prompt + extra_instructions,
+                ) + company_prompt + service_prompt + cta_prompt + extra_instructions,
             }
         ],
     )
