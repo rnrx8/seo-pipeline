@@ -124,6 +124,11 @@ def _parse_volume_design(outline_text: str) -> list[tuple[str, int, int]]:
         title = m.group(1).strip()
         if title in ('H2タイトル', 'H2', '---', ''):
             continue
+        # Strip "H2-1：" or "H2-1:" numbering prefixes Claude may add
+        title = _re.sub(r'^[Hh]\d+[-‐]\d+[：:]\s*', '', title).strip()
+        title = _re.sub(r'^[Hh]\d+[：:]\s*', '', title).strip()
+        if not title:
+            continue
         importance = int(m.group(2))
         word_count = int(m.group(3).replace(',', ''))
         if word_count > 0:
