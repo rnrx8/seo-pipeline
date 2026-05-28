@@ -10,6 +10,7 @@ STEP_CONFIG: dict[str, dict] = {
     "article":       {"model": "claude-opus-4-7",   "max_tokens": 8000},
     "review":        {"model": "claude-sonnet-4-6", "max_tokens": 28000},
     "fact_review":   {"model": "claude-sonnet-4-6", "max_tokens": 28000},
+    "service_map":   {"model": "claude-sonnet-4-6", "max_tokens": 2048},
 }
 
 

@@ -1,3 +1,5 @@
+import json
+import re as _re
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
@@ -114,6 +116,48 @@ PART3_INSTRUCTION = """\
 必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"""
 
 
+def _parse_volume_design(outline_text: str) -> list[tuple[str, int, int]]:
+    """Parse volume design table from outline. Returns [(h2_title, importance, word_count), ...]."""
+    results = []
+    pattern = r'\|\s*([^|\n]+?)\s*\|\s*([1-5])\s*\|\s*([\d,]+)字\s*\|'
+    for m in _re.finditer(pattern, outline_text):
+        title = m.group(1).strip()
+        if title in ('H2タイトル', 'H2', '---', ''):
+            continue
+        importance = int(m.group(2))
+        word_count = int(m.group(3).replace(',', ''))
+        if word_count > 0:
+            results.append((title, importance, word_count))
+    return results
+
+
+def _split_sections_into_parts(
+    sections: list[tuple[str, int, int]]
+) -> tuple[list, list, list]:
+    """Divide volume sections into 3 roughly equal-weight parts by word count."""
+    n = len(sections)
+    if n == 0:
+        return [], [], []
+    if n <= 2:
+        return sections[:1], [], sections[1:]
+
+    total = sum(wc for _, _, wc in sections)
+    t1, t2 = total / 3, 2 * total / 3
+
+    cum = 0
+    split1 = split2 = 0
+    for i, (_, _, wc) in enumerate(sections):
+        cum += wc
+        if cum <= t1:
+            split1 = i + 1
+        if cum <= t2:
+            split2 = i + 1
+
+    split1 = max(1, min(split1, n - 2))
+    split2 = max(split1 + 1, min(split2, n - 1))
+    return sections[:split1], sections[split1:split2], sections[split2:]
+
+
 def _parse_word_count(word_count_setting: str | None) -> int | None:
     """'3,000〜5,000字' などの文字列を数値（目標文字数）に変換する。相対指定はNoneを返す。"""
     import re
@@ -127,12 +171,15 @@ def _parse_word_count(word_count_setting: str | None) -> int | None:
     return (nums[0] + nums[1]) // 2
 
 
-def _calc_part_max_tokens(word_count_setting: str | None) -> int:
-    """Per-PART max_tokens based on target word count.
+def _calc_part_max_tokens(word_count_setting: str | None, part_chars: int | None = None) -> int:
+    """Per-PART max_tokens. Uses part_chars (from volume design) when available.
 
     Japanese text: ~1.5 tokens/char. Add 1.5x buffer so Claude can finish
     a PART gracefully without being cut off mid-sentence.
     """
+    if part_chars is not None:
+        tokens = int(part_chars * 1.5 * 1.5)
+        return max(2000, min(tokens, MAX_TOKENS))
     total = _parse_word_count(word_count_setting)
     if total is None:
         return MAX_TOKENS
@@ -141,8 +188,75 @@ def _calc_part_max_tokens(word_count_setting: str | None) -> int:
     return max(2000, min(tokens, MAX_TOKENS))
 
 
-def _build_part_instructions(word_count_setting: str | None) -> tuple[str, str, str]:
-    """各PARTの指示文を返す。word_count_settingがある場合は各パートの目安字数を明示する。"""
+def _build_part_instructions(
+    word_count_setting: str | None,
+    volume_sections: list[tuple[str, int, int]] | None = None,
+    service_map: dict | None = None,
+    service_name: str = "",
+    cta_content: str = "",
+) -> tuple[str, str, str]:
+    """各PARTの指示文を返す。ボリューム設計データがあればセクション別の目安を明示する。"""
+    if volume_sections:
+        part1_secs, part2_secs, part3_secs = _split_sections_into_parts(volume_sections)
+        total = sum(wc for _, _, wc in volume_sections)
+
+        def _sec_label(secs):
+            return "、".join(f"「{t}」({wc:,}字)" for t, _, wc in secs)
+
+        def _service_reminder(secs):
+            """Per-part service/CTA injection based on service_map."""
+            if not service_map:
+                return ""
+            lines = []
+            primary_h2 = service_map.get("primary_h2", "")
+            per_instructions = service_map.get("per_section_instructions", {})
+            cta_h2s = service_map.get("cta_after_h2", [])
+
+            sec_titles = [t for t, _, _ in secs]
+            for title in sec_titles:
+                # Service treatment instructions for this section
+                if primary_h2 and _h2_title_matches(title, primary_h2):
+                    inst = per_instructions.get(primary_h2, per_instructions.get(title, ""))
+                    if inst:
+                        lines.append(f"\n【重要・サービス指示】「{title}」セクション：{inst}")
+                    elif service_name:
+                        lines.append(f"\n【重要・サービス指示】「{title}」セクションでは{service_name}を重点的に紹介してください。")
+                # CTA insertion reminder
+                for cta_h2 in cta_h2s:
+                    if _h2_title_matches(title, cta_h2) and cta_content:
+                        lines.append(f"\n【CTA必須】「{title}」セクションの末尾に以下のCTAブロックを必ず挿入すること：\n{cta_content}")
+                        break
+            return "\n".join(lines)
+
+        p1_total = sum(wc for _, _, wc in part1_secs)
+        p2_total = sum(wc for _, _, wc in part2_secs)
+
+        p1_rem = _service_reminder(part1_secs)
+        p2_rem = _service_reminder(part2_secs)
+        p3_rem = _service_reminder(part3_secs)
+
+        part1 = (
+            f"上記の構成案に沿って、Markdownで記事本文を執筆してください。\n"
+            f"今回はリード文と以下のH2セクションを書いてください：{_sec_label(part1_secs)}\n"
+            f"このパートの目安文字数は約{p1_total:,}字です。自然な区切りで終えてください。"
+            f"{p1_rem}\n"
+            f"最後に【PART1_END】と書いてください。"
+        )
+        part2 = (
+            f"上記の続きから以下のH2セクションを書いてください：{_sec_label(part2_secs)}\n"
+            f"このパートの目安文字数は約{p2_total:,}字です。自然な区切りで終えてください。"
+            f"{p2_rem}\n"
+            f"最後に【PART2_END】と書いてください。"
+        )
+        part3 = (
+            f"上記の続きから以下のH2セクションとまとめまで書いてください：{_sec_label(part3_secs)}\n"
+            f"記事全体の目標文字数は{total:,}字です。必ずまとめまで書き切ってください。"
+            f"{p3_rem}\n"
+            f"最後に【PART3_END】と書いてください。"
+        )
+        return part1, part2, part3
+
+    # Fallback: word_count_setting only
     total = _parse_word_count(word_count_setting)
     if total is None:
         return PART1_INSTRUCTION, PART2_INSTRUCTION, PART3_INSTRUCTION
@@ -162,6 +276,23 @@ def _build_part_instructions(word_count_setting: str | None) -> tuple[str, str, 
         f"記事全体の目標は約{total:,}字です。必ずまとめまで書き切ってください。最後に【PART3_END】と書いてください。"
     )
     return part1, part2, part3
+
+
+def _h2_title_matches(actual: str, target: str) -> bool:
+    """Fuzzy-match two H2 titles (tolerates minor wording differences)."""
+    def norm(s: str) -> str:
+        s = _re.sub(r'[？?！!：:。、・〜～「」【】（）()\s]', '', s)
+        return s.lower()
+    a, t = norm(actual), norm(target)
+    if not a or not t:
+        return False
+    if a == t or a in t or t in a:
+        return True
+    # character-set overlap ≥ 70%
+    set_a, set_t = set(a), set(t)
+    if len(set_t) and len(set_a & set_t) / len(set_t) >= 0.7:
+        return True
+    return False
 
 
 def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = None) -> tuple[str, int, int]:
@@ -365,10 +496,63 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         print(f"[article] Warning: could not load job settings: {e}")
 
     word_count_setting = job.get("word_count_setting") if job else None
-    part1_inst, part2_inst, part3_inst = _build_part_instructions(word_count_setting)
-    part_max_tokens = _calc_part_max_tokens(word_count_setting)
-    if word_count_setting:
-        print(f"[article] word_count_setting={word_count_setting!r} → max_tokens per PART = {part_max_tokens}")
+
+    # Load volume design from outline and service_map if available
+    volume_sections = _parse_volume_design(outline["content_text"])
+    service_map: dict | None = None
+    try:
+        sm_artifact = get_artifact(job_id, "service_map")
+        service_map = json.loads(sm_artifact["content_text"])
+        print(f"[article] Loaded service_map: type={service_map.get('service_section_type')}, cta_after={service_map.get('cta_after_h2')}")
+    except Exception:
+        pass
+
+    # CTA content for inline injection reminders
+    _cta_content = ""
+    if service_map and cta_prompt:
+        # Extract a concise CTA block from cta_prompt for inline reminders
+        try:
+            job_cta_id = job.get("cta_id") if job else None
+            if job_cta_id:
+                _cta_obj = get_cta_by_id(job_cta_id)
+                if _cta_obj:
+                    body = _cta_obj.get("body", "")
+                    btn = _cta_obj.get("button_text", "")
+                    url = _cta_obj.get("url", "")
+                    _cta_content = f"> {body}\n>\n> **[{btn}]({url})**" if btn and url else body
+        except Exception:
+            pass
+
+    _service_name = ""
+    if service_map:
+        try:
+            job_svc_id = job.get("service_id") if job else None
+            if job_svc_id:
+                _svc = get_service_by_id(job_svc_id)
+                _service_name = _svc.get("name", "") if _svc else ""
+        except Exception:
+            pass
+
+    part1_inst, part2_inst, part3_inst = _build_part_instructions(
+        word_count_setting,
+        volume_sections=volume_sections or None,
+        service_map=service_map,
+        service_name=_service_name,
+        cta_content=_cta_content,
+    )
+
+    # Per-part max tokens from volume design splits
+    if volume_sections:
+        p1_secs, p2_secs, p3_secs = _split_sections_into_parts(volume_sections)
+        p1_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p1_secs) if p1_secs else None)
+        p2_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p2_secs) if p2_secs else None)
+        p3_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p3_secs) if p3_secs else None)
+        total_vol = sum(wc for _, _, wc in volume_sections)
+        print(f"[article] Volume design: {len(volume_sections)} H2s, total={total_vol:,}字 → max_tokens: {p1_max}/{p2_max}/{p3_max}")
+    else:
+        p1_max = p2_max = p3_max = _calc_part_max_tokens(word_count_setting)
+        if word_count_setting:
+            print(f"[article] word_count_setting={word_count_setting!r} → max_tokens per PART = {p1_max}")
 
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
@@ -383,7 +567,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
+    part1_text, ti, to = _call(client, messages, max_tokens=p1_max)
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -397,7 +581,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part1_text},
         {"role": "user", "content": part2_inst},
     ]
-    part2_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
+    part2_text, ti, to = _call(client, messages, max_tokens=p2_max)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -411,7 +595,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _call(client, messages, max_tokens=part_max_tokens)
+    part3_text, ti, to = _call(client, messages, max_tokens=p3_max)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")
