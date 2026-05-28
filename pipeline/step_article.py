@@ -354,7 +354,16 @@ def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
             "",
         ]
 
-    lines = intro
+    lines = intro + [
+        "【各社紹介セクションの形式】各社をH3で個別紹介する場合、以下の形式を守ること：",
+        "  ①本文の後にスペック表を設ける（項目例：求人数・強み・こんな人向け・料金・公式サイト）",
+        "  　公式サイト行の値はURLをそのまま記載する（例：https://www.r-agent.com）",
+        "  ②スペック表の直後に以下のリンクを1行追加する：",
+        "  　[▶ {会社名}の公式サイトはこちら]({URL})",
+        "  　（例：[▶ リクルートエージェントの公式サイトはこちら](https://www.r-agent.com)）",
+        "  ③H3見出しにレベルに応じた【1位】【2位】等のラベルを付けてよい",
+        "",
+    ]
     for lv in sorted(by_level.keys(), reverse=True):
         label, instruction = level_map.get(lv, (str(lv), ""))
         lines.append(f"レベル{lv}（{label}）：")
