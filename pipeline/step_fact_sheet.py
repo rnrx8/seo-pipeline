@@ -1,5 +1,5 @@
 import anthropic
-from .db import get_artifact, get_job, get_primary_sources, upsert_artifact
+from .db import get_artifact, get_job, get_primary_sources, get_primary_sources_by_preset, upsert_artifact
 from .ai import create_with_retry, get_step_config
 
 MODEL, MAX_TOKENS = get_step_config("fact_sheet")
@@ -122,17 +122,23 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
 
-    # 一次情報を取得
+    # 一次情報を取得（preset_id優先、なければcategoryで照合）
     primary_sources_prompt = ""
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
+        preset_id = job.get("preset_id")
         category = job.get("category")
-        if user_id and category:
+        sources = []
+        if user_id and preset_id:
+            sources = get_primary_sources_by_preset(user_id, preset_id)
+            if sources:
+                print(f"[fact_sheet] Loaded {len(sources)} primary sources for preset_id='{preset_id}'")
+        if not sources and user_id and category:
             sources = get_primary_sources(user_id, category)
-            primary_sources_prompt = _build_primary_sources_prompt(sources)
-            if primary_sources_prompt:
+            if sources:
                 print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
+        primary_sources_prompt = _build_primary_sources_prompt(sources)
     except Exception as e:
         print(f"[fact_sheet] Warning: could not load primary sources: {e}")
 

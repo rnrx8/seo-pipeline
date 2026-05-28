@@ -143,6 +143,20 @@ def get_primary_sources(user_id: str, category: str) -> list:
     return resp.json() if resp.status_code == 200 else []
 
 
+def get_primary_sources_by_preset(user_id: str, preset_id: str) -> list:
+    """プリセットIDに紐づく一次情報を取得"""
+    resp = requests.get(
+        f"{_base()}/primary_sources",
+        headers=_headers(),
+        params={
+            "tenant_id": f"eq.{user_id}",
+            "preset_id": f"eq.{preset_id}",
+            "select": "title,content_text",
+        },
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
 def get_service_by_id(service_id: str) -> dict | None:
     """IDでサービス設定を1件取得"""
     resp = requests.get(
