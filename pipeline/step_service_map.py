@@ -71,11 +71,29 @@ def _is_cv_purpose(article_purpose: str) -> bool:
 
 
 def _has_dedicated_service_h2(outline_text: str, service_name: str) -> bool:
-    """Return True if the outline already has a standalone H2 for this service."""
+    """Return True if the outline already has a standalone H2 dedicated to this service.
+
+    A dedicated section talks *about* the service (紹介・解説).
+    A how-to section that *uses* the service as a tool (〇〇を使って...) does NOT count.
+    """
+    # Patterns that indicate the H2 is *about* the service (introduction / deep-dive)
+    about_markers = (
+        'の特徴', 'の解説', 'の紹介', 'について', 'とは', 'の詳細',
+        'の評判', 'の料金', 'の使い方', 'の活用', 'がおすすめ', 'を徹底',
+    )
+    # Patterns that indicate the service is used *as a tool* inside a how-to section
+    tool_markers = ('を使って', 'を使った', 'を活用して', 'を活用した', 'による')
+
     for m in _re.finditer(r'^###\s+H2[-−]?\d*[：:]\s*(.+)$', outline_text, _re.MULTILINE):
         title = m.group(1).strip()
-        # Dedicated = service name present but NOT inside a comparison/ranking section
-        if service_name in title and not any(kw in title for kw in _COMPARISON_KEYWORDS):
+        if service_name not in title:
+            continue
+        if any(kw in title for kw in _COMPARISON_KEYWORDS):
+            continue  # comparison/ranking section → not a dedicated section
+        if any(kw in title for kw in tool_markers):
+            continue  # service is used as a tool, not introduced
+        # Dedicated: service name is the primary subject
+        if any(kw in title for kw in about_markers) or title.startswith(service_name):
             return True
     return False
 
@@ -115,27 +133,28 @@ def _find_insertion_point(outline_text: str) -> int:
 
 
 def _build_service_h2_block(service: dict, h2_num: int) -> str:
-    """Build the outline text for a dedicated service H2 section."""
+    """Build the outline text for a dedicated service H2 section.
+
+    Uses neutral language that works for both comparison articles and how-to articles.
+    """
     name = service.get("name", "自社サービス")
-    url = service.get("url", "")
     sps = service.get("selling_points") or []
     must_include = service.get("must_include", "")
 
-    url_suffix = f"（{url}）" if url else ""
-    sp_h3s = "\n".join(f"- {sp}" for sp in sps[:3]) if sps else f"- {name}の主な特徴・強み"
+    sp_h3s = "\n".join(f"- {name}の強み：{sp}" for sp in sps[:3]) if sps else f"- {name}の主な特徴・強み"
     must_note = f"\n  ※必ず含める内容：{must_include}" if must_include else ""
 
     return (
-        f"### H2-{h2_num}：{name}{url_suffix}の特徴・料金・評判を徹底解説\n\n"
+        f"### H2-{h2_num}：{name}の特徴・活用方法・始め方\n\n"
         f"**H2直下方針：**\n"
-        f"- ①結論：{name}はこの記事で最も推奨するサービスであり、特に[ターゲット層]に最適な選択肢である。\n"
-        f"- ②配下H3の概要：サービス概要・強み・向いている人・料金と登録方法をH3で詳述する。\n"
-        f"- ③不安への補完：「本当に自分に合っているか」という疑問に答え、具体的なメリットと対象者像を明示する。{must_note}\n\n"
+        f"- ①結論：{name}はこの記事のテーマに関して最もおすすめできるサービスである。\n"
+        f"- ②配下H3の概要：サービスの概要・強み・向いている人・利用開始方法をH3で詳述する。\n"
+        f"- ③不安への補完：「自分に合っているか」という読者の疑問に答え、具体的なメリットと対象者像を明示する。{must_note}\n\n"
         f"**H3：**\n"
-        f"- {name}とは？サービス概要と他社との違い\n"
+        f"- {name}とは？サービス概要と主な特徴\n"
         f"{sp_h3s}\n"
-        f"- {name}が向いている人・向いていない人（チェックリスト）\n"
-        f"- {name}の料金・登録方法・利用開始までの流れ\n\n"
+        f"- {name}がおすすめな人・向いている人\n"
+        f"- {name}の始め方・料金・利用の流れ\n\n"
         f"---\n\n"
     )
 
@@ -172,9 +191,8 @@ def _patch_outline_for_cv(
     h2_block = _build_service_h2_block(service, new_h2_num)
     patched = outline_text[:insert_pos] + h2_block + outline_text[insert_pos:]
 
-    # Build the title we'll reference in service_map
-    url_suffix = f"（{service.get('url', '')}）" if service.get("url") else ""
-    h2_title = f"{service_name}{url_suffix}の特徴・料金・評判を徹底解説"
+    # Build the title we'll reference in service_map (must match _build_service_h2_block)
+    h2_title = f"{service_name}の特徴・活用方法・始め方"
 
     patched = _patch_volume_table(patched, h2_title)
 
