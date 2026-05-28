@@ -611,6 +611,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         combined = combined.replace(marker, "")
     article_text = combined.strip()
 
+    # Unescape backslash-escaped markdown that Claude sometimes outputs (\*\* → **)
+    article_text = _re.sub(r'\\\*\\\*', '**', article_text)
+    article_text = _re.sub(r'\\\*', '*', article_text)
+    article_text = _re.sub(r'\\_', '_', article_text)
+
     # --- A: [hypothesis] validation ---
     import re as _re
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
