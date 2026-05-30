@@ -22,7 +22,7 @@ from pipeline import (  # noqa: E402  (after load_dotenv)
     step_review,
     step_serp,
 )
-from pipeline.db import get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, update_job_error, update_job_status, update_job_step  # noqa: E402
+from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
@@ -60,8 +60,28 @@ async def _watchdog() -> None:
         await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
 
 
+async def _requeue_bug_fixing_jobs() -> None:
+    """起動時に bug_fixing ジョブを再キューする（修正デプロイ後の自動再実行）。"""
+    await asyncio.sleep(10)  # DB接続が安定するまで待機
+    try:
+        jobs = get_bug_fixing_jobs()
+        if not jobs:
+            return
+        print(f"[startup] Found {len(jobs)} bug_fixing job(s) — re-queuing...")
+        loop = asyncio.get_running_loop()
+        for job in jobs:
+            job_id = job["id"]
+            keyword = job.get("main_keyword", "")
+            update_job_status(job_id, "queued")
+            loop.run_in_executor(None, _run_pipeline, job_id, keyword)
+            print(f"[startup] Re-queued: {job_id} ({keyword!r})")
+    except Exception as exc:
+        print(f"[startup] Failed to requeue bug_fixing jobs: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    asyncio.create_task(_requeue_bug_fixing_jobs())
     task = asyncio.create_task(_watchdog())
     yield
     task.cancel()
@@ -163,12 +183,14 @@ def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
             return
 
         update_job_step(job_id, None)
-        update_job_status(job_id, "failed")
+        # コードバグは修正デプロイ後に自動再実行するため bug_fixing ステータスにする
+        new_status = "bug_fixing" if error_info["type"] == "code_bug" else "failed"
+        update_job_status(job_id, new_status)
         try:
             update_job_error(job_id, str(exc))
         except Exception:
             pass
-        print(f"[pipeline] ERROR job_id={job_id}: {exc}")
+        print(f"[pipeline] ERROR job_id={job_id}: {exc} → status={new_status}")
 
         # コードバグは GitHub Issue を自動作成して auto-fix ワークフローへ
         if error_info["type"] == "code_bug":

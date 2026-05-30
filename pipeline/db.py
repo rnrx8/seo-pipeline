@@ -239,6 +239,20 @@ def get_user_email(tenant_id: str) -> str:
     return ""
 
 
+def get_bug_fixing_jobs() -> list[dict]:
+    """bug_fixing ステータスのジョブを全件返す（起動時再キュー用）。"""
+    resp = requests.get(
+        f"{_base()}/jobs",
+        params={
+            "status": "eq.bug_fixing",
+            "select": "id,main_keyword,tenant_id",
+        },
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_stale_queued_jobs(threshold_minutes: int) -> list[dict]:
     """queued のまま threshold_minutes 以上経過しているジョブを返す。"""
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)).isoformat()
