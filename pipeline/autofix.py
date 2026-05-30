@@ -20,7 +20,7 @@ _RULES = [
      True,  "transient",   "レートリミット"),
     (re.compile(r"timeout|timed out|connection.?reset|connection.?refused|503|502|network", re.I),
      True,  "transient",   "接続エラー／タイムアウト"),
-    (re.compile(r"AttributeError|KeyError|TypeError|IndexError|JSONDecodeError|json\.decoder", re.I),
+    (re.compile(r"AttributeError|KeyError|TypeError|IndexError|JSONDecodeError|json\.decoder|UnboundLocalError|NameError", re.I),
      False, "code_bug",    "コードバグ（例外型）"),
     (re.compile(r"artifact not found|no rows", re.I),
      False, "code_bug",    "データ参照エラー"),
