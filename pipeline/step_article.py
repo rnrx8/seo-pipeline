@@ -626,7 +626,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = _re.sub(r'\\_', '_', article_text)
 
     # --- A: [hypothesis] validation ---
-    import re as _re
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
     if hypothesis_hits:
         print(f"[article] WARNING: {len(hypothesis_hits)} [hypothesis] tag(s) found in article — Claude may have included unverified facts.")
