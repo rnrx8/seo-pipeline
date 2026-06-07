@@ -3,7 +3,7 @@ import re as _re
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, get_learned_style_rules, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -77,8 +77,10 @@ SYSTEM_PROMPT = """\
 - 根拠のない数値・推測を断言しない
 
 ▼ 潜在ニーズの反映
-- 検索意図で抽出した潜在ニーズ（生活不安・閉塞感・感情的障壁）を
-  リード文と各H2末尾の補完文に必ず1箇所以上反映させる
+- リード文・各H2末尾の補完文には、検索意図チェーンの concrete_phrase（具体化ワード）を
+  最低1つ、原文の言葉のまま使うこと。
+- 抽象ラベル（「安全欲求に訴求」「閉塞感を解消」等）ではなく、
+  具体化された言葉そのもの（数字・比較・情景を含む表現）を本文に入れること。
 
 ▼ その他
 - 各H2末尾に読者の不安を和らげる「安心1文」を入れる
@@ -410,6 +412,43 @@ def _build_cta_prompt(cta: dict) -> str:
     return "\n".join(lines)
 
 
+def _build_chains_prompt(chains: list) -> str:
+    """検索意図chainsの具体化ワードをリード文・H2末尾反映用にプロンプト化する。"""
+    if not chains:
+        return ""
+    phrases = [c for c in chains if c.get("concrete_phrase")]
+    if not phrases:
+        return ""
+    lines = [
+        "",
+        "【検索意図チェーン：地の文に入れる具体化ワード】",
+        "以下の具体化ワードを、リード文と各H2末尾の補完文に原文の言葉のまま最低1つずつ反映すること。",
+        "抽象ラベルに言い換えず、数字・比較・情景を含む言葉そのものを使うこと。",
+    ]
+    for c in phrases:
+        direction = c.get("direction", "")
+        lines.append(f"- 「{c['concrete_phrase']}」（{direction}）")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _build_learned_rules_prompt(rules: list) -> str:
+    """テナントの学習済み執筆ルール（校正からの学習）をプロンプト化する。"""
+    texts = [r.get("rule_text", "").strip() for r in rules if r.get("rule_text", "").strip()]
+    if not texts:
+        return ""
+    lines = [
+        "",
+        "【学習済み執筆ルール（このアカウントの過去の校正から学習）】",
+        "以下は編集者が過去の校正で示した文体・表現・表記・媒体レギュレーションの好みです。",
+        "他の指示と矛盾しない範囲で、本文全体でこれらを最優先で守ってください。",
+    ]
+    for t in texts:
+        lines.append(f"- {t}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _build_extra_instructions(job: dict) -> str:
     """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
     lines = []
@@ -477,16 +516,33 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
 
+    # 検索意図chains（具体化ワードの受け口）。無くてもパイプラインは継続。
+    chains_prompt = ""
+    try:
+        chains_artifact = get_artifact(job_id, "intent_chains")
+        chains = json.loads(chains_artifact["content_text"]).get("chains", [])
+        chains_prompt = _build_chains_prompt(chains)
+        if chains_prompt:
+            print(f"[article] Loaded {len(chains)} intent chains for concrete phrases")
+    except Exception:
+        pass
+
     # 企業設定・サービス・CTA を取得
     company_prompt = ""
     extra_instructions = ""
     service_prompt = ""
     cta_prompt = ""
+    learned_rules_prompt = ""
     job = {}
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
+        if user_id:
+            learned_rules = get_learned_style_rules(user_id)
+            learned_rules_prompt = _build_learned_rules_prompt(learned_rules)
+            if learned_rules_prompt:
+                print(f"[article] Loaded {len(learned_rules)} learned style rules")
         if user_id and category:
             companies = get_company_settings(user_id, category)
             restriction = job.get("company_restriction", "ai")
@@ -573,7 +629,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    ) + company_prompt + service_prompt + cta_prompt + extra_instructions
+    ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions + learned_rules_prompt
 
     client = anthropic.Anthropic(api_key=api_key)
     total_input = total_output = 0

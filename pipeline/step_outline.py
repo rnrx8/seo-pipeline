@@ -1,6 +1,7 @@
+import json
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, get_learned_style_rules, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("outline")
 
@@ -162,6 +163,44 @@ def _build_cta_prompt(cta: dict) -> str:
     return "\n".join(lines)
 
 
+def _build_chains_prompt(chains: list) -> str:
+    """検索意図chainsの見出し語彙をH2タイトル指示に追加する。serp_grounded=trueを優先採用。"""
+    if not chains:
+        return ""
+    grounded = [c for c in chains if c.get("serp_grounded") and c.get("heading_vocab")]
+    if not grounded:
+        return ""
+    lines = [
+        "",
+        "【検索意図チェーン：見出しの言葉選び】",
+        "以下はSERPの実語彙に接地した見出し語彙です。疑問詞だけに頼らず、関連するH2タイトルに優先的に織り込むこと。",
+        "（例:「30代向け転職エージェントの選び方」→「30代が“失敗しない”転職エージェントの選び方」）",
+    ]
+    for c in grounded:
+        origin = c.get("origin", "")
+        lines.append(f"- 「{c['heading_vocab']}」（起点: {origin}）")
+    lines.append("※ SERP非接地の語彙は見出しに使わず本文側に委ねるため、ここには含めていません。")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _build_learned_rules_prompt(rules: list) -> str:
+    """テナントの学習済み執筆ルール（校正からの学習）をプロンプト化する。"""
+    texts = [r.get("rule_text", "").strip() for r in rules if r.get("rule_text", "").strip()]
+    if not texts:
+        return ""
+    lines = [
+        "",
+        "【学習済み執筆ルール（このアカウントの過去の校正から学習）】",
+        "以下は編集者が過去の校正で示した文体・表現・表記・媒体レギュレーションの好みです。",
+        "見出し・構成の言葉選びにこれらを優先的に反映してください。",
+    ]
+    for t in texts:
+        lines.append(f"- {t}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _build_extra_instructions(job: dict) -> str:
     """記事目的・ターゲット層・自由記述をプロンプトに追加する（文字数は目標文字数セクションで設定済みのため除外）"""
     lines = []
@@ -199,16 +238,33 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     intent = get_artifact(job_id, "search_intent")
     fact = get_artifact(job_id, "fact_sheet")
 
+    # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
+    chains_prompt = ""
+    try:
+        chains_artifact = get_artifact(job_id, "intent_chains")
+        chains = json.loads(chains_artifact["content_text"]).get("chains", [])
+        chains_prompt = _build_chains_prompt(chains)
+        if chains_prompt:
+            print(f"[outline] Loaded {len(chains)} intent chains for heading vocab")
+    except Exception:
+        pass
+
     # 企業設定・サービス・CTA を取得
     company_prompt = ""
     service_prompt = ""
     cta_prompt = ""
     extra_instructions = ""
+    learned_rules_prompt = ""
     word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
+        if user_id:
+            learned_rules = get_learned_style_rules(user_id)
+            learned_rules_prompt = _build_learned_rules_prompt(learned_rules)
+            if learned_rules_prompt:
+                print(f"[outline] Loaded {len(learned_rules)} learned style rules")
         if user_id and category:
             companies = get_company_settings(user_id, category)
             restriction = job.get("company_restriction", "ai")
@@ -255,7 +311,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
                     word_count_instruction=word_count_instruction,
-                ) + company_prompt + service_prompt + cta_prompt + extra_instructions,
+                ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions + learned_rules_prompt,
             }
         ],
     )

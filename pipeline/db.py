@@ -194,6 +194,27 @@ def get_job_company_restriction(job_id: str) -> str:
     return "ai"
 
 
+def get_learned_style_rules(user_id: str) -> list:
+    """テナントの有効な学習済み執筆ルールを取得（新しい順）。
+
+    記事の校正モードから蓄積された文体・表現・媒体レギュレーションのルール。
+    取得失敗時は空リストを返し、生成は通常どおり継続する。
+    """
+    if not user_id:
+        return []
+    resp = requests.get(
+        f"{_base()}/learned_style_rules",
+        headers=_headers(),
+        params={
+            "tenant_id": f"eq.{user_id}",
+            "status": "eq.active",
+            "select": "rule_text",
+            "order": "created_at.desc",
+        },
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
 def get_user_credits_total(tenant_id: str) -> float:
     """Return the user's credits_total (0 if not found)."""
     resp = requests.get(

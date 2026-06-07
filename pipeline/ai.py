@@ -4,7 +4,7 @@ import anthropic
 
 # Centralized model config per step
 STEP_CONFIG: dict[str, dict] = {
-    "search_intent": {"model": "claude-opus-4-8",   "max_tokens": 4096},
+    "search_intent": {"model": "claude-opus-4-8",   "max_tokens": 6000},
     "outline":       {"model": "claude-opus-4-8",   "max_tokens": 8000},
     "fact_sheet":    {"model": "claude-sonnet-4-6", "max_tokens": 30000},
     "article":       {"model": "claude-opus-4-8",   "max_tokens": 8000},
