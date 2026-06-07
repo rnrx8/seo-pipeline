@@ -3,7 +3,7 @@ import re as _re
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, get_learned_style_rules, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -21,18 +21,22 @@ SYSTEM_PROMPT = """\
 - 不要な修飾語・接続詞は削除する（ただし「削っても意味が通じ、かつ読んだ時の温度感が変わらないもの」だけ削る）
 
 ▼ リード文
-- 構成は3パートで書く：
-  ①冒頭1〜2文：読者の感情・状況をそのまま代弁する
-    （「〜と感じていませんか」「〜で迷っている方は多いはずです」
-    のような共感ファーストの書き出し）
-  ②中間1文：その不安が生まれる理由や背景を補強する
+- 【最優先・禁止】リード文では、読者の感情を言い当てて同意を求める問いかけ・代弁の語尾を
+  一切使わない。次の語尾・表現はリード文に限り禁止（H2末尾の感情補完文では従来どおり可）：
+  「〜ていませんか」「〜ませんか」「〜のではないでしょうか」「〜ではないでしょうか」
+  「〜ですよね」「〜ますよね」「〜方は多い」「〜方は多いはずです」
+  → 代わりに、読者が置かれた状況・事実・数字を平叙文（言い切り）で描写し、
+    読者自身に当てはめさせる。感情そのものを代弁しない。
+- 構成は3パートで書く（共感→背景→解決の骨格は維持）：
+  ①冒頭1〜2文：読者が置かれた具体的な状況・事実・数字を平叙文で描写して入る
+    （例：「修理費5万円は一人暮らしの食費2ヶ月分にあたります」）。
+  ②中間1文：その状況が生まれる理由や背景を補強する（平叙文）
   ③末尾1文：この記事で何が解決するかを示す
-- 全体200字以内
-- 一文の目安は60字だが、感情表現・共感表現は例外として残す
-- 「削る」より「読者に寄り添えているか」を優先する
-- 文末は「〜はずです」「〜ではないでしょうか」など
-  読者に語りかけるトーンを使ってよい
-- 市場規模・背景などの数値的な前置きは書かない
+- 全体200字以内 / 一文の目安は60字
+- 毎回同じ鋳型の一文目で書き出さない。キーワードごとに入りを変える。
+- 本筋と無関係な市場規模・背景の数値的な前置きは書かない。
+  ただし読者の状況を察させる具体的な事実・数字は冒頭で使ってよい。
+- concrete_phrase は原文のまま活かす（具体ワードで共感を作る方向と整合）。
 
 ▼ H2見出し
 - 疑問詞を積極的に使う（〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？）
@@ -432,23 +436,6 @@ def _build_chains_prompt(chains: list) -> str:
     return "\n".join(lines)
 
 
-def _build_learned_rules_prompt(rules: list) -> str:
-    """テナントの学習済み執筆ルール（校正からの学習）をプロンプト化する。"""
-    texts = [r.get("rule_text", "").strip() for r in rules if r.get("rule_text", "").strip()]
-    if not texts:
-        return ""
-    lines = [
-        "",
-        "【学習済み執筆ルール（このアカウントの過去の校正から学習）】",
-        "以下は編集者が過去の校正で示した文体・表現・表記・媒体レギュレーションの好みです。",
-        "他の指示と矛盾しない範囲で、本文全体でこれらを最優先で守ってください。",
-    ]
-    for t in texts:
-        lines.append(f"- {t}")
-    lines.append("")
-    return "\n".join(lines)
-
-
 def _build_extra_instructions(job: dict) -> str:
     """記事目的・文字数・ターゲット層・自由記述をプロンプトに追加する"""
     lines = []
@@ -532,17 +519,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     extra_instructions = ""
     service_prompt = ""
     cta_prompt = ""
-    learned_rules_prompt = ""
     job = {}
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
-        if user_id:
-            learned_rules = get_learned_style_rules(user_id)
-            learned_rules_prompt = _build_learned_rules_prompt(learned_rules)
-            if learned_rules_prompt:
-                print(f"[article] Loaded {len(learned_rules)} learned style rules")
         if user_id and category:
             companies = get_company_settings(user_id, category)
             restriction = job.get("company_restriction", "ai")
@@ -629,7 +610,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions + learned_rules_prompt
+    ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
 
     client = anthropic.Anthropic(api_key=api_key)
     total_input = total_output = 0

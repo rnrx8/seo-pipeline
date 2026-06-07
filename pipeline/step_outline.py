@@ -1,7 +1,7 @@
 import json
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, get_learned_style_rules, upsert_artifact
+from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("outline")
 
@@ -45,6 +45,13 @@ USER_TEMPLATE = """\
 
 各H2には以下を必ず記載すること：
 - H2タイトル（疑問詞を積極使用：〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？など）
+  【H2タイトルの可読性ルール（必守）】
+  - 先頭は必ず主題（その章が何の話か）を述べる。heading_vocab を見出しの先頭に置かない。主題を述べた後、必要な場合のみ末尾に heading_vocab を添える。
+  - 1見出しに入れる heading_vocab は最大1つ。複数の情緒語を詰め込まない。
+  - 装飾（【】・｜区切り・""強調 など）は控えめに。1見出しにつき装飾は最大1種類まで。全H2を通して装飾を多用し、トーンがうるさくならないようにする。
+  - 長さの目安は30〜35字。これを大きく超える場合は heading_vocab を削って主題を優先する。
+  - 良い例：「30代向け転職エージェントの選び方（失敗しないために）」
+  - 悪い例：「【タイプ別診断】30代が"失敗しない"あなたに合う転職エージェントの選び方｜後悔しない」（先頭にvocab・装飾過多・vocab過多・長すぎ）
 - H2直下方針：①章の結論（1文断言）→②配下H3の概要箇条書き→③読者の不安に寄り添う補完1文
 - 配下のH3リスト
 
@@ -173,30 +180,14 @@ def _build_chains_prompt(chains: list) -> str:
     lines = [
         "",
         "【検索意図チェーン：見出しの言葉選び】",
-        "以下はSERPの実語彙に接地した見出し語彙です。疑問詞だけに頼らず、関連するH2タイトルに優先的に織り込むこと。",
-        "（例:「30代向け転職エージェントの選び方」→「30代が“失敗しない”転職エージェントの選び方」）",
+        "以下はSERPの実語彙に接地した見出し語彙です。疑問詞だけに頼らず、関連するH2タイトルに織り込むこと。",
+        "ただし上記「H2タイトルの可読性ルール」を厳守：主題を先頭に置き、heading_vocab は末尾に最大1つ添えるだけにする（先頭に置かない・複数詰め込まない・装飾過多にしない）。",
+        "（例:「30代向け転職エージェントの選び方」→「30代向け転職エージェントの選び方（失敗しないために）」）",
     ]
     for c in grounded:
         origin = c.get("origin", "")
         lines.append(f"- 「{c['heading_vocab']}」（起点: {origin}）")
     lines.append("※ SERP非接地の語彙は見出しに使わず本文側に委ねるため、ここには含めていません。")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _build_learned_rules_prompt(rules: list) -> str:
-    """テナントの学習済み執筆ルール（校正からの学習）をプロンプト化する。"""
-    texts = [r.get("rule_text", "").strip() for r in rules if r.get("rule_text", "").strip()]
-    if not texts:
-        return ""
-    lines = [
-        "",
-        "【学習済み執筆ルール（このアカウントの過去の校正から学習）】",
-        "以下は編集者が過去の校正で示した文体・表現・表記・媒体レギュレーションの好みです。",
-        "見出し・構成の言葉選びにこれらを優先的に反映してください。",
-    ]
-    for t in texts:
-        lines.append(f"- {t}")
     lines.append("")
     return "\n".join(lines)
 
@@ -254,17 +245,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     service_prompt = ""
     cta_prompt = ""
     extra_instructions = ""
-    learned_rules_prompt = ""
     word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
-        if user_id:
-            learned_rules = get_learned_style_rules(user_id)
-            learned_rules_prompt = _build_learned_rules_prompt(learned_rules)
-            if learned_rules_prompt:
-                print(f"[outline] Loaded {len(learned_rules)} learned style rules")
         if user_id and category:
             companies = get_company_settings(user_id, category)
             restriction = job.get("company_restriction", "ai")
@@ -311,7 +296,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
                     word_count_instruction=word_count_instruction,
-                ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions + learned_rules_prompt,
+                ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions,
             }
         ],
     )
