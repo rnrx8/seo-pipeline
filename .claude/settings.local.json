@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(//Users/ryoka/seo-saas/**)",
+      "Bash(npx next:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "mcp__claude_ai_Supabase__get_logs",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(ls /Users/ryoka/seo-saas/app/article/[id]/)",
+      "Bash(npm run:*)"
     ]
   }
 }
