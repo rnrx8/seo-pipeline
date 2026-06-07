@@ -65,6 +65,23 @@ def update_job_error(job_id: str, error_message: str) -> None:
     resp.raise_for_status()
 
 
+def update_job_word_count_setting(job_id: str, word_count_setting: str) -> None:
+    """機械算出した目標文字数を job.word_count_setting に永続化する。
+
+    ユーザーが未設定かつ機械算出できた時のみ呼ぶこと（既存のユーザー指定を
+    上書きしない）。id=eq.限定PATCHのため他テナントjobには書き込まない。
+    word_count_setting カラムが未定義の場合 PostgREST が 400 を返すため
+    raise_for_status() で握り潰さず検知する。
+    """
+    resp = requests.patch(
+        f"{_base()}/jobs",
+        json={"word_count_setting": word_count_setting},
+        params={"id": f"eq.{job_id}"},
+        headers=_headers(),
+    )
+    resp.raise_for_status()
+
+
 def upsert_artifact(
     job_id: str,
     step: str,

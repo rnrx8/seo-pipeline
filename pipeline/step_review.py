@@ -54,22 +54,13 @@ SYSTEM_PROMPT = """\
      (d) 全H2のトーンが不揃い → 装飾・語調を揃える
    - 主題自体は変えず、語順・装飾・冗長語の調整にとどめること
 
-### 【リード文の話法】
-9. リード文（最初のH2より前の本文）の代弁問いかけ語尾を除去
-   - 次の語尾・表現が残っていたら平叙文（言い切り）に直す：
-     「〜ていませんか」「〜ませんか」「〜のではないでしょうか」「〜ではないでしょうか」
-     「〜ですよね」「〜ますよね」「〜方は多い（はずです）」
-   - 感情を代弁・同意要求する形をやめ、状況・事実・数字の描写に置き換える（意味は保つ）
-   - 上記項目1（「ですよね」多用の言い換え）はリード文には適用せず、本項目を優先する
-   - この処理はリード文のみ。H2末尾の感情補完文の語尾は変更しない
-
 ### 【学習済み執筆ルール】
 10. 学習済み執筆ルールの適用（このアカウント独自の文体・表現・表記の好み）
    - ユーザーメッセージ末尾の「## 学習済み執筆ルール」に列挙があれば、記事全文へ一貫して適用する
    - 文体・語尾・表現・表記の統一にとどめ、記事の内容・意味・構成・見出し・事実は変えない
    - Markdown構造（見出しレベル・リスト・表・リンク）は保持する
    - 列挙が無い場合、または該当箇所が無い場合はこの項目を「変更なし」とする
-   - 項目1・9（語尾・話法）と競合する場合は、このアカウント独自ルールを優先する
+   - 項目1（語尾・話法）と競合する場合は、このアカウント独自ルールを優先する
 
 【出力フォーマット】
 以下の区切り文字を使って2つのブロックを出力すること。
@@ -136,8 +127,12 @@ def _build_learned_rules_block(rules: list) -> str:
     return "\n".join(lines)
 
 
-def _parse_response(text: str) -> tuple[str, str]:
-    """区切り文字でarticleとsummaryを分割して返す。"""
+def _parse_response(text: str) -> tuple[str, str, bool]:
+    """区切り文字でarticleとsummaryを分割して返す。
+
+    第3要素はARTICLEマーカーが見つかったか（=パース成功）の真偽。
+    Falseのとき呼出側は壊れた応答で元記事を上書きしないこと。
+    """
     article_match = re.search(
         r"===ARTICLE_START===\n(.*?)\n===ARTICLE_END===",
         text,
@@ -150,7 +145,7 @@ def _parse_response(text: str) -> tuple[str, str]:
     )
     article = article_match.group(1).strip() if article_match else text.strip()
     summary = summary_match.group(1).strip() if summary_match else "（サマリー取得失敗）"
-    return article, summary
+    return article, summary, bool(article_match)
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -204,20 +199,41 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     )
 
     raw = msg.content[0].text
-    corrected_article, summary = _parse_response(raw)
+    corrected_article, summary, article_ok = _parse_response(raw)
 
-    # Supabaseに修正済み記事を上書き
+    # 破損ガード: 応答がtruncation(stop_reason=max_tokens)、もしくは
+    # ===ARTICLE_START===/END=== マーカーが欠落している場合は、壊れた応答で
+    # レビュー前の良い記事を上書きしない。元記事(article_text)を保持する。
+    truncated = getattr(msg, "stop_reason", None) == "max_tokens"
+    review_ok = (not truncated) and article_ok
+    review_skipped_reason = None
+    if not review_ok:
+        review_skipped_reason = "truncated" if truncated else "parse_failed"
+        print(
+            f"[review] WARNING: response truncated={truncated} marker_found={article_ok}. "
+            "Keeping pre-review article."
+        )
+        corrected_article = article_text
+        summary = (
+            f"⚠️ レビュー応答が不完全（理由: {review_skipped_reason}）のため、"
+            "レビュー前の記事を保持しました。\n" + summary
+        )
+
+    # Supabaseに修正済み記事を上書き（破損時は元記事を保持）
+    meta = {
+        "model": MODEL,
+        "input_tokens": msg.usage.input_tokens,
+        "output_tokens": msg.usage.output_tokens,
+        "reviewed": review_ok,
+    }
+    if review_skipped_reason:
+        meta["review_skipped_reason"] = review_skipped_reason
     artifact = upsert_artifact(
         job_id=job_id,
         step="article",
         content_type="text/markdown",
         content_text=corrected_article,
-        meta={
-            "model": MODEL,
-            "input_tokens": msg.usage.input_tokens,
-            "output_tokens": msg.usage.output_tokens,
-            "reviewed": True,
-        },
+        meta=meta,
     )
 
     print("[review] Done")

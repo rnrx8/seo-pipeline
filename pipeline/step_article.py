@@ -21,19 +21,18 @@ SYSTEM_PROMPT = """\
 - 不要な修飾語・接続詞は削除する（ただし「削っても意味が通じ、かつ読んだ時の温度感が変わらないもの」だけ削る）
 
 ▼ リード文
-- 【最優先・禁止】リード文では、読者の感情を言い当てて同意を求める問いかけ・代弁の語尾を
-  一切使わない。次の語尾・表現はリード文に限り禁止（H2末尾の感情補完文では従来どおり可）：
-  「〜ていませんか」「〜ませんか」「〜のではないでしょうか」「〜ではないでしょうか」
-  「〜ですよね」「〜ますよね」「〜方は多い」「〜方は多いはずです」
-  → 代わりに、読者が置かれた状況・事実・数字を平叙文（言い切り）で描写し、
-    読者自身に当てはめさせる。感情そのものを代弁しない。
 - 構成は3パートで書く（共感→背景→解決の骨格は維持）：
-  ①冒頭1〜2文：読者が置かれた具体的な状況・事実・数字を平叙文で描写して入る
-    （例：「修理費5万円は一人暮らしの食費2ヶ月分にあたります」）。
-  ②中間1文：その状況が生まれる理由や背景を補強する（平叙文）
+  ①冒頭1〜2文：読者が置かれた具体的な状況・事実・数字を描写して入る。
+    感情を抽象的に代弁するだけで終わらせず、その感情を生む状況を具体的に描き、
+    読者に自分で当てはめさせる（例：「修理費5万円は一人暮らしの食費2ヶ月分に
+    あたります」）。共感・問いかけ（代弁）は使ってよいが、下記の一文目ルールに従う。
+  ②中間1文：その状況が生まれる理由や背景を補強する
   ③末尾1文：この記事で何が解決するかを示す
-- 全体200字以内 / 一文の目安は60字
-- 毎回同じ鋳型の一文目で書き出さない。キーワードごとに入りを変える。
+- 全体200字以内 / 一文の目安は60字（感情表現は例外として残してよい）
+- 一文目の「型」を毎回変える。特に「『〜』と〜ていませんか／感じていませんか」
+  （引用＋同意要求の問いかけ）を既定の書き出しにしない。
+  一文目は ①状況・事実の言い切り ②数字・データ ③情景描写 ④短い断片の列挙 など
+  から、キーワードごとに選ぶ。代弁・問いかけはリード文の2〜3文目で使ってよい。
 - 本筋と無関係な市場規模・背景の数値的な前置きは書かない。
   ただし読者の状況を察させる具体的な事実・数字は冒頭で使ってよい。
 - concrete_phrase は原文のまま活かす（具体ワードで共感を作る方向と整合）。
@@ -124,6 +123,9 @@ PART3_INSTRUCTION = """\
 
 def _parse_volume_design(outline_text: str) -> list[tuple[str, int, int]]:
     """Parse volume design table from outline. Returns [(h2_title, importance, word_count), ...]."""
+    import unicodedata
+    # 全角数字（３５００字）・全角｜区切り・全角，が混じってもパースできるよう正規化（表抽出専用）
+    outline_text = unicodedata.normalize('NFKC', outline_text)
     results = []
     pattern = r'\|\s*([^|\n]+?)\s*\|\s*([1-5])\s*\|\s*([\d,]+)字\s*\|'
     for m in _re.finditer(pattern, outline_text):
@@ -182,6 +184,12 @@ def _parse_word_count(word_count_setting: str | None) -> int | None:
     return (nums[0] + nums[1]) // 2
 
 
+# Safety cap (chars) for one PART when neither volume design nor
+# word_count_setting is available. Prevents runaway expansion now that
+# MAX_TOKENS was raised for the P0 truncation hotfix.
+FALLBACK_PART_CHARS = 4000
+
+
 def _calc_part_max_tokens(word_count_setting: str | None, part_chars: int | None = None) -> int:
     """Per-PART max_tokens. Uses part_chars (from volume design) when available.
 
@@ -193,7 +201,10 @@ def _calc_part_max_tokens(word_count_setting: str | None, part_chars: int | None
         return max(2000, min(tokens, MAX_TOKENS))
     total = _parse_word_count(word_count_setting)
     if total is None:
-        return MAX_TOKENS
+        # No machine-readable target at all. Cap each PART to a safe size so
+        # the (raised) MAX_TOKENS does not let unbounded articles balloon
+        # (≈9000 tokens ≈ part budget). Across 3 parts this stays ~12K字.
+        return min(int(FALLBACK_PART_CHARS * 1.5 * 1.5), MAX_TOKENS)
     per_part_chars = total // 3
     tokens = int(per_part_chars * 1.5 * 1.5)
     return max(2000, min(tokens, MAX_TOKENS))

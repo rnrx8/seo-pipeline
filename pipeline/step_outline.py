@@ -1,7 +1,15 @@
 import json
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
+from .db import (
+    get_artifact,
+    get_company_settings,
+    get_job,
+    get_service_by_id,
+    get_cta_by_id,
+    update_job_word_count_setting,
+    upsert_artifact,
+)
 
 MODEL, MAX_TOKENS = get_step_config("outline")
 
@@ -85,7 +93,47 @@ H1〜H3構成（FAQを含む全セクション）を確定した後、各H2セ�
 
 全H2の推奨文字数合計が「目標文字数」セクションで設定した値と一致するよう調整すること。
 H2タイトル列は上記H1/H2/H3構成で書いたタイトルをそのままコピーすること（「H2-1：」のような番号付けは禁止）。
+※推奨文字数列は必ず「3,500字」のように半角数字＋「字」で書くこと。
 """
+
+
+def _calc_target_word_count(serp_text: str) -> tuple[str, int] | None:
+    """SERP競合本文の文字数から機械可読な目標文字数を算出する。
+
+    serp_text は step_serp が保存した structured JSON 文字列。
+    competitor_headings[].word_count（空白除外char_count）から
+    fetch_status=='success' かつ 0<word_count<=30000 の値のみ収集し、
+    異常値除外平均（n>=4なら最小1・最大1を除外）を取る。
+    target = round(avg*1.2), hard_cap = round(avg*1.3)。
+    返り値: (word_count_setting文字列, hard_cap)。算出不能ならNone。
+    """
+    try:
+        data = json.loads(serp_text)
+    except Exception:
+        return None
+    headings = data.get("competitor_headings") or []
+    counts = []
+    for h in headings:
+        if not h or h.get("fetch_status") != "success":
+            continue
+        wc = h.get("word_count") or 0
+        # 0/欠損/極端値（本文以外混入の保険）を除外
+        if 0 < wc <= 30000:
+            counts.append(wc)
+    if not counts:
+        return None
+    counts.sort()
+    if len(counts) >= 4:
+        trimmed = counts[1:-1]
+    else:
+        trimmed = counts
+    if not trimmed:
+        return None
+    avg = sum(trimmed) / len(trimmed)
+    target = round(avg * 1.2)
+    hard_cap = round(avg * 1.3)
+    word_count_setting = f"{target:,}字（上限{hard_cap:,}字）"
+    return word_count_setting, hard_cap
 
 
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
@@ -258,6 +306,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
         word_count = job.get("word_count_setting")
         if word_count:
+            # ユーザー指定優先。機械算出値で上書きしない。
             word_count_instruction = (
                 f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
                 f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
@@ -265,6 +314,21 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
             )
             print(f"[outline] word_count_setting={word_count!r}")
+        else:
+            # ユーザー未設定時のみ、競合本文の異常値除外平均×1.2を機械算出して
+            # 機械可読な目標文字数を確定し、jobに永続化（生成/レビューの真実源化）。
+            computed = _calc_target_word_count(serp["content_text"])
+            if computed:
+                computed_str, hard_cap = computed
+                word_count_instruction = (
+                    f"- 目標文字数は「{computed_str}」とする（競合本文の異常値除外平均×1.2。これは推定ではなく確定値）\n"
+                    f"- 全H2の推奨文字数合計がこの目標（上限{hard_cap:,}字）に収まるよう設計すること"
+                )
+                try:
+                    update_job_word_count_setting(job_id, computed_str)
+                    print(f"[outline] computed word_count_setting={computed_str!r} (persisted)")
+                except Exception as e:
+                    print(f"[outline] Warning: could not persist word_count_setting: {e}")
         extra_instructions = _build_extra_instructions(job)
         service_id = job.get("service_id")
         if service_id:
