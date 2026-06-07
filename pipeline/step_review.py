@@ -1,7 +1,7 @@
 import re
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_job, upsert_artifact
+from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -45,6 +45,32 @@ SYSTEM_PROMPT = """\
    - 本文（見出し・表・リスト以外）でです・ます調でない箇所を検出
    - です・ます調に修正する
 
+### 【見出しの可読性】
+8. H2見出しの可読性チェック（記事完成後、全H2を通しで点検）
+   - 以下を検出し、表現だけ整える（主題＝その章が何の話かは変更しない）：
+     (a) 30〜35字を大きく超える見出し → 情緒語（vocab）を削って主題を優先
+     (b) 装飾過多（【】・｜・""強調 が2種類以上、または多用）→ 装飾は最大1種類に減らす
+     (c) 先頭に情緒語（vocab）が来ている → 主題を先頭に出し、vocabは末尾に回す
+     (d) 全H2のトーンが不揃い → 装飾・語調を揃える
+   - 主題自体は変えず、語順・装飾・冗長語の調整にとどめること
+
+### 【リード文の話法】
+9. リード文（最初のH2より前の本文）の代弁問いかけ語尾を除去
+   - 次の語尾・表現が残っていたら平叙文（言い切り）に直す：
+     「〜ていませんか」「〜ませんか」「〜のではないでしょうか」「〜ではないでしょうか」
+     「〜ですよね」「〜ますよね」「〜方は多い（はずです）」
+   - 感情を代弁・同意要求する形をやめ、状況・事実・数字の描写に置き換える（意味は保つ）
+   - 上記項目1（「ですよね」多用の言い換え）はリード文には適用せず、本項目を優先する
+   - この処理はリード文のみ。H2末尾の感情補完文の語尾は変更しない
+
+### 【学習済み執筆ルール】
+10. 学習済み執筆ルールの適用（このアカウント独自の文体・表現・表記の好み）
+   - ユーザーメッセージ末尾の「## 学習済み執筆ルール」に列挙があれば、記事全文へ一貫して適用する
+   - 文体・語尾・表現・表記の統一にとどめ、記事の内容・意味・構成・見出し・事実は変えない
+   - Markdown構造（見出しレベル・リスト・表・リンク）は保持する
+   - 列挙が無い場合、または該当箇所が無い場合はこの項目を「変更なし」とする
+   - 項目1・9（語尾・話法）と競合する場合は、このアカウント独自ルールを優先する
+
 【出力フォーマット】
 以下の区切り文字を使って2つのブロックを出力すること。
 
@@ -66,7 +92,7 @@ REVIEW_TEMPLATE = """\
 {word_count_instruction}
 ## 記事本文
 {article_text}
-"""
+{learned_rules_block}"""
 
 WORD_COUNT_INSTRUCTION = """\
 ## 文字数調整（最優先）
@@ -95,6 +121,21 @@ def _word_count_action(actual: int, target_str: str) -> str | None:
     )
 
 
+def _build_learned_rules_block(rules: list) -> str:
+    """テナントの学習済み執筆ルール（校正からの学習）をレビュー指示用に整形する。"""
+    texts = [r.get("rule_text", "").strip() for r in rules if r.get("rule_text", "").strip()]
+    if not texts:
+        return ""
+    lines = [
+        "",
+        "## 学習済み執筆ルール（このアカウントの過去の校正から学習）",
+        "以下を記事全文へ一貫適用してください（文体・表現・表記のみ。内容・構成・事実は変えない）：",
+    ]
+    for t in texts:
+        lines.append(f"- {t}")
+    return "\n".join(lines)
+
+
 def _parse_response(text: str) -> tuple[str, str]:
     """区切り文字でarticleとsummaryを分割して返す。"""
     article_match = re.search(
@@ -120,8 +161,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
 
-    # 文字数調整指示を構築
+    # 文字数調整指示・学習済み執筆ルールを構築
     word_count_instruction = ""
+    learned_rules_block = ""
     try:
         job = get_job(job_id)
         target_str = job.get("word_count_setting")
@@ -134,6 +176,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 print(f"[review] 文字数調整あり: {actual_count}字 → 目標「{target_str}」")
             else:
                 print(f"[review] 文字数OK: {actual_count}字（目標「{target_str}」）")
+        user_id = job.get("tenant_id")
+        if user_id:
+            learned_rules = get_learned_style_rules(user_id)
+            learned_rules_block = _build_learned_rules_block(learned_rules)
+            if learned_rules_block:
+                print(f"[review] Loaded {len(learned_rules)} learned style rules")
     except Exception as e:
         print(f"[review] Warning: could not load job: {e}")
 
@@ -149,6 +197,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 "content": REVIEW_TEMPLATE.format(
                     article_text=article_text,
                     word_count_instruction=word_count_instruction,
+                    learned_rules_block=learned_rules_block,
                 ),
             }
         ],
