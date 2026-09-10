@@ -1,7 +1,10 @@
+import json
 import re
 import anthropic
 from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
+from .content_contract import contract_prompt
+from .step_structure_guard import validate_structure
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -92,6 +95,7 @@ SYSTEM_PROMPT = """\
 REVIEW_TEMPLATE = """\
 以下の記事をレビューし、チェック・修正を行ってください。
 {word_count_instruction}
+{content_contract_block}
 ## 記事本文
 {article_text}
 {learned_rules_block}"""
@@ -117,9 +121,9 @@ def _word_count_action(actual: int, target_str: str) -> str | None:
     excess = actual - hi
     return (
         f"目標上限（{hi:,}字）を約{excess:,}字超過しています。\n"
-        f"以下の優先順位でH2またはH3セクションを丸ごと削除し、{hi:,}字以内に収めてください。\n"
-        f"削除優先順位（低優先から）: 補足・コラム系 > 潜在ニーズ対応 > 差別化 > 注意点・後悔しない系 > 向き不向き\n"
-        f"セクションを薄く書き直すのではなく、優先度の低いセクションを丸ごと削除してください。"
+        f"重複説明、冗長な例、長い導入、同内容のH3から先に圧縮し、{hi:,}字以内を目指してください。\n"
+        f"コンテンツ構造契約のprotected=trueのH2は、削除・統合・H3への降格・見出し主題の変更を禁止します。\n"
+        f"それでも収まらない場合だけoptional_sectionsに属する補助H2を削除できます。"
     )
 
 
@@ -166,6 +170,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
+    try:
+        contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
+    except Exception as exc:
+        raise ValueError(f"content_contract artifact is required before review: {exc}") from exc
+    content_contract_block = contract_prompt(contract)
 
     # 文字数調整指示・学習済み執筆ルールを構築
     word_count_instruction = ""
@@ -203,6 +212,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 "content": REVIEW_TEMPLATE.format(
                     article_text=article_text,
                     word_count_instruction=word_count_instruction,
+                    content_contract_block=content_contract_block,
                     learned_rules_block=learned_rules_block,
                 ),
             }
@@ -230,11 +240,28 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "レビュー前の記事を保持しました。\n" + summary
         )
 
+    structure_violations = validate_structure(corrected_article, contract, outline=False)
+    if structure_violations:
+        print(f"[review] WARNING: review broke protected structure: {structure_violations}. Keeping pre-review article.")
+        corrected_article = article_text
+        review_ok = False
+        review_skipped_reason = "structure_contract_violation"
+        summary = "⚠️ レビュー後に保護対象の構造欠落を検出したため、レビュー前の記事を保持しました。\n" + summary
+
+    upsert_artifact(
+        job_id=job_id,
+        step="article_reviewed",
+        content_type="text/markdown",
+        content_text=corrected_article,
+        meta={"review_model": MODEL, "reviewed": review_ok, "review_skipped_reason": review_skipped_reason},
+    )
+
     # Supabaseに修正済み記事を上書き（破損時は元記事を保持）
     meta = {
-        "model": MODEL,
-        "input_tokens": msg.usage.input_tokens,
-        "output_tokens": msg.usage.output_tokens,
+        **(article_artifact.get("meta") or {}),
+        "review_model": MODEL,
+        "review_input_tokens": msg.usage.input_tokens,
+        "review_output_tokens": msg.usage.output_tokens,
         "reviewed": review_ok,
     }
     if review_skipped_reason:

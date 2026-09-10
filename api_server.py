@@ -14,16 +14,9 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from pipeline import (  # noqa: E402  (after load_dotenv)
-    step_article,
-    step_fact_sheet,
-    step_intent,
-    step_outline,
-    step_review,
-    step_serp,
-)
 from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
+from pipeline.step_plan import build_step_plan, requires_rate_limit_delay  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
 MAX_AUTO_RETRIES = 2
@@ -138,31 +131,17 @@ def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
     delivery_type = job.get("delivery_type") or "full"
     api_key = _resolve_api_key(job)
 
-    STEP_KEYS = {
-        step_serp.run:       "serp",
-        step_intent.run:     "search_intent",
-        step_fact_sheet.run: "fact_sheet",
-        step_outline.run:    "outline",
-        step_article.run:    "article",
-        step_review.run:     "review",
-    }
-
-    if delivery_type == "research_only":
-        steps = [step_serp.run, step_intent.run, step_fact_sheet.run]
-    elif delivery_type == "outline_only":
-        steps = [step_serp.run, step_intent.run, step_fact_sheet.run, step_outline.run]
-    else:
-        steps = [step_serp.run, step_intent.run, step_fact_sheet.run, step_outline.run, step_article.run, step_review.run]
+    steps = build_step_plan(job)
 
     print(f"[pipeline] delivery_type={delivery_type}, steps={len(steps)}")
     failed_step = None
     try:
         update_job_status(job_id, "running")
-        for i, step_fn in enumerate(steps):
-            failed_step = STEP_KEYS[step_fn]
+        for i, (step_key, step_fn) in enumerate(steps):
+            failed_step = step_key
             update_job_step(job_id, failed_step)
             step_fn(job_id, keyword, api_key=api_key)
-            if i < len(steps) - 1:
+            if i < len(steps) - 1 and requires_rate_limit_delay(step_key):
                 print(f"  (waiting {STEP_DELAY}s for rate limit...)")
                 time.sleep(STEP_DELAY)
         update_job_step(job_id, None)

@@ -1,6 +1,8 @@
 import json
+import re
 import anthropic
 from .ai import create_with_retry, get_step_config
+from .content_contract import contract_prompt, reference_prompt
 from .db import (
     get_artifact,
     get_company_settings,
@@ -67,12 +69,58 @@ USER_TEMPLATE = """\
   - 良い例：「30代向け転職エージェントの選び方（失敗しないために）」
   - 悪い例：「【タイプ別診断】30代が"失敗しない"あなたに合う転職エージェントの選び方｜後悔しない」（先頭にvocab・装飾過多・vocab過多・長すぎ）
 - H2直下方針（順序厳守）：①見出しの問いに直接答える端的な結論を一文目に（前置き・遠回し禁止）→②並列要素はリスト/表で整理→③読者の不安に寄り添う補完・意図の汲み取りは後段に置く（答えより前に出さない）
-- 配下のH3リスト
+- H2直下方針の直後に、そのH2全体について以下を必ず記載すること：
+  - セクション内容：H2全体で伝える結論、扱う範囲、読者が得られる判断材料を1〜3文で具体的に記載する
+  - 表現形式：H2直下で使う文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は何を解説するためかも記載する
+  - 掲載項目：H2直下の表なら列項目、リストなら列挙する観点を具体的に記載する。文章のみの場合は「なし」とする
+  - 使用する根拠：ファクトシート内の[confirmed]情報から、H2直下で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する。根拠がない場合は「該当資料なし」とする
+- 配下の各H3について、以下を必ず記載すること：
+  - H3タイトル
+  - セクション内容：そのH3で伝える結論、解説する論点、読者が得られる判断材料を1〜3文で具体的に記載する。「概要を説明する」のような抽象的な記述だけで終わらせない
+  - 表現形式：文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は、何を解説するために使うかも記載する
+  - 掲載項目：表なら列項目、リストなら列挙する観点や手順を具体的に記載する。文章のみの場合は「なし」とする
+  - 使用する根拠：ファクトシート内の[confirmed]情報から、このH3で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する
 
-※以下のH2を必ず含めること：
-- 向き不向き・適性に関するH2（潜在ニーズ対応）
-- 後悔しない・失敗しないための注意点H2（感情的障壁の解消）
-- 差別化H2（競合が扱っていない視点、step5の差別化ポイントから1つ以上）
+【H3の根拠URLルール（必守）】
+- ファクトシートに実在するURLを原文のまま使い、推測・補完・改変しない
+- 原則として[confirmed]情報のURLだけを割り当てる。[hypothesis]情報は根拠に使わない
+- URLだけを記載せず、そのURLが何の根拠になるかを併記する
+- 表を使う場合は、どの列・比較項目をどのURLで裏付けるか分かるようにする
+- 同じURLは、実際に複数セクションの根拠になる場合のみ重複してよい
+- 使用できる[confirmed]情報がないH3ではURLを創作せず「該当資料なし」と明記する
+- ファクトシートにある情報を全H3へ機械的に割り振らず、各セクションの主張と直接対応するものだけを選ぶ
+
+各H2・H3は必ず次の形式で出力すること。H3タイトルを箇条書きにしてはならない：
+### H2：見出しタイトル
+
+**H2直下方針**：〜
+
+- セクション内容：〜
+- 表現形式：〜（〜を解説するため）
+- 掲載項目：〜
+- 使用する根拠：
+  - 根拠となる内容：https://example.com/source
+
+#### H3：見出しタイトル
+
+- セクション内容：〜
+- 表現形式：〜（〜を解説するため）
+- 掲載項目：〜
+- 使用する根拠：
+  - 根拠となる内容：https://example.com/source
+
+※根拠がない場合は「- 使用する根拠：該当資料なし」と1行で書く。空の「-」や、内容のない入れ子リストを絶対に出力しない
+
+H3をさらに分割する必要がある場合のみH4を使用し、次の形式でH3と視覚的に区別すること：
+##### H4：見出しタイトル
+
+- セクション内容：〜
+- 使用する根拠：該当資料なし
+
+H4タイトルも箇条書きにしてはならない。H4が不要な場合は無理に追加しない
+
+※必須H2は末尾の「コンテンツ構造契約」のrequired_sectionsだけとする。
+向き不向き・注意点・差別化などは固定テンプレとして毎回追加せず、検索意図と論点に必要な場合のみ採用する。
 
 ### FAQ（任意）
 - H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する
@@ -91,10 +139,10 @@ H1〜H3構成（FAQを含む全セクション）を確定した後、各H2セ�
 |-----------|------------|-----------|-----------|
 
 重要度の基準：
-- 5：CV直結・メイン比較セクション・差別化の核心
+- 5：コンテンツ構造契約の保護対象・CV直結・Primary検索意図の核心
 - 4：検索意図に直結・潜在ニーズの中心的対応
 - 3：基礎説明・文脈形成・補足
-- 2：向き不向き・注意点（必須だが簡潔でよい）
+- 2：検索意図との関連が弱い補助的な章
 - 1：FAQ・まとめ（短くまとめる）
 
 全H2の推奨文字数合計が「目標文字数」セクションで設定した値と一致するよう調整すること。
@@ -140,6 +188,55 @@ def _calc_target_word_count(serp_text: str) -> tuple[str, int] | None:
     hard_cap = round(avg * 1.3)
     word_count_setting = f"{target:,}字（上限{hard_cap:,}字）"
     return word_count_setting, hard_cap
+
+
+def _target_chars(setting: str | None) -> int:
+    nums = [int(value.replace(",", "")) for value in re.findall(r"[\d,]+", setting or "")]
+    if len(nums) >= 2:
+        return (nums[0] + nums[1]) // 2
+    if nums:
+        return nums[0]
+    return 5000
+
+
+def ensure_complete_volume_design(outline_text: str, word_count_setting: str | None) -> tuple[str, bool]:
+    """Rebuild a truncated/incomplete volume table from the actual H2 list."""
+    h2s = [
+        match.group(1).strip()
+        for match in re.finditer(
+            r"^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．:：｜|]\s*(.+)$", outline_text, re.MULTILINE
+        )
+    ]
+    if not h2s:
+        return outline_text, False
+    marker = re.search(r"^###\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
+    existing_titles: list[str] = []
+    if marker:
+        for line in outline_text[marker.end():].splitlines():
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) >= 4 and re.fullmatch(r"[1-5]", cells[1]) and re.fullmatch(r"[\d,]+字", cells[2]):
+                existing_titles.append(cells[0])
+    if len(existing_titles) == len(h2s) and all(title in existing_titles for title in h2s):
+        return outline_text, False
+
+    target = _target_chars(word_count_setting)
+    weights = [5 if any(term in title for term in ("比較", "おすすめ", "ランキング")) else 4 for title in h2s]
+    unit = target / sum(weights)
+    allocations = [max(100, round(unit * weight / 100) * 100) for weight in weights]
+    allocations[-1] += target - sum(allocations)
+    rows = [
+        f"| {title} | {weight} | {chars:,}字 | 検索意図と構造契約に基づく配分 |"
+        for title, weight, chars in zip(h2s, weights, allocations)
+    ]
+    table = (
+        "### セクション別ボリューム設計\n\n"
+        "| H2タイトル | 重要度(1-5) | 推奨文字数 | 根拠（1文） |\n"
+        "|-----------|------------|-----------|-----------|\n"
+        + "\n".join(rows)
+        + "\n"
+    )
+    prefix = outline_text[:marker.start()].rstrip() if marker else outline_text.rstrip()
+    return prefix + "\n\n" + table, True
 
 
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
@@ -294,11 +391,24 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception:
         pass
 
+    structure_prompts = ""
+    try:
+        contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
+        structure_prompts += contract_prompt(contract)
+    except Exception as exc:
+        raise ValueError(f"content_contract artifact is required before outline: {exc}") from exc
+    try:
+        reference = json.loads(get_artifact(job_id, "reference_structure")["content_text"])
+        structure_prompts += reference_prompt(reference)
+    except Exception:
+        pass
+
     # 企業設定・サービス・CTA を取得
     company_prompt = ""
     service_prompt = ""
     cta_prompt = ""
     extra_instructions = ""
+    job = {}
     word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
         job = get_job(job_id)
@@ -316,7 +426,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             word_count_instruction = (
                 f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
                 f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
-                f"- 必須H2（向き不向き・注意点・差別化）は残し、補足・潜在ニーズ対応などの優先度が低いセクションから削る\n"
+                f"- コンテンツ構造契約のprotected=trueの章は残し、optional_sectionsや補足から調整する\n"
                 f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
             )
             print(f"[outline] word_count_setting={word_count!r}")
@@ -366,18 +476,30 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     fact_text=fact["content_text"],
                     serp_text=serp["content_text"],
                     word_count_instruction=word_count_instruction,
-                ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions,
+                ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions,
             }
         ],
     )
     outline_text = message.content[0].text
+    if getattr(message, "stop_reason", None) == "max_tokens":
+        print("[outline] Response hit max_tokens; checking generated structure completeness")
+    outline_text, volume_repaired = ensure_complete_volume_design(
+        outline_text, job.get("word_count_setting")
+    )
+    if volume_repaired:
+        print("[outline] Rebuilt incomplete section volume design")
 
     artifact = upsert_artifact(
         job_id=job_id,
         step="outline",
         content_type="text/markdown",
         content_text=outline_text,
-        meta={"model": MODEL, "input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens},
+        meta={
+            "model": MODEL,
+            "input_tokens": message.usage.input_tokens,
+            "output_tokens": message.usage.output_tokens,
+            "volume_design_repaired": volume_repaired,
+        },
     )
     print(f"[outline] Done → artifact id={artifact['id']}")
     return artifact

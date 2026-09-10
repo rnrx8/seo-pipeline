@@ -1,121 +1,180 @@
 import re
+
 import anthropic
+
 from .ai import create_with_retry, get_step_config
 from .db import get_artifact, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("fact_review")
 
-WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 12}
+VERIFY_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 20}
+AUDIT_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 8}
 
-SYSTEM_PROMPT = """\
-あなたはSEO記事のファクトチェック専門編集者です。
-提供された記事本文の数値・統計・固有名詞などの事実情報をweb_searchで再確認し、
-確認できない情報を自動的に修正してください。
+VERIFY_SYSTEM_PROMPT = """\
+あなたはSEO記事の主任ファクトチェッカーです。完成記事を主張単位で監査し、証跡を残してください。
 
-【ファクトチェック手順】
-1. 記事中の数値・統計・具体的な企業名・件数・年収などをすべてリストアップする
-2. 各情報をweb_searchで検索・再確認する（最低5回検索）
-3. 確認結果に応じて以下のとおり対処する：
-   ✅ Tier1ソース（公式サイト・政府機関・学術論文）1件で確認 → そのまま維持
-   ✅ Tier2ソース（ニュースサイト・一般サイト）複数一致で確認 → そのまま維持
-   ⚠️ 未確認（1ソースのみ、または確認できず） → 断言を避ける表現に変更
-      例：「〜と言われています」「〜とも報告されています」「諸説あります」
-   ❌ 別の数値・情報が正しいと判明 → 正しい情報に書き換える
+【必須フロー】
+1. 外部検証可能な主張をすべて抽出する。数値・統計・料金・日付・制度・固有名詞・企業/サービスの仕様を優先する
+2. 各主張を個別にweb_searchで確認する。似た主張を一括で確認済みにしない
+3. 主張ごとに、判定・根拠URL・発行主体・公開/更新日・根拠箇所・確認日を記録する
+4. 誤りは正しい内容へ修正し、未確認情報は削除する。記事の理解に不可欠な場合だけ「確認できる公表資料は見つかりませんでした」と明示する
+5. 修正済み記事と検証レポートを出力する
 
-【禁止事項】
-- 確認できない情報を断言形式のまま残すこと
-- 記事の構成・文体・見出しを不必要に変更すること
-- [confirmed] / [hypothesis] タグを記事に出力すること
+【判定】
+- VERIFIED_T1: 公式、政府、行政、法令原文、査読論文、統計原典で直接確認
+- VERIFIED_T2: 独立した一般ソース2件以上で同じ条件・数値を確認
+- CORRECTED: 記事の誤りを原典に基づいて修正
+- REMOVED: 十分な根拠がなく削除
+- UNVERIFIED: 検証できず、断定を記事に残していない
 
-【出力フォーマット】（区切り文字を必ず使用すること）
+【独立性と条件】
+- 転載、同じ一次情報の紹介、同一配信記事は複数ソースに数えない
+- 数値は発表主体・対象期間・対象地域・母集団・単位が一致した場合だけ確認済みにする
+- 検索結果の要約だけでなく、ページ本文の該当箇所を確認する
+- 料金、プラン、機能、制度、法律、税、補助金、求人件数、医療、金融、安全情報は公式・行政・原典必須
+- 更新性の高い情報には「YYYY年MM月時点」を付ける
+- 出典があっても主張を直接支えていなければ確認済みにしない
+
+【禁止】
+- 未確認情報を「と言われています」などに弱めるだけで残すこと
+- URLや根拠箇所を捏造すること
+- 記事の主題・構成・文体を不必要に変更すること
+
+【出力形式】
 ===ARTICLE_START===
-（修正済み記事本文をMarkdownで出力）
+修正済みMarkdown記事
 ===ARTICLE_END===
+===FACTCHECK_REPORT_START===
+## 検証サマリー
+- 検証対象: N件
+- 確認済み: N件
+- 修正: N件
+- 削除: N件
+- 未確認: N件
 
-===FACTCHECK_SUMMARY_START===
-✅ 確認済み：〈情報〉（出典URL）
-⚠️ 表現修正：「〈元の表現〉」→「〈修正後〉」（理由）
-❌ 内容修正：〈内容〉（理由・正しい情報）
-===FACTCHECK_SUMMARY_END===
+## 主張別の証跡
+### Claim 1
+- 元の主張: ...
+- 判定: VERIFIED_T1 / VERIFIED_T2 / CORRECTED / REMOVED / UNVERIFIED
+- 修正後: ...
+- 根拠: URL
+- 発行主体: ...
+- 公開・更新日: ...
+- 確認箇所: 根拠となる短い要約（原文の長文転載は禁止）
+- 独立性・条件確認: ...
+===FACTCHECK_REPORT_END===
 """
 
-FACTCHECK_TEMPLATE = """\
-以下の記事本文に含まれる事実情報をweb_searchで再確認し、確認できない情報を修正してください。
+AUDIT_SYSTEM_PROMPT = """\
+あなたは最終品質監査者です。すでにファクトチェックされた記事と検証レポートを再検査してください。
+記事に残る外部検証可能な主張がレポートで裏付けられているかを照合し、必要な場合だけweb_searchで再確認してください。
+裏付けのない断定は削除し、誤修正は原典に基づいて直してください。新しい事実や数値を追加してはいけません。
 
-## 記事本文
-{article_text}
+===ARTICLE_START===
+最終版Markdown記事
+===ARTICLE_END===
+===FINAL_AUDIT_START===
+- 監査結果: PASS または CHANGED
+- 再確認した主張: N件
+- 追加修正: N件
+- 詳細: ...
+===FINAL_AUDIT_END===
 """
 
 
-def _parse_response(text: str) -> tuple[str, str]:
-    article_match = re.search(r"===ARTICLE_START===\n(.*?)\n===ARTICLE_END===", text, re.DOTALL)
-    summary_match = re.search(r"===FACTCHECK_SUMMARY_START===\n(.*?)\n===FACTCHECK_SUMMARY_END===", text, re.DOTALL)
-    article = article_match.group(1).strip() if article_match else text.strip()
-    summary = summary_match.group(1).strip() if summary_match else "（サマリー取得失敗）"
-    return article, summary
+def _collect_response(resp) -> tuple[str, list[str]]:
+    text_parts: list[str] = []
+    queries: list[str] = []
+    for block in resp.content:
+        btype = getattr(block, "type", "")
+        if btype == "text" and getattr(block, "text", None):
+            text_parts.append(block.text)
+        elif btype in ("tool_use", "server_tool_use") and getattr(block, "name", "") == "web_search":
+            query = (getattr(block, "input", None) or {}).get("query", "")
+            if query:
+                queries.append(query)
+    return "\n\n".join(text_parts), queries
+
+
+def _parse_block(text: str, start: str, end: str) -> str | None:
+    match = re.search(rf"{re.escape(start)}\s*\n(.*?)\n{re.escape(end)}", text, re.DOTALL)
+    return match.group(1).strip() if match else None
+
+
+def _run_search_pass(client, *, system: str, prompt: str, tool: dict):
+    resp = create_with_retry(
+        client,
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        system=system,
+        tools=[tool],
+        messages=[{"role": "user", "content": prompt}],
+        extra_headers={"anthropic-beta": "web-search-2025-03-05"},
+    )
+    raw, queries = _collect_response(resp)
+    return resp, raw, queries
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
-    """Re-verify facts in the article via web_search and soften unverified claims."""
-    print("[fact_review] Starting fact verification pass...")
-
-    article_artifact = get_artifact(job_id, "article")
-    article_text = article_artifact["content_text"]
-
+    """Verify the completed article claim-by-claim, persist evidence, then audit it again."""
+    print("[fact_review] Starting claim-level verification...")
+    original = get_artifact(job_id, "article")["content_text"]
     client = anthropic.Anthropic(api_key=api_key)
-    messages = [{"role": "user", "content": FACTCHECK_TEMPLATE.format(article_text=article_text)}]
 
-    total_input = total_output = 0
-    search_queries: list[str] = []
+    verify_resp, verify_raw, verify_queries = _run_search_pass(
+        client,
+        system=VERIFY_SYSTEM_PROMPT,
+        prompt=f"キーワード: {keyword}\n\n## 完成記事\n{original}",
+        tool=VERIFY_SEARCH_TOOL,
+    )
+    verified_article = _parse_block(verify_raw, "===ARTICLE_START===", "===ARTICLE_END===")
+    report = _parse_block(verify_raw, "===FACTCHECK_REPORT_START===", "===FACTCHECK_REPORT_END===")
+    verify_truncated = getattr(verify_resp, "stop_reason", None) == "max_tokens"
+    if verify_truncated or not verified_article or not report:
+        raise ValueError("Fact review response was incomplete; original article was preserved")
 
-    while True:
-        resp = create_with_retry(
-            client,
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            tools=[WEB_SEARCH_TOOL],
-            messages=messages,
-            extra_headers={"anthropic-beta": "web-search-2025-03-05"},
-        )
-        total_input += resp.usage.input_tokens
-        total_output += resp.usage.output_tokens
+    audit_prompt = (
+        f"## 検証後の記事\n{verified_article}\n\n"
+        f"## 主張別検証レポート\n{report}"
+    )
+    audit_resp, audit_raw, audit_queries = _run_search_pass(
+        client,
+        system=AUDIT_SYSTEM_PROMPT,
+        prompt=audit_prompt,
+        tool=AUDIT_SEARCH_TOOL,
+    )
+    final_article = _parse_block(audit_raw, "===ARTICLE_START===", "===ARTICLE_END===")
+    audit_report = _parse_block(audit_raw, "===FINAL_AUDIT_START===", "===FINAL_AUDIT_END===")
+    audit_truncated = getattr(audit_resp, "stop_reason", None) == "max_tokens"
+    if audit_truncated or not final_article or not audit_report:
+        raise ValueError("Final fact audit response was incomplete; original article was preserved")
 
-        for block in resp.content:
-            btype = getattr(block, "type", "")
-            if btype in ("tool_use", "server_tool_use") and getattr(block, "name", "") == "web_search":
-                query = (block.input or {}).get("query", "")
-                search_queries.append(query)
-                print(f"[fact_review] Web search: {query!r}")
-
-        if resp.stop_reason != "tool_use":
-            break
-
-        messages.append({"role": "assistant", "content": resp.content})
-
-    text_parts = [b.text for b in resp.content if getattr(b, "type", None) == "text" and b.text]
-    raw = "\n\n".join(text_parts)
-    corrected_article, summary = _parse_response(raw)
-
+    full_report = f"# 強化ファクトチェックレポート\n\n{report}\n\n## 最終再検査\n{audit_report}"
+    all_queries = verify_queries + audit_queries
+    upsert_artifact(
+        job_id=job_id,
+        step="fact_review",
+        content_type="text/markdown",
+        content_text=full_report,
+        meta={
+            "model": MODEL,
+            "verification_search_queries": verify_queries,
+            "audit_search_queries": audit_queries,
+            "input_tokens": verify_resp.usage.input_tokens + audit_resp.usage.input_tokens,
+            "output_tokens": verify_resp.usage.output_tokens + audit_resp.usage.output_tokens,
+        },
+    )
     artifact = upsert_artifact(
         job_id=job_id,
         step="article",
         content_type="text/markdown",
-        content_text=corrected_article,
+        content_text=final_article,
         meta={
             "model": MODEL,
-            "input_tokens": total_input,
-            "output_tokens": total_output,
             "fact_reviewed": True,
-            "search_queries": search_queries,
+            "final_fact_audited": True,
+            "search_queries": all_queries,
         },
     )
-
-    print(f"[fact_review] Done ({len(search_queries)} searches)")
-    print()
-    print("=== Fact Review Summary ===")
-    print(summary)
-    print("===========================")
-    print(f"artifact id={artifact['id']}")
-
+    print(f"[fact_review] Done ({len(all_queries)} recorded searches) → artifact id={artifact['id']}")
     return artifact

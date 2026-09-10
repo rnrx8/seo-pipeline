@@ -123,6 +123,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         print("[cta_inject] No CTA configured — skipping")
         return article_artifact
 
+    if not (cta.get("body") or cta.get("button_text") or cta.get("url")):
+        print("[cta_inject] CTA is empty — skipping instead of inserting an empty separator")
+        return article_artifact
+
     # Load service_map for CTA positions
     target_h2s: list[str] = []
     try:

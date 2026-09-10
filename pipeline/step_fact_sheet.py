@@ -1,3 +1,5 @@
+import re
+
 import anthropic
 from .db import get_artifact, get_job, get_primary_sources, get_primary_sources_by_preset, upsert_artifact
 from .ai import create_with_retry, get_step_config
@@ -23,6 +25,13 @@ web_searchを最低5回は実行してから、ファクトシートをまとめ
 【出典信頼性の基準】
 以下の基準でソースの信頼性を判断し、[confirmed] / [hypothesis] を付記してください：
 
+【すべての情報に共通する確認条件】
+- URLが実在し、検索結果の要約だけでなくページ本文で該当内容を確認できたこと
+- 数値は「発表主体・対象期間・対象地域・母集団・単位」を一致させること
+- 公開日または更新日を確認し、料金・制度・求人件数など更新性の高い情報は原則として最新の公式情報を使うこと
+- 複数ソース判定では、転載・引用・同一調査の紹介記事を独立したソースとして数えないこと
+- 各項目に、情報の根拠となる短い引用またはページ内の確認箇所を記録すること
+
 ▼ Tier 1（高権威ソース）：1件のソースで確認できれば [confirmed] とする
 - 企業・サービスの公式サイト（about / press / ir 等のページ）
 - 政府・行政機関（厚生労働省、総務省、内閣府、各省庁等）
@@ -36,6 +45,18 @@ web_searchを最低5回は実行してから、ファクトシートをまとめ
 - その他一般サイト
 
 Tier 2のソース1件のみで確認できた情報は [hypothesis] とすること。
+同じ一次情報の転載・引用元が同じ記事は、何サイトあっても1ソースとして扱うこと。
+
+【公式ソース必須の情報】
+以下は一般サイトが複数一致しても [confirmed] にせず、公式・行政・原典で確認できた場合のみ [confirmed] とする：
+- 料金、プラン、機能、キャンペーン、企業の提供条件
+- 法律、制度、税金、補助金、申請期限
+- 求人数、募集状況、営業時間、所在地
+- 医療・健康・安全・金融に関する判断へ影響する情報
+
+【鮮度表示】
+- 更新性の高い情報は本文候補にも「YYYY年MM月時点」を含めること
+- 公開日・更新日が不明、または古く現状を確認できない場合は [hypothesis] とすること
 """
 
 USER_TEMPLATE = """\
@@ -59,7 +80,8 @@ USER_TEMPLATE = """\
 
 出力フォーマット例：
 > M&A件数は2024年に4,700件（前年比17.1%増）で過去最高を記録。
-> 出典：https://xxx.com/xxx ｜確認日：2026-04-02 ｜[confirmed]
+> 発表主体：〇〇庁｜対象期間：2024年｜対象地域：日本｜母集団：届出案件｜単位：件
+> 出典：https://xxx.com/xxx ｜公開・更新日：2025-03-01｜確認日：2026-04-02｜確認箇所：「本文中の根拠となる短い記述」｜[confirmed]
 
 ## ファクトシート
 
@@ -113,6 +135,25 @@ def _build_primary_sources_prompt(sources: list) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _downgrade_incomplete_confirmations(fact_text: str) -> tuple[str, int]:
+    """Downgrade confirmed blocks that do not carry the minimum auditable evidence."""
+    blocks = re.split(r"(\n\s*\n)", fact_text)
+    downgraded = 0
+    for i in range(0, len(blocks), 2):
+        block = blocks[i]
+        if "[confirmed]" not in block.lower():
+            continue
+        has_url = bool(re.search(r"https?://\S+", block))
+        has_checked_at = "確認日" in block
+        has_evidence = "確認箇所" in block
+        if has_url and has_checked_at and has_evidence:
+            continue
+        blocks[i] = re.sub(r"\[confirmed\]", "[hypothesis]", block, flags=re.IGNORECASE)
+        blocks[i] += "\n> 自動判定：監査に必要なURL・確認日・確認箇所が不足しているため未確認扱い"
+        downgraded += 1
+    return "".join(blocks), downgraded
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -192,6 +233,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if getattr(b, "type", None) == "text" and b.text
     ]
     fact_text = "\n\n".join(text_parts)
+    fact_text, downgraded_count = _downgrade_incomplete_confirmations(fact_text)
 
     artifact = upsert_artifact(
         job_id=job_id,
@@ -203,7 +245,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "input_tokens": total_input,
             "output_tokens": total_output,
             "search_queries": search_queries,
+            "incomplete_confirmations_downgraded": downgraded_count,
         },
     )
-    print(f"[fact_sheet] Done ({len(search_queries)} searches) → artifact id={artifact['id']}")
+    print(
+        f"[fact_sheet] Done ({len(search_queries)} searches, "
+        f"{downgraded_count} incomplete confirmations downgraded) → artifact id={artifact['id']}"
+    )
     return artifact

@@ -3,7 +3,9 @@ import re as _re
 import time
 import anthropic
 from .ai import create_with_retry, get_step_config
+from .content_contract import contract_prompt, reference_prompt
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
+from .step_structure_guard import validate_structure
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -60,6 +62,16 @@ SYSTEM_PROMPT = """\
 ▼ H3直下
 - 一文目は見出しに直接答える端的な一文から始める（前置き・遠回し・表/リストのみの開始は禁止）。
 - 寄り添い・補足はそのあと。各H3は200字以上。
+- 構成案の各H3に記載された「セクション内容」「表現形式」「掲載項目」に沿って執筆する。
+- 構成案で表・リストが指定されている場合は、その目的と掲載項目を守る。ただし要素が不足している場合は、情報を捏造して埋めない。
+- 構成案にH4がある場合は、その区分とセクション内容を守ってH4見出しとして執筆する。
+
+▼ セクション別の根拠URL
+- 構成案の各H2・H3・H4に割り当てられた根拠URLは、原則として割り当て先のセクションで使用する。
+- 根拠URLと併記された「根拠となる内容」の範囲だけを裏付けとして扱い、URLが裏付けていない内容へ拡張しない。
+- URL・出典名はファクトシートの表記を維持し、推測・補完・改変しない。
+- 「該当資料なし」のH3では、根拠が必要な数値・固有の事実を新たに作らない。一般的な説明に留めるか、ファクトシート内の適切な[confirmed]情報がある場合のみ使用する。
+- 構成案の割り当てとファクトシートが矛盾する場合はファクトシートを優先し、[hypothesis]情報は本文に使用しない。
 
 ▼ リスト・表の活用（並列・列挙はリスト化を優先）
 - 並列・列挙関係の内容は、文で連ねず原則として箇条書きリストまたは表にする：
@@ -102,8 +114,8 @@ SYSTEM_PROMPT = """\
   具体化された言葉そのもの（数字・比較・情景を含む表現）を本文に入れること。
 
 ▼ その他
-- 各H2末尾に読者の不安を和らげる「安心1文」を入れる
-- 向き不向き・後悔しないための視点を必ず含める
+- 読者の不安を和らげる補完文は、そのH2の検索意図に必要な場合だけ入れる
+- 向き不向き・注意点などは固定項目にせず、コンテンツ構造契約で必要とされた場合のみ扱う
 - 文字数は構成案の目標文字数に合わせる
 """
 
@@ -345,6 +357,38 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
     return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
 
 
+def _insert_repair_blocks(article_text: str, repair_text: str) -> str:
+    """Insert generated missing sections before late utility sections."""
+    repair_text = _re.sub(r'^```(?:markdown)?\s*|\s*```$', '', repair_text.strip(), flags=_re.IGNORECASE)
+    late = _re.search(r'^##\s+(?:まとめ|よくある質問|FAQ|出典一覧)', article_text, _re.MULTILINE)
+    pos = late.start() if late else len(article_text)
+    return article_text[:pos].rstrip() + "\n\n" + repair_text.strip() + "\n\n" + article_text[pos:].lstrip()
+
+
+def _repair_missing_structure(
+    client: anthropic.Anthropic,
+    article_text: str,
+    fact_text: str,
+    contract: dict,
+    violations: list[dict],
+) -> tuple[str, int, int]:
+    """Generate only missing protected blocks; never rewrite the full article."""
+    prompt = (
+        "以下の記事には、コンテンツ構造契約の保護対象が不足しています。"
+        "不足分だけをMarkdownで執筆してください。既存本文の再出力は禁止です。\n"
+        "named_service_comparison は具体名を同じ比較軸の表で比較する独立H2、"
+        "featured_service_dedicated はサービス名を含む独立H2、"
+        "featured_service_integrated は関連内容を説明するH3または短い段落にしてください。\n"
+        "ファクトシートの[confirmed]だけを使い、不明な数値は書かないでください。\n\n"
+        f"不足: {json.dumps(violations, ensure_ascii=False)}\n"
+        f"契約: {json.dumps(contract, ensure_ascii=False)}\n\n"
+        f"ファクトシート:\n{fact_text}\n\n"
+        f"既存記事（重複回避用）:\n{article_text}"
+    )
+    repair_text, input_tokens, output_tokens = _call(client, [{"role": "user", "content": prompt}], max_tokens=3500)
+    return _insert_repair_blocks(article_text, repair_text), input_tokens, output_tokens
+
+
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
     """企業設定リストをプロンプト文字列に変換する（step_outlineと同じロジック）"""
     if not companies:
@@ -530,6 +574,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
 
+    try:
+        contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
+    except Exception as exc:
+        raise ValueError(f"content_contract artifact is required before article: {exc}") from exc
+    structure_prompts = contract_prompt(contract)
+    try:
+        reference = json.loads(get_artifact(job_id, "reference_structure")["content_text"])
+        structure_prompts += reference_prompt(reference)
+    except Exception:
+        pass
+
     # 検索意図chains（具体化ワードの受け口）。無くてもパイプラインは継続。
     chains_prompt = ""
     try:
@@ -637,7 +692,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         intent_text=intent["content_text"],
         outline_text=outline["content_text"],
         fact_text=fact["content_text"],
-    ) + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
+    ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
 
     client = anthropic.Anthropic(api_key=api_key)
     total_input = total_output = 0
@@ -689,6 +744,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = _re.sub(r'\\\*', '*', article_text)
     article_text = _re.sub(r'\\_', '_', article_text)
 
+    # Preserve the writer output separately. Later review steps may update `article`,
+    # but diagnostics must retain what the writing model originally produced.
+    upsert_artifact(
+        job_id=job_id,
+        step="article_draft",
+        content_type="text/markdown",
+        content_text=article_text,
+        meta={"model": MODEL, "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
+    )
+
     # --- A: [hypothesis] validation ---
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
     if hypothesis_hits:
@@ -698,6 +763,22 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "Only [confirmed] facts are allowed in the article body. "
             "Please retry or review the fact sheet."
         )
+
+    violations = validate_structure(article_text, contract, outline=False)
+    structure_repaired = False
+    if violations:
+        print(f"[article] Protected structure missing; running targeted repair: {violations}")
+        article_text, ti, to = _repair_missing_structure(
+            client, article_text, fact["content_text"], contract, violations
+        )
+        total_input += ti
+        total_output += to
+        structure_repaired = True
+        remaining = validate_structure(article_text, contract, outline=False)
+        if remaining:
+            raise ValueError(f"Article structure repair did not satisfy content contract: {remaining}")
+        if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
+            raise ValueError("Structure repair introduced [hypothesis] content")
 
     artifact = upsert_artifact(
         job_id=job_id,
@@ -709,6 +790,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
+            "structure_repaired": structure_repaired,
         },
     )
     print(f"[article] Done ({total_output} tokens total, {len(article_text)}字) → artifact id={artifact['id']}")

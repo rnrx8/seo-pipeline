@@ -84,11 +84,15 @@ def _has_dedicated_service_h2(outline_text: str, service_name: str) -> bool:
     # Patterns that indicate the service is used *as a tool* inside a how-to section
     tool_markers = ('を使って', 'を使った', 'を活用して', 'を活用した', 'による')
 
-    for m in _re.finditer(r'^###\s+H2[-−]?\d*[：:]\s*(.+)$', outline_text, _re.MULTILINE):
+    for m in _re.finditer(
+        r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]\s*(.+)$', outline_text, _re.MULTILINE
+    ):
         title = m.group(1).strip()
         if service_name not in title:
             continue
-        if any(kw in title for kw in _COMPARISON_KEYWORDS):
+        # 「おすすめ」はサービス単体の推薦H2にも使われるため、比較章の
+        # 判定語に含めない。比較・ランキング・一覧のみを除外する。
+        if any(kw in title for kw in ("比較", "ランキング", "一覧")):
             continue  # comparison/ranking section → not a dedicated section
         if any(kw in title for kw in tool_markers):
             continue  # service is used as a tool, not introduced
@@ -99,7 +103,9 @@ def _has_dedicated_service_h2(outline_text: str, service_name: str) -> bool:
 
 
 def _count_h2_sections(outline_text: str) -> int:
-    return len(_re.findall(r'^###\s+H2[-−]?\d+[：:]', outline_text, _re.MULTILINE))
+    return len(_re.findall(
+        r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]', outline_text, _re.MULTILINE
+    ))
 
 
 def _find_insertion_point(outline_text: str) -> int:
@@ -112,7 +118,9 @@ def _find_insertion_point(outline_text: str) -> int:
     """
     # Collect all H2 section start positions
     h2_starts: list[tuple[int, str]] = []
-    for m in _re.finditer(r'^###\s+H2[-−]?\d+[：:](.+)$', outline_text, _re.MULTILINE):
+    for m in _re.finditer(
+        r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]\s*(.+)$', outline_text, _re.MULTILINE
+    ):
         h2_starts.append((m.start(), m.group(1).strip()))
 
     # 1. Find comparison H2 and return the start of the NEXT section
@@ -128,7 +136,7 @@ def _find_insertion_point(outline_text: str) -> int:
             return pos
 
     # 3. Before FAQ / ボリューム設計 table
-    fallback = _re.search(r'^### (FAQ|セクション別)', outline_text, _re.MULTILINE)
+    fallback = _re.search(r'^#{2,4}\s+(FAQ|セクション別)', outline_text, _re.MULTILINE)
     return fallback.start() if fallback else len(outline_text)
 
 
@@ -141,20 +149,65 @@ def _build_service_h2_block(service: dict, h2_num: int) -> str:
     sps = service.get("selling_points") or []
     must_include = service.get("must_include", "")
 
-    sp_h3s = "\n".join(f"- {name}の強み：{sp}" for sp in sps[:3]) if sps else f"- {name}の主な特徴・強み"
+    h3_specs = [
+        (
+            f"{name}とは？サービス概要と主な特徴",
+            f"{name}のサービス概要と主要機能を示し、読者が利用目的に合うか判断できるようにする。",
+            "箇条書き（サービスの主要な特徴を整理するため）",
+            "サービス概要、主要機能、対応範囲",
+        ),
+    ]
+    for sp in sps[:3]:
+        h3_specs.append((
+            f"{name}の強み：{sp}",
+            f"「{sp}」がどのような価値を持ち、どのような読者に役立つかを具体的に解説する。",
+            "文章",
+            "なし",
+        ))
+    if not sps:
+        h3_specs.append((
+            f"{name}の主な特徴・強み",
+            f"{name}の特徴と他の選択肢との違いを整理する。",
+            "箇条書き（主な強みを整理するため）",
+            "主要機能、強み、利用上のメリット",
+        ))
+    h3_specs.extend([
+        (
+            f"{name}がおすすめな人・向いている人",
+            f"{name}が適する利用条件と読者像を示し、自分に合うか判断できるようにする。",
+            "チェックリスト（向いている人の条件を確認するため）",
+            "目的、予算、必要なサポート、利用条件",
+        ),
+        (
+            f"{name}の始め方・料金・利用の流れ",
+            f"{name}の料金と利用開始までの手順を整理し、申し込み前の疑問を解消する。",
+            "番号付きリスト（利用開始までの順序を解説するため）",
+            "料金、申し込み条件、申し込み手順、利用開始までの流れ",
+        ),
+    ])
+    h3_blocks = []
+    for title, content, format_type, items in h3_specs:
+        h3_blocks.append(
+            f"#### H3：{title}\n\n"
+            f"- セクション内容：{content}\n"
+            f"- 表現形式：{format_type}\n"
+            f"- 掲載項目：{items}\n"
+            f"- 使用する根拠：該当資料なし"
+        )
+    h3_text = "\n\n".join(h3_blocks)
     must_note = f"\n  ※必ず含める内容：{must_include}" if must_include else ""
 
     return (
         f"### H2-{h2_num}：{name}の特徴・活用方法・始め方\n\n"
         f"**H2直下方針：**\n"
         f"- ①結論：{name}はこの記事のテーマに関して最もおすすめできるサービスである。\n"
-        f"- ②配下H3の概要：サービスの概要・強み・向いている人・利用開始方法をH3で詳述する。\n"
+        f"- ②配下H3の内容：サービスの概要・強み・向いている人・利用開始方法をH3で詳述する。\n"
         f"- ③不安への補完：「自分に合っているか」という読者の疑問に答え、具体的なメリットと対象者像を明示する。{must_note}\n\n"
-        f"**H3：**\n"
-        f"- {name}とは？サービス概要と主な特徴\n"
-        f"{sp_h3s}\n"
-        f"- {name}がおすすめな人・向いている人\n"
-        f"- {name}の始め方・料金・利用の流れ\n\n"
+        f"- セクション内容：{name}の概要・強み・適性・利用方法を整理し、読者が利用すべきか判断できるようにする。\n"
+        f"- 表現形式：文章（サービスを紹介する結論と全体像を伝えるため）\n"
+        f"- 掲載項目：なし\n"
+        f"- 使用する根拠：該当資料なし\n\n"
+        f"{h3_text}\n\n"
         f"---\n\n"
     )
 
@@ -276,15 +329,28 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception as e:
         print(f"[service_map] Warning: could not load job settings: {e}")
 
-    # --- CV purpose: ensure a dedicated service H2 exists in the outline ---
+    # The content contract decides whether a dedicated H2 is appropriate.
+    # This replaces the old global rule "CV => always dedicated".
+    requires_dedicated = False
+    try:
+        contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
+        requires_dedicated = any(
+            section.get("key") == "featured_service_dedicated"
+            for section in contract.get("required_sections", [])
+        )
+    except Exception:
+        # Backward compatibility for manually replaying an old job without a contract.
+        requires_dedicated = _is_cv_purpose(article_purpose)
+
+    # --- Ensure the contract-required dedicated service H2 exists ---
     patched_h2_title: str | None = None
-    if service and _is_cv_purpose(article_purpose):
+    if service and requires_dedicated:
         service_name = service.get("name", "")
         if not _has_dedicated_service_h2(outline_text, service_name):
-            print(f"[service_map] CV purpose detected but no dedicated H2 for '{service_name}' — patching outline")
+            print(f"[service_map] Contract requires a dedicated H2 for '{service_name}' — patching outline")
             outline_text, patched_h2_title = _patch_outline_for_cv(job_id, outline_text, service)
         else:
-            print(f"[service_map] CV purpose detected, dedicated H2 already present for '{service_name}'")
+            print(f"[service_map] Contract-required H2 already present for '{service_name}'")
 
     # --- Ask Claude to determine placement instructions ---
     client = anthropic.Anthropic(api_key=api_key)
