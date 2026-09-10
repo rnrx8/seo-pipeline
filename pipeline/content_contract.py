@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 
 _COMPARISON_TERMS = ("比較検討", "比較・検討", "比較して", "比較したい", "おすすめ", "ランキング", "選びたい")
 _CV_TERMS = ("cv", "コンバージョン", "自社商品", "自社サービス")
@@ -22,6 +22,11 @@ _GENERIC_HEADINGS = {
     "定義・基本情報", "重要な事実・データ", "主要な企業・サービス情報", "主要な企業・サービス・求人情報",
     "よくある誤解・注意点", "専門用語・キーワード", "確認済み情報源", "編集者への追記提案",
 }
+_GENERIC_SERVICE_CATEGORIES = (
+    "既婚者専用マッチングアプリ",
+    "出会い系アプリ",
+    "既婚者向けオフラインサービス",
+)
 
 
 def _load_json(text: str | None) -> dict[str, Any]:
@@ -49,36 +54,59 @@ def _clean_heading_name(value: str) -> str:
     return value.strip(" ：:【】[]-—")
 
 
+def _service_name_from_label(raw_name: str) -> str:
+    """Return the product-name portion of a fact-sheet label."""
+    raw_name = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）：:\s-]*", "", raw_name.strip())
+    product_match = re.match(
+        r"^(.{2,30}?)(?:（[A-Za-z][^）]*）|\([A-Za-z][^)]*\))?"
+        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)",
+        raw_name,
+    )
+    return _clean_heading_name(product_match.group(1) if product_match else raw_name)
+
+
+def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool = False) -> bool:
+    if not name or name in _GENERIC_HEADINGS or len(name) > 45:
+        return False
+    if any(category in name for category in _GENERIC_SERVICE_CATEGORIES):
+        return False
+    if any(term in name for term in (
+        "比較", "一覧", "料金の男女差", "市場", "人口", "法的", "誤解", "県内", "地方", "主要3", "一般アプリ"
+    )):
+        return False
+    has_romanized_alias = bool(re.search(r"[（(][A-Za-z]", raw_name))
+    has_product_descriptor = bool(re.search(
+        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)", raw_name
+    )) and not any(term in name for term in ("新潟", "北海道", "広島", "沖縄"))
+    return (
+        from_service_fact
+        or has_romanized_alias
+        or has_product_descriptor
+        or bool(re.search(r"[A-Za-z]", name))
+        or any(term in name for term in ("アプリ", "クラブ", "メール", "サービス"))
+    )
+
+
 def extract_service_candidates(fact_text: str, featured_service: str = "") -> list[str]:
-    """Extract plausible service names from fact-sheet headings."""
+    """Extract plausible service names from headings and service fact blocks."""
     candidates: list[str] = []
+    in_service_section = False
     for line in fact_text.splitlines():
-        if not re.match(r"^#{3,5}\s+", line):
+        h2_match = re.match(r"^##\s+(.+?)\s*$", line)
+        if h2_match:
+            h2_title = _clean_heading_name(h2_match.group(1))
+            in_service_section = h2_title.startswith("主要な企業・サービス")
+
+        heading_match = re.match(r"^#{3,5}\s+(.+?)\s*$", line)
+        fact_item_match = re.match(
+            r"^>\s*\*\*(.+?)\*\*(?:（[^）]*）|\([^)]*\))?\s*[：:]", line
+        ) if in_service_section else None
+        match = heading_match or fact_item_match
+        if not match:
             continue
-        raw_name = re.sub(r"^#{3,5}\s+", "", line).strip()
-        raw_name = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）：:\s-]*", "", raw_name)
-        # Fact sheets usually use "カドル（Cuddle）の会員数" or
-        # "既婚者クラブの料金". Keep only the product-name portion.
-        product_match = re.match(
-            r"^(.{2,30}?)(?:（[A-Za-z][^）]*）|\([A-Za-z][^)]*\))?"
-            r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)",
-            raw_name,
-        )
-        name = _clean_heading_name(product_match.group(1) if product_match else raw_name)
-        if not name or name in _GENERIC_HEADINGS or len(name) > 45:
-            continue
-        if any(term in name for term in (
-            "比較", "一覧", "料金の男女差", "市場", "人口", "法的", "誤解", "県内", "地方", "主要3", "一般アプリ"
-        )):
-            continue
-        has_romanized_alias = bool(re.search(r"[（(][A-Za-z]", raw_name))
-        has_product_descriptor = bool(product_match) and not any(term in name for term in ("新潟", "北海道", "広島", "沖縄"))
-        if (
-            has_romanized_alias
-            or has_product_descriptor
-            or bool(re.search(r"[A-Za-z]", name))
-            or any(term in name for term in ("アプリ", "クラブ", "メール", "サービス"))
-        ):
+        raw_name = match.group(1).strip()
+        name = _service_name_from_label(raw_name)
+        if _is_service_candidate(raw_name, name, from_service_fact=bool(fact_item_match)):
             candidates.append(name)
     if featured_service:
         candidates.insert(0, featured_service)
@@ -116,10 +144,9 @@ def build_content_contract(
     comparison_required = primary_comparison or keyword_comparison or stage_comparison
 
     is_cv = any(term in purpose.lower() for term in _CV_TERMS)
-    is_commercial = "Commercial" in primary or comparison_required
     service_treatment = "none"
     if service_name and is_cv:
-        service_treatment = "dedicated" if is_commercial or stage in _PURCHASE_STAGES else "integrated"
+        service_treatment = "comparison_featured" if comparison_required else "integrated"
 
     candidates = extract_service_candidates(fact_text, service_name)
     required: list[dict[str, Any]] = []
@@ -136,21 +163,25 @@ def build_content_contract(
             requirements=["具体的なサービス名を並べる", "同じ比較軸の表を置く", "読者が選べる結論を示す"],
         ))
 
-    if service_treatment == "dedicated":
+    if service_treatment in ("comparison_featured", "integrated"):
+        preferred_placement = "within_comparison" if comparison_required else "within_relevant_section"
         required.append(_section(
-            "featured_service_dedicated",
-            reason="CV目的かつ比較・申込に近い検索意図のため、選定理由を独立して説明する",
+            "featured_service_coverage",
+            reason=(
+                "CV対象を読者の選択肢として判断できる深さで扱う。独立H2の設置自体は必須ではなく、"
+                "検索意図に合う比較章または既存章への統合を優先する"
+            ),
             protected=True,
             service_name=service_name,
-            requirements=["サービス名をH2に含める", "特徴・向く人・料金または始め方を扱う"],
-        ))
-    elif service_treatment == "integrated":
-        required.append(_section(
-            "featured_service_integrated",
-            reason="CV目的だが情報収集型のため、検索意図に合う既存章へ自然に統合する",
-            protected=True,
-            service_name=service_name,
-            requirements=["関連するH2配下でサービスの具体的価値を説明する"],
+            preferred_placement=preferred_placement,
+            dedicated_h2_required=False,
+            max_service_focused_h2s=1,
+            requirements=[
+                "サービス名を含むH2/H3、または関連H2内の具体的な説明で価値と選定理由を示す",
+                "比較意図では比較H2内の当該サービスH3を第一候補とする",
+                "独立H2を使う場合も同じサービスを扱うH2を重複させない",
+                "料金・始め方などは検索意図や登録情報に必要な場合のみ扱う",
+            ],
         ))
 
     intent_and_concerns = intent_text + "\n" + "\n".join(concerns)
@@ -201,7 +232,8 @@ def contract_prompt(contract: dict[str, Any]) -> str:
         "\n【コンテンツ構造契約（機械検証対象）】\n"
         "これはジョブ固有の検索意図から生成した要件です。required_sectionsだけを必須とし、"
         "optional_sectionsは記事に必要な場合のみ採用してください。固定テンプレとして全項目を追加しないでください。\n"
-        "protected=trueの章は、文字数調整やレビューでも削除・H3への降格を禁止します。\n"
+        "protected=trueは要件の充足を保護する指定です。独立H2を意味しません。"
+        "文字数調整やレビュー後も、同等の情報をH2/H3または関連章内に残してください。\n"
         f"```json\n{json.dumps(contract, ensure_ascii=False, indent=2)}\n```\n"
     )
 

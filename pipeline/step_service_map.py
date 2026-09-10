@@ -1,5 +1,7 @@
 """Analyze the article outline to determine service/CTA placement.
-For CV-purpose jobs, patches the outline artifact to ensure a dedicated service H2 exists.
+
+This step is deliberately read-only for the outline. Structural mutation belongs
+to step_structure_guard so an LLM placement decision cannot append duplicate H2s.
 """
 import json
 import re as _re
@@ -9,9 +11,7 @@ from .db import get_artifact, get_job, get_service_by_id, get_cta_by_id, upsert_
 
 MODEL, MAX_TOKENS = get_step_config("service_map")
 
-_CV_KEYWORDS = ("cv", "CV", "コンバージョン", "自社")
 _COMPARISON_KEYWORDS = ("比較", "おすすめ", "ランキング", "一覧")
-_LATE_KEYWORDS = ("向き不向き", "注意点", "後悔", "失敗", "まとめ", "FAQ", "セクション別ボリューム")
 
 SYSTEM_PROMPT = """\
 あなたはSEOコンテンツ設計の専門家です。
@@ -53,6 +53,8 @@ USER_TEMPLATE = """\
   - comparison_only: 比較の一社として触れる程度
   - none: サービス情報なし
 - primary_h2: 構成案のH2タイトルをそのまま使う（書き換え禁止）
+- 独立したサービスH2がなくても、比較H2内のサービスH3で十分に紹介できる場合は
+  comparison_featured とし、専用H2を新設する前提で判断しない
 - per_section_instructions: 比較セクション・サービス専用セクションなど、サービスへの言及が必要なH2のみ記載
 - cta_after_h2: 以下の優先順で最大3箇所を選ぶ
   1. 比較セクションの末尾
@@ -60,14 +62,6 @@ USER_TEMPLATE = """\
   3. まとめの直前のH2末尾
   （文脈に合わない場合は2箇所でも可）
 """
-
-
-# ---------------------------------------------------------------------------
-# Outline patching helpers
-# ---------------------------------------------------------------------------
-
-def _is_cv_purpose(article_purpose: str) -> bool:
-    return bool(article_purpose) and any(kw in article_purpose for kw in _CV_KEYWORDS)
 
 
 def _has_dedicated_service_h2(outline_text: str, service_name: str) -> bool:
@@ -97,167 +91,13 @@ def _has_dedicated_service_h2(outline_text: str, service_name: str) -> bool:
         if any(kw in title for kw in tool_markers):
             continue  # service is used as a tool, not introduced
         # Dedicated: service name is the primary subject
-        if any(kw in title for kw in about_markers) or title.startswith(service_name):
+        if (
+            any(kw in title for kw in about_markers)
+            or _re.search(r"おすすめ(?:な|の|する)?理由", title)
+            or title.startswith(service_name)
+        ):
             return True
     return False
-
-
-def _count_h2_sections(outline_text: str) -> int:
-    return len(_re.findall(
-        r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]', outline_text, _re.MULTILINE
-    ))
-
-
-def _find_insertion_point(outline_text: str) -> int:
-    """Find the character position to insert the new service H2 section.
-
-    Strategy:
-      1. After the comparison H2 section (most natural flow: compare → deep-dive)
-      2. Before the first 向き不向き/注意点 section (if no comparison found)
-      3. Before FAQ/ボリューム設計 (last resort)
-    """
-    # Collect all H2 section start positions
-    h2_starts: list[tuple[int, str]] = []
-    for m in _re.finditer(
-        r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]\s*(.+)$', outline_text, _re.MULTILINE
-    ):
-        h2_starts.append((m.start(), m.group(1).strip()))
-
-    # 1. Find comparison H2 and return the start of the NEXT section
-    for i, (pos, title) in enumerate(h2_starts):
-        if any(kw in title for kw in _COMPARISON_KEYWORDS):
-            if i + 1 < len(h2_starts):
-                return h2_starts[i + 1][0]
-            break  # comparison is last H2 → fall through to fallback
-
-    # 2. Insert before first "late" H2 (向き不向き etc.)
-    for pos, title in h2_starts:
-        if any(kw in title for kw in _LATE_KEYWORDS):
-            return pos
-
-    # 3. Before FAQ / ボリューム設計 table
-    fallback = _re.search(r'^#{2,4}\s+(FAQ|セクション別)', outline_text, _re.MULTILINE)
-    return fallback.start() if fallback else len(outline_text)
-
-
-def _build_service_h2_block(service: dict, h2_num: int) -> str:
-    """Build the outline text for a dedicated service H2 section.
-
-    Uses neutral language that works for both comparison articles and how-to articles.
-    """
-    name = service.get("name", "自社サービス")
-    sps = service.get("selling_points") or []
-    must_include = service.get("must_include", "")
-
-    h3_specs = [
-        (
-            f"{name}とは？サービス概要と主な特徴",
-            f"{name}のサービス概要と主要機能を示し、読者が利用目的に合うか判断できるようにする。",
-            "箇条書き（サービスの主要な特徴を整理するため）",
-            "サービス概要、主要機能、対応範囲",
-        ),
-    ]
-    for sp in sps[:3]:
-        h3_specs.append((
-            f"{name}の強み：{sp}",
-            f"「{sp}」がどのような価値を持ち、どのような読者に役立つかを具体的に解説する。",
-            "文章",
-            "なし",
-        ))
-    if not sps:
-        h3_specs.append((
-            f"{name}の主な特徴・強み",
-            f"{name}の特徴と他の選択肢との違いを整理する。",
-            "箇条書き（主な強みを整理するため）",
-            "主要機能、強み、利用上のメリット",
-        ))
-    h3_specs.extend([
-        (
-            f"{name}がおすすめな人・向いている人",
-            f"{name}が適する利用条件と読者像を示し、自分に合うか判断できるようにする。",
-            "チェックリスト（向いている人の条件を確認するため）",
-            "目的、予算、必要なサポート、利用条件",
-        ),
-        (
-            f"{name}の始め方・料金・利用の流れ",
-            f"{name}の料金と利用開始までの手順を整理し、申し込み前の疑問を解消する。",
-            "番号付きリスト（利用開始までの順序を解説するため）",
-            "料金、申し込み条件、申し込み手順、利用開始までの流れ",
-        ),
-    ])
-    h3_blocks = []
-    for title, content, format_type, items in h3_specs:
-        h3_blocks.append(
-            f"#### H3：{title}\n\n"
-            f"- セクション内容：{content}\n"
-            f"- 表現形式：{format_type}\n"
-            f"- 掲載項目：{items}\n"
-            f"- 使用する根拠：該当資料なし"
-        )
-    h3_text = "\n\n".join(h3_blocks)
-    must_note = f"\n  ※必ず含める内容：{must_include}" if must_include else ""
-
-    return (
-        f"### H2-{h2_num}：{name}の特徴・活用方法・始め方\n\n"
-        f"**H2直下方針：**\n"
-        f"- ①結論：{name}はこの記事のテーマに関して最もおすすめできるサービスである。\n"
-        f"- ②配下H3の内容：サービスの概要・強み・向いている人・利用開始方法をH3で詳述する。\n"
-        f"- ③不安への補完：「自分に合っているか」という読者の疑問に答え、具体的なメリットと対象者像を明示する。{must_note}\n\n"
-        f"- セクション内容：{name}の概要・強み・適性・利用方法を整理し、読者が利用すべきか判断できるようにする。\n"
-        f"- 表現形式：文章（サービスを紹介する結論と全体像を伝えるため）\n"
-        f"- 掲載項目：なし\n"
-        f"- 使用する根拠：該当資料なし\n\n"
-        f"{h3_text}\n\n"
-        f"---\n\n"
-    )
-
-
-def _patch_volume_table(outline_text: str, h2_title: str) -> str:
-    """Append a row for the service H2 to the volume design table."""
-    # Match the table header and all existing data rows
-    table_m = _re.search(
-        r'(\| *H2タイトル[^\n]*\n\|[-| ]+\n(?:\|[^\n]+\n)*)',
-        outline_text, _re.MULTILINE
-    )
-    if not table_m:
-        return outline_text
-    new_row = f"| {h2_title} | 5 | 2,000字 | CV直結・サービス専用紹介セクション（自動挿入） |\n"
-    insert_at = table_m.end()
-    return outline_text[:insert_at] + new_row + outline_text[insert_at:]
-
-
-def _patch_outline_for_cv(
-    job_id: str,
-    outline_text: str,
-    service: dict,
-) -> tuple[str, str]:
-    """Insert a dedicated service H2 into the outline if missing.
-
-    Returns (patched_outline_text, inserted_h2_title).
-    Saves the updated outline artifact immediately.
-    """
-    service_name = service.get("name", "自社サービス")
-    h2_count = _count_h2_sections(outline_text)
-    new_h2_num = h2_count + 1
-    insert_pos = _find_insertion_point(outline_text)
-
-    h2_block = _build_service_h2_block(service, new_h2_num)
-    patched = outline_text[:insert_pos] + h2_block + outline_text[insert_pos:]
-
-    # Build the title we'll reference in service_map (must match _build_service_h2_block)
-    h2_title = f"{service_name}の特徴・活用方法・始め方"
-
-    patched = _patch_volume_table(patched, h2_title)
-
-    upsert_artifact(
-        job_id=job_id,
-        step="outline",
-        content_type="text/markdown",
-        content_text=patched,
-        meta={"service_h2_patched": True, "service_name": service_name},
-    )
-    print(f"[service_map] Outline patched: H2-{new_h2_num} '{h2_title}' inserted at char {insert_pos}")
-    return patched, h2_title
 
 
 # ---------------------------------------------------------------------------
@@ -294,9 +134,8 @@ def _format_cta_info(cta: dict) -> str:
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Analyze outline and determine service/CTA placement.
 
-    For CV-purpose jobs, patches the outline artifact to ensure a dedicated
-    service H2 exists before step_article runs.
-    Stores a service_map artifact with placement instructions.
+    Stores a service_map artifact with placement instructions. The outline is
+    never patched here; step_structure_guard owns all structural repairs.
     """
     print("[service_map] Analyzing outline for service/CTA placement...")
 
@@ -329,28 +168,30 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception as e:
         print(f"[service_map] Warning: could not load job settings: {e}")
 
-    # The content contract decides whether a dedicated H2 is appropriate.
-    # This replaces the old global rule "CV => always dedicated".
-    requires_dedicated = False
-    try:
-        contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
-        requires_dedicated = any(
-            section.get("key") == "featured_service_dedicated"
-            for section in contract.get("required_sections", [])
+    # Resolve the natural destination from the validated outline. Prefer an
+    # existing service-focused H2; otherwise use the existing comparison H2.
+    h2_titles = [
+        m.group(1).strip()
+        for m in _re.finditer(
+            r'^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．：:｜|]\s*(.+)$', outline_text, _re.MULTILINE
         )
-    except Exception:
-        # Backward compatibility for manually replaying an old job without a contract.
-        requires_dedicated = _is_cv_purpose(article_purpose)
-
-    # --- Ensure the contract-required dedicated service H2 exists ---
-    patched_h2_title: str | None = None
-    if service and requires_dedicated:
-        service_name = service.get("name", "")
-        if not _has_dedicated_service_h2(outline_text, service_name):
-            print(f"[service_map] Contract requires a dedicated H2 for '{service_name}' — patching outline")
-            outline_text, patched_h2_title = _patch_outline_for_cv(job_id, outline_text, service)
-        else:
-            print(f"[service_map] Contract-required H2 already present for '{service_name}'")
+    ]
+    service_name = service.get("name", "") if service else ""
+    service_h2s = [
+        title for title in h2_titles
+        if service_name
+        and service_name in title
+        and not any(term in title for term in ("比較", "ランキング", "一覧"))
+        and bool(_re.search(
+            r"特徴|強み|おすすめ(?:な|の|する)?理由|おすすめ|選ば|料金|始め方|使い方|活用|紹介|とは",
+            title,
+        ))
+    ]
+    comparison_h2s = [
+        title for title in h2_titles
+        if any(term in title for term in _COMPARISON_KEYWORDS)
+    ]
+    natural_primary_h2 = service_h2s[0] if service_h2s else (comparison_h2s[0] if comparison_h2s else "")
 
     # --- Ask Claude to determine placement instructions ---
     client = anthropic.Anthropic(api_key=api_key)
@@ -390,22 +231,26 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "reasoning": "parse_error",
         }
 
-    # Ensure service_map reflects the patched outline if we added a dedicated H2
-    if patched_h2_title:
-        service_map["service_section_type"] = "dedicated"
-        if not service_map.get("primary_h2"):
-            service_map["primary_h2"] = patched_h2_title
+    if service and natural_primary_h2:
+        service_map["service_section_type"] = "dedicated" if service_h2s else "comparison_featured"
+        service_map["primary_h2"] = natural_primary_h2
         per = service_map.setdefault("per_section_instructions", {})
-        if patched_h2_title not in per:
-            name = service.get("name", "このサービス") if service else "このサービス"
-            per[patched_h2_title] = (
-                f"{name}の特徴・強み・向いている人・料金をH3で詳しく解説すること。"
-                f"各H3は200字以上、セクション全体で1,500〜2,500字を目安にする。"
-            )
-        # Ensure CTA is also placed after the dedicated H2
-        cta_list = service_map.setdefault("cta_after_h2", [])
-        if patched_h2_title not in cta_list:
-            cta_list.append(patched_h2_title)
+        per.setdefault(
+            natural_primary_h2,
+            f"{service_name}の具体的な価値・他候補との違い・向いている人を説明する。"
+            "料金や始め方は、この検索意図で利用判断に必要な場合だけ補足する。",
+        )
+        # Drop hallucinated headings from the model output. Every instruction
+        # and CTA target must refer to an H2 that actually exists in the outline.
+        service_map["per_section_instructions"] = {
+            title: instruction
+            for title, instruction in per.items()
+            if title in h2_titles
+        }
+        cta_targets = [title for title in (service_map.get("cta_after_h2") or []) if title in h2_titles]
+        if cta and natural_primary_h2 not in cta_targets:
+            cta_targets.append(natural_primary_h2)
+        service_map["cta_after_h2"] = cta_targets[:3]
 
     print(
         f"[service_map] type={service_map.get('service_section_type')}, "

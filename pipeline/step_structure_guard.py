@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from .db import get_artifact, get_job, get_service_by_id, upsert_artifact
+from .db import get_artifact, get_job, upsert_artifact
 from .step_outline import ensure_complete_volume_design
 
 
@@ -39,22 +39,118 @@ def extract_h2_titles(text: str, *, outline: bool) -> list[str]:
     return titles
 
 
+def _extract_h2_sections(text: str, *, outline: bool) -> list[dict[str, Any]]:
+    """Return article/outline H2 blocks with exact character ranges."""
+    if outline:
+        pattern = re.compile(
+            r"^#{2,4}\s+H2(?:[-−]?\d+)?\s*[.．:：｜|]\s*(.+?)\s*$",
+            re.MULTILINE | re.IGNORECASE,
+        )
+    else:
+        pattern = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+    matches = list(pattern.finditer(text))
+    sections: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        if outline:
+            meta = re.search(
+                r"^#{2,4}\s+(?:セクション別ボリューム設計|補足|補足メモ)\s*$",
+                text[match.end():end],
+                re.MULTILINE,
+            )
+            if meta:
+                end = match.end() + meta.start()
+        sections.append({
+            "title": match.group(1).strip(),
+            "start": match.start(),
+            "heading_end": match.end(),
+            "end": end,
+            "body": text[match.end():end],
+        })
+    return sections
+
+
+_SERVICE_ABOUT_PATTERN = re.compile(
+    r"特徴|強み|おすすめ(?:な|の|する)?理由|おすすめ|選ば|料金|費用|無料|"
+    r"始め方|登録|使い方|活用|向いて|評判|安全|紹介|徹底|とは|メリット"
+)
+_COMPARISON_MARKERS = ("比較", "ランキング", "一覧", "おすすめアプリ", "おすすめサービス")
+
+
+def _service_focused_h2s(text: str, name: str, *, outline: bool) -> list[dict[str, Any]]:
+    if not name:
+        return []
+    result = []
+    for section in _extract_h2_sections(text, outline=outline):
+        title = section["title"]
+        if name not in title:
+            continue
+        if any(marker in title for marker in _COMPARISON_MARKERS):
+            continue
+        if _SERVICE_ABOUT_PATTERN.search(title) or title.startswith(name):
+            result.append(section)
+    return result
+
+
+def _service_coverage(text: str, name: str, *, outline: bool) -> dict[str, Any]:
+    """Measure meaningful service coverage without requiring a standalone H2."""
+    focused_h2s = _service_focused_h2s(text, name, outline=outline)
+    h3_pattern = re.compile(
+        r"^#{3,5}\s+(?:H3(?:[-−]?\d+)?\s*[.．:：｜|]\s*)?(.+?)\s*$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    service_h3s: list[dict[str, str]] = []
+    contextual_sections: list[str] = []
+    for section in _extract_h2_sections(text, outline=outline):
+        section_text = section["body"]
+        for match in h3_pattern.finditer(section_text):
+            title = match.group(1).strip()
+            if name in title and _SERVICE_ABOUT_PATTERN.search(title):
+                service_h3s.append({"title": title, "parent_h2": section["title"]})
+
+        prose_text = "\n".join(
+            line for line in section_text.splitlines()
+            if not line.lstrip().startswith("|")
+        )
+        if name not in prose_text:
+            continue
+        signal_groups = (
+            ("特徴", "強み", "理由", "メリット", "選ば", "安全", "機能"),
+            ("向いて", "おすすめな人", "相性", "目的", "選び"),
+            ("料金", "費用", "無料", "始め方", "登録", "利用方法", "使い方"),
+        )
+        if sum(any(term in prose_text for term in group) for group in signal_groups) >= 2:
+            contextual_sections.append(section["title"])
+
+    return {
+        "sufficient": bool(focused_h2s or service_h3s or contextual_sections),
+        "service_h2s": [section["title"] for section in focused_h2s],
+        "service_h3s": service_h3s,
+        "contextual_h2s": contextual_sections,
+    }
+
+
 def _candidate_mentions(text: str, candidates: list[str]) -> list[str]:
-    if candidates:
-        return [name for name in candidates if name and name in text]
-    # Fallback when the fact sheet did not expose product names as headings:
-    # count plausible first-column labels in Markdown comparison tables.
-    names: list[str] = []
+    names = [name for name in candidates if name and name in text]
+    # A comparison table is direct structural evidence even when an older or
+    # malformed contract contains category labels instead of product names.
+    in_named_comparison_table = False
     for line in text.splitlines():
         if not line.lstrip().startswith("|"):
+            in_named_comparison_table = False
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if not cells:
             continue
         name = re.sub(r"[*_`\[\]]", "", cells[0]).strip()
+        if any(term in name for term in ("サービス名", "アプリ名")):
+            in_named_comparison_table = True
+            continue
+        if not in_named_comparison_table:
+            continue
         if not name or set(name) <= {"-", ":", " "}:
             continue
-        if any(term in name for term in ("サービス名", "アプリ名", "比較項目", "項目", "料金")):
+        if any(term in name for term in ("比較項目", "項目", "料金")):
             continue
         if 1 < len(name) <= 40 and name not in names:
             names.append(name)
@@ -79,16 +175,26 @@ def validate_structure(text: str, contract: dict[str, Any], *, outline: bool) ->
                     "named_items": mentions,
                     "minimum_named_items": minimum,
                 })
-        elif key == "featured_service_dedicated":
+        elif key in ("featured_service_coverage", "featured_service_dedicated", "featured_service_integrated"):
             name = section.get("service_name") or contract.get("featured_service") or ""
-            about_terms = ("特徴", "料金", "始め方", "使い方", "おすすめな理由", "紹介", "徹底解説", "活用")
-            found = bool(name) and any(name in h and any(term in h for term in about_terms) for h in h2s)
-            if not found:
-                violations.append({"key": key, "reason": f"{name or '指定サービス'}の専用H2がない"})
-        elif key == "featured_service_integrated":
-            name = section.get("service_name") or contract.get("featured_service") or ""
-            if not name or name not in text:
-                violations.append({"key": key, "reason": f"{name or '指定サービス'}が関連章に統合されていない"})
+            coverage = _service_coverage(text, name, outline=outline) if name else {"sufficient": False}
+            if not coverage.get("sufficient"):
+                violations.append({
+                    "key": "featured_service_coverage",
+                    "reason": f"{name or '指定サービス'}の価値・選定理由が既存章内で十分に扱われていない",
+                    "service_name": name,
+                    "preferred_placement": section.get("preferred_placement") or "within_relevant_section",
+                })
+            max_h2s = int(section.get("max_service_focused_h2s", 1))
+            service_h2s = coverage.get("service_h2s") or []
+            if len(service_h2s) > max_h2s:
+                violations.append({
+                    "key": "featured_service_duplicate_h2",
+                    "reason": f"{name}を主題にしたH2が重複している",
+                    "service_name": name,
+                    "h2_titles": service_h2s,
+                    "maximum": max_h2s,
+                })
     return violations
 
 
@@ -179,6 +285,77 @@ def _service_block(section: dict[str, Any]) -> tuple[str, str, int]:
     return title, block, 1000
 
 
+def _service_coverage_details(section: dict[str, Any]) -> str:
+    name = section.get("service_name") or "指定サービス"
+    return (
+        f"#### H3：{name}がおすすめな理由と向いている人\n\n"
+        f"- セクション内容：比較結果や記事テーマに沿って{name}の具体的な価値と選定理由を示し、"
+        "どのような読者に向くかを説明する。料金や始め方は検索意図と登録情報に必要な場合だけ補足する。\n"
+        "- 表現形式：文章または箇条書き\n"
+        "- 掲載項目：主な特徴、他候補との違い、向いている人\n"
+        "- 使用する根拠：ファクトシートおよび登録済みサービス情報\n\n"
+    )
+
+
+def _insert_in_outline_h2(outline_text: str, section: dict[str, Any], block: str) -> str:
+    pos = section["end"]
+    return outline_text[:pos].rstrip() + "\n\n" + block + outline_text[pos:].lstrip()
+
+
+def _enrich_service_coverage(outline_text: str, section: dict[str, Any]) -> tuple[str, str | None]:
+    """Integrate service coverage into an existing H2 whenever possible."""
+    h2_sections = _extract_h2_sections(outline_text, outline=True)
+    if not h2_sections:
+        return outline_text, None
+
+    comparison = next(
+        (
+            item for item in h2_sections
+            if any(term in item["title"] for term in ("比較", "おすすめ", "ランキング", "一覧"))
+        ),
+        None,
+    )
+    if comparison:
+        return _insert_in_outline_h2(outline_text, comparison, _service_coverage_details(section)), comparison["title"]
+
+    late_terms = ("FAQ", "よくある質問", "まとめ", "注意", "トラブル", "セクション別")
+    relevant_terms = ("選び", "使い", "方法", "基礎", "とは", "始め", "探し", "出会")
+    candidates = [item for item in h2_sections if not any(term in item["title"] for term in late_terms)]
+    target = next(
+        (item for item in candidates if any(term in item["title"] for term in relevant_terms)),
+        candidates[0] if candidates else None,
+    )
+    if not target:
+        return outline_text, None
+    return _insert_in_outline_h2(outline_text, target, _service_coverage_details(section)), target["title"]
+
+
+def deduplicate_service_h2s(text: str, service_name: str, *, outline: bool) -> tuple[str, list[str]]:
+    """Remove redundant service H2 blocks, preferring the naturally worded one."""
+    sections = _service_focused_h2s(text, service_name, outline=outline)
+    if len(sections) <= 1:
+        return text, []
+
+    def score(item: dict[str, Any]) -> tuple[int, int]:
+        title = item["title"]
+        generic = bool(re.search(r"特徴[・と].*(?:料金|活用方法).*(?:始め方|使い方)", title))
+        natural_reason = bool(re.search(r"おすすめ(?:な|の|する)?理由|選ばれる理由", title))
+        return ((4 if natural_reason else 0) - (5 if generic else 0), -int(item["start"]))
+
+    keep = max(sections, key=score)
+    removed = [item for item in sections if item is not keep]
+    working = text
+    for item in sorted(removed, key=lambda value: int(value["start"]), reverse=True):
+        working = working[:item["start"]].rstrip() + "\n\n" + working[item["end"]:].lstrip()
+
+    removed_titles = [item["title"] for item in removed]
+    if outline:
+        for title in removed_titles:
+            row_pattern = re.compile(rf"^\|\s*{re.escape(title)}\s*\|[^\n]*\n?", re.MULTILINE)
+            working = row_pattern.sub("", working)
+    return working, removed_titles
+
+
 def _insert_before_late_sections(outline_text: str, blocks: list[str]) -> str:
     pattern = re.compile(
         r"^(?:#{2,4})\s+(?:(?:H2(?:[-−]?\d+)?\s*[.．:：｜|]\s*)?)"
@@ -211,10 +388,20 @@ def _append_volume_rows(outline_text: str, rows: list[tuple[str, int]]) -> str:
 
 def repair_outline(outline_text: str, contract: dict[str, Any], violations: list[dict[str, Any]]) -> tuple[str, list[str]]:
     required_by_key = {s.get("key"): s for s in contract.get("required_sections", [])}
-    blocks: list[str] = []
     rows: list[tuple[str, int]] = []
     added: list[str] = []
     working = outline_text
+
+    duplicate = next((v for v in violations if v.get("key") == "featured_service_duplicate_h2"), None)
+    if duplicate:
+        working, removed = deduplicate_service_h2s(
+            working, duplicate.get("service_name") or "", outline=True
+        )
+        if removed:
+            added.append("featured_service_duplicate_h2_removed")
+
+    # Comparison repair runs first. Its generated H3s normally satisfy featured
+    # service coverage as well, so a second service H2 must not be created.
     for violation in violations:
         key = violation.get("key")
         section = required_by_key.get(key, {})
@@ -224,17 +411,33 @@ def repair_outline(outline_text: str, contract: dict[str, Any], violations: list
             continue
         if key == "named_service_comparison":
             title, block, chars = _comparison_block(contract.get("keyword") or "対象テーマ", section)
-        elif key == "featured_service_dedicated":
-            title, block, chars = _service_block(section)
-        else:
-            continue
-        blocks.append(block)
-        rows.append((title, chars))
-        added.append(key)
-    if not blocks:
-        return working, added
-    patched = _insert_before_late_sections(working, blocks)
-    return _append_volume_rows(patched, rows), added
+            working = _insert_before_late_sections(working, [block])
+            rows.append((title, chars))
+            added.append(key)
+
+    service_section = next(
+        (
+            section for section in contract.get("required_sections", [])
+            if section.get("key") in (
+                "featured_service_coverage", "featured_service_dedicated", "featured_service_integrated"
+            )
+        ),
+        None,
+    )
+    if service_section:
+        name = service_section.get("service_name") or contract.get("featured_service") or ""
+        coverage = _service_coverage(working, name, outline=True) if name else {"sufficient": False}
+        if not coverage.get("sufficient"):
+            working, target = _enrich_service_coverage(working, service_section)
+            if target:
+                added.append("featured_service_coverage_integrated")
+            else:
+                title, block, chars = _service_block(service_section)
+                working = _insert_before_late_sections(working, [block])
+                rows.append((title, chars))
+                added.append("featured_service_coverage_fallback_h2")
+
+    return _append_volume_rows(working, rows), added
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:

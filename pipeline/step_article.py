@@ -5,7 +5,7 @@ import anthropic
 from .ai import create_with_retry, get_step_config
 from .content_contract import contract_prompt, reference_prompt
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
-from .step_structure_guard import validate_structure
+from .step_structure_guard import deduplicate_service_h2s, validate_structure
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -357,9 +357,30 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
     return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
 
 
-def _insert_repair_blocks(article_text: str, repair_text: str) -> str:
+def _insert_repair_blocks(
+    article_text: str,
+    repair_text: str,
+    violations: list[dict] | None = None,
+) -> str:
     """Insert generated missing sections before late utility sections."""
     repair_text = _re.sub(r'^```(?:markdown)?\s*|\s*```$', '', repair_text.strip(), flags=_re.IGNORECASE)
+    keys = {item.get("key") for item in (violations or [])}
+    if keys == {"featured_service_coverage"}:
+        h2_matches = list(_re.finditer(r'^##\s+(.+?)\s*$', article_text, _re.MULTILINE))
+        comparison_index = next(
+            (
+                index for index, match in enumerate(h2_matches)
+                if any(term in match.group(1) for term in ("比較", "おすすめ", "ランキング", "一覧"))
+            ),
+            None,
+        )
+        if comparison_index is not None:
+            pos = (
+                h2_matches[comparison_index + 1].start()
+                if comparison_index + 1 < len(h2_matches)
+                else len(article_text)
+            )
+            return article_text[:pos].rstrip() + "\n\n" + repair_text + "\n\n" + article_text[pos:].lstrip()
     late = _re.search(r'^##\s+(?:まとめ|よくある質問|FAQ|出典一覧)', article_text, _re.MULTILINE)
     pos = late.start() if late else len(article_text)
     return article_text[:pos].rstrip() + "\n\n" + repair_text.strip() + "\n\n" + article_text[pos:].lstrip()
@@ -373,12 +394,20 @@ def _repair_missing_structure(
     violations: list[dict],
 ) -> tuple[str, int, int]:
     """Generate only missing protected blocks; never rewrite the full article."""
+    violation_keys = {item.get("key") for item in violations}
+    service_only = violation_keys == {"featured_service_coverage"}
+    repair_format = (
+        "不足しているサービス説明を、既存の比較H2内へ追加するH3として出力してください。"
+        "独立H2は新設しないでください。"
+        if service_only else
+        "比較H2が不足する場合は、比較H2の中に対象サービスの具体的なH3も含めてください。"
+    )
     prompt = (
         "以下の記事には、コンテンツ構造契約の保護対象が不足しています。"
         "不足分だけをMarkdownで執筆してください。既存本文の再出力は禁止です。\n"
         "named_service_comparison は具体名を同じ比較軸の表で比較する独立H2、"
-        "featured_service_dedicated はサービス名を含む独立H2、"
-        "featured_service_integrated は関連内容を説明するH3または短い段落にしてください。\n"
+        "featured_service_coverage は既存の比較H2または関連H2内で、対象サービスの価値と選定理由を"
+        f"説明する要件です。{repair_format}\n"
         "ファクトシートの[confirmed]だけを使い、不明な数値は書かないでください。\n\n"
         f"不足: {json.dumps(violations, ensure_ascii=False)}\n"
         f"契約: {json.dumps(contract, ensure_ascii=False)}\n\n"
@@ -386,7 +415,7 @@ def _repair_missing_structure(
         f"既存記事（重複回避用）:\n{article_text}"
     )
     repair_text, input_tokens, output_tokens = _call(client, [{"role": "user", "content": prompt}], max_tokens=3500)
-    return _insert_repair_blocks(article_text, repair_text), input_tokens, output_tokens
+    return _insert_repair_blocks(article_text, repair_text, violations), input_tokens, output_tokens
 
 
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
@@ -764,6 +793,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "Please retry or review the fact sheet."
         )
 
+    service_name_for_guard = contract.get("featured_service") or ""
+    article_text, duplicate_service_h2s_removed = deduplicate_service_h2s(
+        article_text, service_name_for_guard, outline=False
+    )
+    if duplicate_service_h2s_removed:
+        print(f"[article] Removed duplicate service H2s: {duplicate_service_h2s_removed}")
+
     violations = validate_structure(article_text, contract, outline=False)
     structure_repaired = False
     if violations:
@@ -791,6 +827,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "output_tokens": total_output,
             "parts": 3,
             "structure_repaired": structure_repaired,
+            "duplicate_service_h2s_removed": duplicate_service_h2s_removed,
         },
     )
     print(f"[article] Done ({total_output} tokens total, {len(article_text)}字) → artifact id={artifact['id']}")

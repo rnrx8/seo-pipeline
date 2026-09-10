@@ -426,7 +426,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             word_count_instruction = (
                 f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
                 f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
-                f"- コンテンツ構造契約のprotected=trueの章は残し、optional_sectionsや補足から調整する\n"
+                f"- コンテンツ構造契約のprotected=trueの情報要件は残し、独立H2を固定せず重複章は統合する\n"
+                f"- optional_sectionsや補足説明から調整する\n"
                 f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
             )
             print(f"[outline] word_count_setting={word_count!r}")
