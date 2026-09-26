@@ -50,3 +50,23 @@ Validation: `python3 -m unittest discover -s tests -q`.
 Upstream incident evidence: https://github.com/serpapi/public-roadmap/issues/3781
 (similar irrelevant-results reports; the precise upstream cause of our responses
 has not been established).
+
+## Actual browser acquisition (Chrome)
+
+`SERP_PROVIDER=browser` requires a job-scoped `serp_verified` snapshot and rejects
+all provider fallback. The web app captures Google's normal results in the user's
+Chrome before creating a queued job. The DIG Chrome extension reads only positive
+ordinary web result cards; changed markup, missing results, altered query,
+nonstandard search modes, CAPTCHA and consent screens stop before generation.
+It does not solve CAPTCHAs or collect private Search Console cards.
+
+`POST /generate` accepts `browser_serp` with the existing job ID and the signed-in
+user's Bearer token. The backend verifies the token with Supabase, checks job
+ownership and exact query, validates freshness and URLs, binds the snapshot to
+the job, then queues the normal pipeline. Active/completed jobs are not overwritten
+by duplicate submissions. Existing CLI recovery snapshots remain supported.
+
+The extension's only site access is Google and the DIG app (plus localhost:3000
+for development). It must be installed with the user's approval. Keep Chrome open
+during acquisition; all later pipeline steps continue on the server. This is a
+browser-backed acquisition mode, not a claim that any API now reproduces Google.

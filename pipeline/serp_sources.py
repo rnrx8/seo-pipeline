@@ -96,6 +96,8 @@ def fetch_serp(keyword: str) -> tuple[dict, dict]:
     provider = os.getenv("SERP_PROVIDER", "").strip().lower() or (
         "serper" if os.getenv("SERPER_API_KEY") else "serpapi"
     )
+    if provider == "browser":
+        raise SerpConfigurationError("Google検索画面から取得した競合情報が必要です。ダッシュボードから再実行してください。")
     fetched_at = datetime.now(timezone.utc).isoformat()
     source = {"provider": provider, "query": keyword, "fetched_at": fetched_at,
               "country": "jp", "language": "ja", "search_mode": "standard"}
@@ -157,7 +159,7 @@ def verified_serp(snapshot: dict, keyword: str, job_id: str) -> tuple[dict, dict
     search_url = snapshot.get("search_url", "")
     parsed = urlsplit(search_url)
     params = parse_qs(parsed.query)
-    if parsed.scheme != "https" or parsed.hostname not in {"www.google.co.jp", "www.google.com"} or params.get("q") != [keyword] or any(k in params for k in ("tbs", "tbm", "udm")):
+    if parsed.path != "/search" or parsed.scheme != "https" or parsed.hostname not in {"www.google.co.jp", "www.google.com"} or params.get("q") != [keyword] or any(k in params for k in ("tbs", "tbm", "udm")) or params.get("start", ["0"]) != ["0"]:
         raise SerpQualityError("確認済み競合情報には通常のGoogle検索画面のURLが必要です。")
     data = {"organic_results": snapshot.get("organic_results", []),
             "related_questions": snapshot.get("people_also_ask", []),

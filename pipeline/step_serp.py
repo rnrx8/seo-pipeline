@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from .db import get_optional_artifact, upsert_artifact
 from .serp_sources import fetch_serp, validate_results, verified_serp
+from .public_fetch import get_public_page
 
 
 FETCH_TIMEOUT = 5  # seconds per URL
@@ -28,7 +29,7 @@ def _fetch_headings(item: dict) -> dict:
     if not url:
         return base
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=FETCH_TIMEOUT)
+        resp = get_public_page(url, headers=HEADERS, timeout=FETCH_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, "lxml")
         for tag in soup.find_all(["script", "style", "nav", "footer", "header"]):

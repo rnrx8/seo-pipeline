@@ -1,6 +1,7 @@
 """FastAPI wrapper for the SEO pipeline."""
 import asyncio
 import io
+import json
 import os
 import time
 from contextlib import asynccontextmanager, suppress
@@ -8,13 +9,13 @@ from contextlib import asynccontextmanager, suppress
 import pypdf
 import requests as req
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 load_dotenv()
 
-from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, update_job_error, update_job_status, update_job_step  # noqa: E402
+from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, upsert_artifact, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 from pipeline.step_plan import build_step_plan, requires_rate_limit_delay  # noqa: E402
 
@@ -97,6 +98,7 @@ app.add_middleware(
 class GenerateRequest(BaseModel):
     keyword: str
     job_id: str | None = None
+    browser_serp: dict | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -189,8 +191,36 @@ def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
 # ---------- Endpoints ----------
 
 @app.post("/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest, background_tasks: BackgroundTasks):
-    if req.job_id:
+async def generate(req: GenerateRequest, background_tasks: BackgroundTasks, authorization: str | None = Header(default=None)):
+    from pipeline.browser_serp import authenticate_owner, bind_snapshot, BrowserAuthorizationError
+    from pipeline.serp_sources import SerpQualityError
+
+    browser_required = os.getenv("SERP_PROVIDER", "").strip().lower() == "browser"
+    if req.browser_serp is not None or browser_required:
+        if not req.job_id or req.browser_serp is None:
+            raise HTTPException(status_code=422, detail="Google検索画面から競合情報を取得してから生成してください。")
+        try:
+            job = get_job(req.job_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="記事が見つかりません。") from None
+        try:
+            authenticate_owner(authorization, job.get('tenant_id'))
+        except BrowserAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        if job.get('status') in ('running', 'done'):
+            # Idempotent duplicate requests must not overwrite an active snapshot.
+            return GenerateResponse(job_id=req.job_id, status=job['status'])
+        try:
+            snapshot = bind_snapshot(req.browser_serp, job, req.keyword)
+        except (SerpQualityError, TypeError, KeyError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        upsert_artifact(job_id=job['id'], step='serp_verified', content_type='application/json',
+                        content_text=json.dumps(snapshot, ensure_ascii=False),
+                        meta={'capture_method': 'chrome_extension', 'submitted_by': job['tenant_id']})
+        update_job_error(job['id'], '')
+        update_job_status(job['id'], 'running')
+        job_id = job['id']
+    elif req.job_id:
         job_id = req.job_id
     else:
         job_id = insert_job(req.keyword)
