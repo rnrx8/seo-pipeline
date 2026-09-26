@@ -48,6 +48,9 @@ def _primary_line(intent_text: str) -> str:
 
 def _clean_heading_name(value: str) -> str:
     value = re.sub(r"^[#\s]+", "", value)
+    # Fact sheets use decorative bullets before product labels. They are not
+    # part of the product name and must not defeat named-pair query matching.
+    value = re.sub(r"^[■□▪▫●○◆◇▶▷・\s]+", "", value)
     value = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）:\s-]*", "", value)
     value = re.split(r"[｜|]", value, maxsplit=1)[0]
     value = re.sub(r"（[^）]{0,40}）|\([^)]{0,40}\)", "", value)

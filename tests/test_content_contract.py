@@ -25,6 +25,21 @@ FACTS = """\
 
 
 class ContentContractTests(unittest.TestCase):
+    def test_named_pair_query_ignores_decorative_service_heading_bullets(self):
+        for bullet in ('■', '●', '◆', '▶'):
+            with self.subTest(bullet=bullet):
+                facts = f"### {bullet} ヒールメイト（Healmate）\n### {bullet} 既婚者クラブ\n### {bullet} 競合サービス（カドル/Cuddle）"
+                contract = build_content_contract(
+                    keyword="既婚者クラブ ヒールメイト", intent_text="Primary: 比較検討",
+                    query_attrs_text=None, fact_text=facts, job={"article_purpose": "CV"},
+                    service={"name": "既婚者クラブ"},
+                )
+                comparison = contract['required_sections'][0]
+                self.assertEqual(comparison['candidate_services'], ['既婚者クラブ', 'ヒールメイト'])
+                self.assertEqual(comparison['minimum_named_items'], 2)
+                article = '## 両サービスを比較\n| 項目 | 既婚者クラブ | ヒールメイト |\n|---|---|---|\n| 形態 | Web | Web |'
+                self.assertEqual(validate_structure(article, {'required_sections': [comparison]}, outline=False), [])
+
     def test_named_pair_query_uses_standalone_bold_service_labels(self):
         facts = """### カドル（Cuddle）の会員数
 ## 主要な企業・サービス情報
