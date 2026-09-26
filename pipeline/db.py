@@ -244,19 +244,23 @@ def get_user_credits_total(tenant_id: str) -> float:
     return 0
 
 
-def get_artifact(job_id: str, step: str) -> dict:
-    """Fetch a single artifact by job_id and step. Raises if not found."""
-    url = f"{_base()}/artifacts"
+def get_optional_artifact(job_id: str, step: str) -> dict | None:
+    """Fetch an artifact; absence is distinct from database/network failure."""
     resp = requests.get(
-        url,
+        f"{_base()}/artifacts",
         params={"job_id": f"eq.{job_id}", "step": f"eq.{step}", "limit": "1"},
-        headers=_headers(),
+        headers=_headers(), timeout=15,
     )
     resp.raise_for_status()
     rows = resp.json()
-    if not rows:
+    return rows[0] if rows else None
+
+
+def get_artifact(job_id: str, step: str) -> dict:
+    artifact = get_optional_artifact(job_id, step)
+    if artifact is None:
         raise ValueError(f"Artifact not found: job_id={job_id}, step={step}")
-    return rows[0]
+    return artifact
 
 
 def get_user_email(tenant_id: str) -> str:

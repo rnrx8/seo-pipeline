@@ -14,6 +14,8 @@ _STEP_TO_FILE = {
 }
 
 _RULES = [
+    (re.compile(r"SerpQualityError|SerpConfigurationError"),
+     False, "operational", "競合情報の取得・検証エラー"),
     (re.compile(r"credit balance|billing|insufficient_quota|exceeded.*quota", re.I),
      False, "operational", "APIクレジット不足"),
     (re.compile(r"rate.?limit|too many requests|429", re.I),

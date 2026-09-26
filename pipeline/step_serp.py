@@ -1,14 +1,13 @@
 import json
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
 
-from .db import upsert_artifact
+from .db import get_optional_artifact, upsert_artifact
+from .serp_sources import fetch_serp, validate_results, verified_serp
 
 
-SERPAPI_ENDPOINT = "https://serpapi.com/search"
 FETCH_TIMEOUT = 5  # seconds per URL
 MAX_WORKERS = 5
 
@@ -54,28 +53,15 @@ def _fetch_headings(item: dict) -> dict:
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
-    """Search Google via SerpApi, fetch competitor headings, and store results."""
+    """Acquire a validated SERP, fetch competitor headings, and store provenance."""
     print(f"[serp] Searching: {keyword!r}")
 
-    resp = requests.get(
-        SERPAPI_ENDPOINT,
-        params={
-            "engine": "google",
-            "q": keyword,
-            "api_key": os.environ["SERPAPI_KEY"],
-            "hl": "ja",
-            "gl": "jp",
-            "google_domain": "google.co.jp",
-            "num": "10",
-            "no_cache": "true",
-        },
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    print(f"[serp] API response keys: {list(data.keys())}")
-
-    organic = data.get("organic_results", [])
+    override = get_optional_artifact(job_id, "serp_verified")
+    if override:
+        data, source = verified_serp(json.loads(override["content_text"]), keyword, job_id)
+    else:
+        data, source = fetch_serp(keyword)
+    organic = validate_results(data, keyword)
 
     # related_searches: [{"query": "..."}] → ["..."]
     related = [
@@ -93,33 +79,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if r.get("question")
     ]
 
-    # PAA が空の場合、疑問文クエリで追加検索して補完
-    if not paa:
-        print("[serp] No PAA found, trying question-focused query...")
-        try:
-            resp2 = requests.get(
-                SERPAPI_ENDPOINT,
-                params={
-                    "engine": "google",
-                    "q": f"{keyword} とは",
-                    "api_key": os.environ["SERPAPI_KEY"],
-                    "hl": "ja",
-                    "gl": "jp",
-                    "google_domain": "google.co.jp",
-                    "no_cache": "true",
-                },
-            )
-            if resp2.ok:
-                data2 = resp2.json()
-                paa_raw2 = data2.get("people_also_ask") or data2.get("related_questions") or []
-                print(f"[serp] PAA from question query: {len(paa_raw2)}")
-                paa = [
-                    {"question": r.get("question", ""), "snippet": r.get("snippet", "")}
-                    for r in paa_raw2
-                    if r.get("question")
-                ]
-        except Exception as e:
-            print(f"[serp] Question-focused query failed: {e}")
+    # Preserve missing PAA: a different query's questions are not this SERP.
 
     # 競合サイトの見出しを並列取得（上位10件）
     print(f"[serp] Fetching headings for {len(organic)} URLs...")
@@ -137,8 +97,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print(f"[serp] Headings fetched: {success}/{len(organic)} succeeded")
 
     structured = {
+        "source": source,
         "organic_results": [
             {
+                "position": r["position"],
                 "title":   r.get("title", ""),
                 "link":    r.get("link", ""),
                 "snippet": r.get("snippet", ""),
@@ -156,6 +118,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_type="application/json",
         content_text=json.dumps(structured, ensure_ascii=False),
         payload=data,
+        meta={"source": source},
     )
     print(
         f"[serp] Saved {len(organic)} organic / {len(paa)} PAA / "

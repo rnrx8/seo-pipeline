@@ -5,11 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_KEY", "SERPAPI_KEY", "ANTHROPIC_API_KEY"]
+REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_KEY", "ANTHROPIC_API_KEY"]
 
 
 def check_env() -> None:
     missing = [k for k in REQUIRED_ENV if not os.getenv(k)]
+    if not (os.getenv("SERPER_API_KEY") or os.getenv("SERPAPI_KEY")):
+        missing.append("SERPER_API_KEY or SERPAPI_KEY")
     if missing:
         raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
