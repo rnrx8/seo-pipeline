@@ -101,12 +101,13 @@ def extract_service_candidates(fact_text: str, featured_service: str = "") -> li
         fact_item_match = re.match(
             r"^>\s*\*\*(.+?)\*\*(?:（[^）]*）|\([^)]*\))?\s*[：:]", line
         ) if in_service_section else None
-        match = heading_match or fact_item_match
+        service_label_match = re.match(r"^\*\*(.+?)\*\*\s*$", line) if in_service_section else None
+        match = heading_match or fact_item_match or service_label_match
         if not match:
             continue
         raw_name = match.group(1).strip()
         name = _service_name_from_label(raw_name)
-        if _is_service_candidate(raw_name, name, from_service_fact=bool(fact_item_match)):
+        if _is_service_candidate(raw_name, name, from_service_fact=bool(fact_item_match or service_label_match)):
             candidates.append(name)
     if featured_service:
         candidates.insert(0, featured_service)
@@ -149,6 +150,11 @@ def build_content_contract(
         service_treatment = "comparison_featured" if comparison_required else "integrated"
 
     candidates = extract_service_candidates(fact_text, service_name)
+    # A named A-vs-B query must not acquire a third required competitor merely
+    # because the fact sheet contains background information about other products.
+    query_candidates = [name for name in candidates if name in keyword]
+    if len(query_candidates) >= 2:
+        candidates = query_candidates
     required: list[dict[str, Any]] = []
     optional: list[dict[str, Any]] = []
 

@@ -143,6 +143,15 @@ def _candidate_mentions(text: str, candidates: list[str]) -> list[str]:
         if not cells:
             continue
         name = re.sub(r"[*_`\[\]]", "", cells[0]).strip()
+        # Transposed comparison: | 項目 | Service A | Service B |.
+        # Require a known service as an anchor so ordinary attribute tables do
+        # not turn column labels such as price/features into product names.
+        headers = [re.sub(r"[*_`\[\]]", "", cell).strip() for cell in cells[1:]]
+        if name in ("項目", "比較項目") and any(h in candidates for h in headers):
+            for header in headers:
+                if (1 < len(header) <= 40 and header not in names
+                        and header not in {"料金", "特徴", "機能", "安全性", "備考", "おすすめ", "比較結果", "安いのは"}):
+                    names.append(header)
         if any(term in name for term in ("サービス名", "アプリ名")):
             in_named_comparison_table = True
             continue

@@ -25,6 +25,31 @@ FACTS = """\
 
 
 class ContentContractTests(unittest.TestCase):
+    def test_named_pair_query_uses_standalone_bold_service_labels(self):
+        facts = """### カドル（Cuddle）の会員数
+## 主要な企業・サービス情報
+**ヒールメイト（Healmate）**
+- 特徴：Webサービス
+**既婚者クラブ**
+- 特徴：Webサービス
+"""
+        contract = build_content_contract(
+            keyword="既婚者クラブ ヒールメイト", intent_text="Primary: 比較検討",
+            query_attrs_text=None, fact_text=facts, job={"article_purpose": "CV"},
+            service={"name": "既婚者クラブ"},
+        )
+        comparison = contract['required_sections'][0]
+        self.assertEqual(comparison['candidate_services'], ['既婚者クラブ', 'ヒールメイト'])
+        self.assertEqual(comparison['minimum_named_items'], 2)
+
+    def test_transposed_comparison_table_handles_stale_candidates(self):
+        contract = {'required_sections': [{'key': 'named_service_comparison',
+                    'candidate_services': ['既婚者クラブ', '競合の参考データ'], 'minimum_named_items': 2}]}
+        article = '## 基本情報を比較\n| 項目 | 既婚者クラブ | ヒールメイト |\n|---|---|---|\n| 形態 | Web | Web |'
+        self.assertEqual(validate_structure(article, contract, outline=False), [])
+        attributes = '## 基本情報を比較\n| 項目 | 既婚者クラブ | 特徴 |\n|---|---|---|\n| 形態 | Web | Web |'
+        self.assertTrue(validate_structure(attributes, contract, outline=False))
+
     def test_comparison_cv_requires_comparison_and_service_coverage_not_dedicated_h2(self):
         contract = build_content_contract(
             keyword="既婚者 マッチングアプリ おすすめ",
