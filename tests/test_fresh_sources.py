@@ -14,6 +14,21 @@ def response(body=BODY):
 
 
 class FreshSourcesTests(unittest.TestCase):
+    def test_http_charset_takes_priority_over_conflicting_html_meta(self):
+        html = '<meta charset="utf-8"><title>料金</title><main>' + '男性の有料会員は月額料金がかかります。' * 12 + '</main>'
+        page = SimpleNamespace(url=URL, status_code=200, content=html.encode('shift_jis'),
+                               headers={'Content-Type': 'text/html; charset=Shift-JIS'})
+        with patch.object(fs, 'get_public_page', return_value=page):
+            result = fs.FreshSources({}, []).fetch(URL)
+        self.assertEqual(result['status'], 'success')
+        self.assertIn('男性の有料会員', result['text'])
+        self.assertNotIn('\ufffd', result['text'])
+
+    def test_garbled_text_is_not_successful_evidence(self):
+        with patch.object(fs, 'get_public_page', return_value=response('<main>' + '\ufffd' * 200 + '</main>')):
+            result = fs.FreshSources({}, []).fetch(URL)
+        self.assertEqual(result['status'], 'failed')
+
     def test_selected_settings_urls_are_extracted_before_model_decisions(self):
         job = {'tenant_id': 'owner', 'service_id': 's', 'cta_id': 'c', 'category': 'cat', 'must_reference_urls': 'https://required.example/'}
         service = {'tenant_id': 'owner', 'url': URL, 'raw_content': '詳細 https://official.example/features\n', 'selling_points': ['料金 ' + URL]}

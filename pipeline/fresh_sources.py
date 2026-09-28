@@ -134,7 +134,9 @@ class FreshSources:
                 text = '\n'.join((page.extract_text() or '') for page in reader.pages[:40])
                 record['truncated'] = len(reader.pages) > 40
             elif 'html' in mime or not mime:
-                soup = BeautifulSoup(response.content, 'lxml')
+                declared = re.search(r'charset\s*=\s*["\']?([^;\s"\']+)', mime, re.I)
+                soup = BeautifulSoup(response.content, 'lxml',
+                                     from_encoding=declared[1] if declared else None)
                 title = soup.title.get_text(' ', strip=True) if soup.title else ''
                 if re.search(r'just a moment|access denied|attention required|captcha|sign in|log in|ログイン', title, re.I):
                     raise ValueError('認証・アクセス制限画面のため本文を確認できません')
@@ -146,6 +148,8 @@ class FreshSources:
             else:
                 raise ValueError('本文取得に対応していないファイル形式です')
             text = re.sub(r'\s+', ' ', text).strip()
+            if text.count('\ufffd') > max(3, len(text) * .01):
+                raise ValueError('文字化けにより本文を確認できません')
             if len(text) < 100:
                 raise ValueError('取得できた本文が短すぎます。動的表示やアクセス制限の可能性があります')
             record.update(status='success', title=title, text=text[:24000],
