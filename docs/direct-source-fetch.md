@@ -46,3 +46,25 @@ Validation on 2026-09-28:
   was corrected and an unsupported added Pro price was removed in the final audit.
 - Live AI runs used in-memory job/artifact stores; no production article or credit
   balance was changed by validation. Existing provider API usage applies.
+
+## High-accuracy browser fallback
+
+Only `high_accuracy_mode=true` jobs can retry failed HTTP body/competitor-heading
+retrieval using Chromium. Normal jobs report an unverified result and suggest the
+99% mode. Failure causes are distinguished where observable; generic HTTP failure
+is never labeled as a proven JavaScript cause. Browser failures remain unverified,
+without suggesting the same upgrade again. Historical records get neutral wording.
+
+Browser instances use fresh anonymous contexts, a child process without provider or
+DB credentials, 40-second deadlines, one active browser per server, and public-only
+GET/HEAD transport for documents, scripts and data. Private/forbidden destinations,
+redirects to those destinations, service workers, WebSockets, WebRTC, WebTransport,
+subframe navigation and downloads are blocked. No login/CAPTCHA bypass is attempted.
+Page resources are limited to 70 requests / 12 MB; each request is limited to 3 MB.
+Fact sources permit up to five browser fallback attempts per pass. Dynamic pages
+that need authenticated sessions, unsupported requests or longer waits can fail.
+
+The Docker build and API startup run an actual JS execution probe; `/health` exposes
+`browser_rendering`. Local validation: 71 Python tests and 6 display cases passed.
+On the public `quotes.toscrape.com/js/` fixture, normal mode classified the sparse
+HTML as unverified; high-accuracy mode rendered and extracted 1,240 characters.

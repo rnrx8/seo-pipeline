@@ -1,0 +1,6 @@
+*
+!requirements.txt
+!pipeline/
+!pipeline/*.py
+!api_server.py
+!Dockerfile

@@ -75,6 +75,8 @@ async def _requeue_bug_fixing_jobs() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from pipeline.browser_fetch import browser_probe
+    app.state.browser_rendering = await asyncio.to_thread(browser_probe)
     asyncio.create_task(_requeue_bug_fixing_jobs())
     task = asyncio.create_task(_watchdog())
     yield
@@ -287,4 +289,4 @@ async def service_status():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "browser_rendering": getattr(app.state, "browser_rendering", False)}

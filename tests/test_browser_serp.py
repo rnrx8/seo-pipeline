@@ -41,7 +41,7 @@ class BrowserSerpTests(unittest.TestCase):
 
     def test_captured_urls_order_titles_reach_saved_serp_without_api(self):
         bound = bind_snapshot(snapshot(), {'id': 'job', 'main_keyword': '比較 検索'}, '比較 検索')
-        with patch.object(step_serp, 'get_optional_artifact', return_value={'content_text': json.dumps(bound)}), patch.object(step_serp, 'fetch_serp') as provider, patch.object(step_serp, '_fetch_headings', return_value={'fetch_status': 'success'}), patch.object(step_serp, 'upsert_artifact', return_value={'id': 'artifact'}) as save:
+        with patch.object(step_serp, 'get_job', return_value={}), patch.object(step_serp, 'get_optional_artifact', return_value={'content_text': json.dumps(bound)}), patch.object(step_serp, 'fetch_serp') as provider, patch.object(step_serp, '_fetch_headings', return_value={'fetch_status': 'success'}), patch.object(step_serp, 'upsert_artifact', return_value={'id': 'artifact'}) as save:
             step_serp.run('job', '比較 検索')
         provider.assert_not_called()
         saved = json.loads(save.call_args.kwargs['content_text'])

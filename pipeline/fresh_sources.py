@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
+from .browser_fetch import fetch_rendered_page
 from . import db
 from .public_fetch import get_public_page
 
@@ -89,6 +91,9 @@ def load_primary_sources(job):
 
 class FreshSources:
     def __init__(self, job, settings):
+        self.high_accuracy = job.get("high_accuracy_mode") is True
+        self.browser_attempts = 0
+        self.browser_lock = threading.Lock()
         self.settings = settings
         self.pages = {}
         self.blocked = extract_urls(job.get('never_reference_urls'))
@@ -149,6 +154,25 @@ class FreshSources:
         except Exception as exc:
             # Do not expose request URLs/credentials from exception messages.
             record['reason'] = str(exc) if isinstance(exc, ValueError) else f'本文取得失敗（{type(exc).__name__}）'
+        if record['status'] != 'success' and self.high_accuracy:
+            try:
+                self.check_allowed(url)
+                with self.browser_lock:
+                    allowed = self.browser_attempts < 5
+                    if allowed:
+                        self.browser_attempts += 1
+                if allowed:
+                    rendered = fetch_rendered_page(url, self.blocked)
+                    record['browser_attempted'] = True
+                    if rendered['status'] == 'success':
+                        record.update(rendered)
+                        record.pop('reason', None)
+                    else:
+                        record['browser_failure_reason'] = rendered.get('reason')
+                else:
+                    record['browser_failure_reason'] = '今回のブラウザ再取得の上限（5件）に達しました'
+            except ValueError:
+                pass
         return record
 
     def prefetch(self, extra=None):

@@ -45,7 +45,7 @@ class SerpSourceTests(unittest.TestCase):
                 serp_sources.fetch_serp("検索語")
 
     def test_guard_failure_does_not_fetch_headings_or_save(self):
-        with patch.object(step_serp, 'get_optional_artifact', return_value=None), patch.object(step_serp, 'fetch_serp', side_effect=serp_sources.SerpQualityError('不整合')), patch.object(step_serp, '_fetch_headings') as fetch, patch.object(step_serp, 'upsert_artifact') as save:
+        with patch.object(step_serp, 'get_job', return_value={}), patch.object(step_serp, 'get_optional_artifact', return_value=None), patch.object(step_serp, 'fetch_serp', side_effect=serp_sources.SerpQualityError('不整合')), patch.object(step_serp, '_fetch_headings') as fetch, patch.object(step_serp, 'upsert_artifact') as save:
             with self.assertRaises(serp_sources.SerpQualityError):
                 step_serp.run('job', '検索語')
         fetch.assert_not_called()
@@ -91,7 +91,7 @@ class SerpSourceTests(unittest.TestCase):
     def test_missing_paa_stays_empty_and_source_is_saved(self):
         data = {'organic_results': [result('example.jp')]}
         source = {'provider': 'serper', 'search_mode': 'standard'}
-        with patch.object(step_serp, 'get_optional_artifact', return_value=None), patch.object(step_serp, 'fetch_serp', return_value=(data,source)) as fetch, patch.object(step_serp, '_fetch_headings', return_value={'fetch_status': 'success'}), patch.object(step_serp, 'upsert_artifact', return_value={'id':'artifact'}) as save:
+        with patch.object(step_serp, 'get_job', return_value={}), patch.object(step_serp, 'get_optional_artifact', return_value=None), patch.object(step_serp, 'fetch_serp', return_value=(data,source)) as fetch, patch.object(step_serp, '_fetch_headings', return_value={'fetch_status': 'success'}), patch.object(step_serp, 'upsert_artifact', return_value={'id':'artifact'}) as save:
             step_serp.run('job', '検索語')
         fetch.assert_called_once_with('検索語')
         saved = json.loads(save.call_args.kwargs['content_text'])

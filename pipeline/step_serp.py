@@ -4,7 +4,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 
-from .db import get_optional_artifact, upsert_artifact
+from .db import get_job, get_optional_artifact, upsert_artifact
+from .browser_fetch import check_reference_url, fetch_rendered_page
+from .fetch_status import classify_failure, unverified_message
 from .serp_sources import fetch_serp, validate_results, verified_serp
 from .public_fetch import get_public_page
 
@@ -21,7 +23,7 @@ HEADERS = {
 }
 
 
-def _fetch_headings(item: dict) -> dict:
+def _fetch_headings(item: dict, high_accuracy: bool = False, blocked=()) -> dict:
     """Fetch a single URL and extract h2/h3 headings and character count."""
     url = item.get("link", "")
     title = item.get("title", "")
@@ -29,9 +31,17 @@ def _fetch_headings(item: dict) -> dict:
     if not url:
         return base
     try:
-        resp = get_public_page(url, headers=HEADERS, timeout=FETCH_TIMEOUT)
+        resp = get_public_page(url, headers=HEADERS, timeout=FETCH_TIMEOUT, max_bytes=3_000_000,
+                               destination_check=lambda target: check_reference_url(target, blocked))
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, "lxml")
+        title_text = soup.title.get_text() if soup.title else ''
+        from .browser_render_worker import BLOCKED_TITLE
+        import re
+        if re.search(BLOCKED_TITLE, title_text, re.I):
+            base['failure_code'] = 'access_restricted'
+            raise ValueError('アクセス制限画面')
+        has_scripts = bool(soup.find('script'))
         for tag in soup.find_all(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         headings = [
@@ -42,14 +52,30 @@ def _fetch_headings(item: dict) -> dict:
         body = soup.find("body")
         body_text = body.get_text() if body else soup.get_text()
         char_count = len([c for c in body_text if not c.isspace()])
+        if char_count < 100:
+            base['failure_code'] = 'dynamic_content' if has_scripts else 'empty_body'
+            raise ValueError('本文未取得')
         return {
             **base,
             "headings": headings,
             "heading_count": len(headings),
             "word_count": char_count,
             "fetch_status": "success",
+            "fetch_method": "http",
         }
-    except Exception:
+    except Exception as exc:
+        base.setdefault('failure_code', classify_failure(exc))
+        base['browser_attempted'] = False
+        if high_accuracy and base['failure_code'] != 'not_found':
+            rendered = fetch_rendered_page(url, blocked)
+            base['browser_attempted'] = True
+            if rendered['status'] == 'success':
+                headings = rendered.get('headings', [])
+                return {**base, 'fetch_status': 'success', 'fetch_method': 'browser',
+                        'headings': headings, 'heading_count': len(headings),
+                        'word_count': rendered['word_count'], 'fetched_at': rendered['fetched_at']}
+            base['browser_failure_code'] = rendered.get('reason_code')
+        base['failure_message'] = unverified_message(base['failure_code'], base['browser_attempted'])
         return base
 
 
@@ -57,6 +83,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Acquire a validated SERP, fetch competitor headings, and store provenance."""
     print(f"[serp] Searching: {keyword!r}")
 
+    job = get_job(job_id)
+    high_accuracy = job.get('high_accuracy_mode') is True
+    from .fresh_sources import extract_urls
+    blocked = extract_urls(job.get('never_reference_urls'))
     override = get_optional_artifact(job_id, "serp_verified")
     if override:
         data, source = verified_serp(json.loads(override["content_text"]), keyword, job_id)
@@ -87,7 +117,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     competitor_headings = [None] * len(organic)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
-            executor.submit(_fetch_headings, item): i
+            executor.submit(_fetch_headings, item, high_accuracy, blocked): i
             for i, item in enumerate(organic[:10])
         }
         for future in as_completed(future_to_idx):
@@ -99,6 +129,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     structured = {
         "source": source,
+        "high_accuracy_mode": high_accuracy,
         "organic_results": [
             {
                 "position": r["position"],
