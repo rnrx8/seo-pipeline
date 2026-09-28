@@ -543,7 +543,7 @@ def _build_cta_prompt(cta: dict) -> str:
 
 
 def _build_chains_prompt(chains: list) -> str:
-    """検索意図chainsの具体化ワードをリード文・H2末尾反映用にプロンプト化する。"""
+    """検索意図chainsを読者の判断課題として参照する（原文転記は要求しない）。"""
     if not chains:
         return ""
     phrases = [c for c in chains if c.get("concrete_phrase")]
@@ -551,9 +551,11 @@ def _build_chains_prompt(chains: list) -> str:
         return ""
     lines = [
         "",
-        "【検索意図チェーン：地の文に入れる具体化ワード】",
-        "以下の具体化ワードを、リード文と各H2末尾の補完文に原文の言葉のまま最低1つずつ反映すること。",
-        "抽象ラベルに言い換えず、数字・比較・情景を含む言葉そのものを使うこと。",
+        "【検索意図チェーン：読者の関心を理解するための分析資料】",
+        "以下は検索意図の仮説であり、読者の実際の発言や確認済み事実ではない。",
+        "判断に必要な説明・比較項目へ変換し、原文の転記や各H2末尾への挿入はしない。",
+        "不自然な表現、恐怖を煽る表現、未検証の数値・安全性・成果の保証は採用しない。",
+        "共感表現を反復せず、確認済みの具体的な条件や機能で疑問に答える。",
     ]
     for c in phrases:
         direction = c.get("direction", "")
