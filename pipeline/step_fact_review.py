@@ -4,13 +4,14 @@ import anthropic
 
 from .ai import create_with_retry, get_step_config
 from .db import get_artifact, upsert_artifact
+from .source_freshness import SOURCE_FRESHNESS_POLICY, SOURCE_POLICY_VERSION, current_check_date, freshness_context
 
 MODEL, MAX_TOKENS = get_step_config("fact_review")
 
 VERIFY_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 20}
 AUDIT_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 8}
 
-VERIFY_SYSTEM_PROMPT = """\
+VERIFY_SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたはSEO記事の主任ファクトチェッカーです。完成記事を主張単位で監査し、証跡を残してください。
 
 【必須フロー】
@@ -65,7 +66,7 @@ VERIFY_SYSTEM_PROMPT = """\
 ===FACTCHECK_REPORT_END===
 """
 
-AUDIT_SYSTEM_PROMPT = """\
+AUDIT_SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたは最終品質監査者です。すでにファクトチェックされた記事と検証レポートを再検査してください。
 記事に残る外部検証可能な主張がレポートで裏付けられているかを照合し、必要な場合だけweb_searchで再確認してください。
 裏付けのない断定は削除し、誤修正は原典に基づいて直してください。新しい事実や数値を追加してはいけません。
@@ -120,11 +121,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print("[fact_review] Starting claim-level verification...")
     original = get_artifact(job_id, "article")["content_text"]
     client = anthropic.Anthropic(api_key=api_key)
+    checked_on = current_check_date()
 
     verify_resp, verify_raw, verify_queries = _run_search_pass(
         client,
         system=VERIFY_SYSTEM_PROMPT,
-        prompt=f"キーワード: {keyword}\n\n## 完成記事\n{original}",
+        prompt=freshness_context(checked_on) + f"キーワード: {keyword}\n\n## 完成記事\n{original}",
         tool=VERIFY_SEARCH_TOOL,
     )
     verified_article = _parse_block(verify_raw, "===ARTICLE_START===", "===ARTICLE_END===")
@@ -134,6 +136,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         raise ValueError("Fact review response was incomplete; original article was preserved")
 
     audit_prompt = (
+        freshness_context(checked_on) +
         f"## 検証後の記事\n{verified_article}\n\n"
         f"## 主張別検証レポート\n{report}"
     )
@@ -160,6 +163,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "model": MODEL,
             "verification_search_queries": verify_queries,
             "audit_search_queries": audit_queries,
+            "source_policy_version": SOURCE_POLICY_VERSION,
+            "checked_on": checked_on,
             "input_tokens": verify_resp.usage.input_tokens + audit_resp.usage.input_tokens,
             "output_tokens": verify_resp.usage.output_tokens + audit_resp.usage.output_tokens,
         },

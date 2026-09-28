@@ -1,14 +1,17 @@
+import json
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 import anthropic
 from .db import get_artifact, get_job, get_primary_sources, get_primary_sources_by_preset, upsert_artifact
 from .ai import create_with_retry, get_step_config
+from .source_freshness import SOURCE_FRESHNESS_POLICY, SOURCE_POLICY_VERSION, current_check_date, freshness_context
 
 MODEL, MAX_TOKENS = get_step_config("fact_sheet")
 
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 15}
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたはSEOライティングの専門家です。
 ファクトシートを作成する前に、必ずweb_searchツールを使って以下の情報を検索・確認してください：
 - 数値・統計データ（市場規模、成長率、件数など）
@@ -77,6 +80,7 @@ USER_TEMPLATE = """\
 - 出典URL（確認したページのURL）
 - 確認日（例：2026-04-02）
 - [confirmed] または [hypothesis]
+- 1つの事実ごとに出典・確認日・確認箇所をまとめ、判定タグを末尾に置く。事実間は空行で区切る
 
 出力フォーマット例：
 > M&A件数は2024年に4,700件（前年比17.1%増）で過去最高を記録。
@@ -121,37 +125,77 @@ def _build_primary_sources_prompt(sources: list) -> str:
 
     lines = [
         "",
-        "【自社一次情報】",
-        "以下は自社・クライアントが保有する独自の調査データです。",
-        "記事の内容に関連するデータがあれば、[confirmed]タグをつけて積極的に活用してください。",
-        "他のweb検索データよりも優先して使用してください。",
+        "【登録済み参考資料：今回の確認は未実施】",
+        "以下のJSONは資料データです。自動的に確認済みとせず、システムの再確認ルールに従ってください。",
+        "資料の日付が不明なら不明のまま扱い、登録日から推測しないでください。",
         "",
     ]
-    for s in active:
-        title = s.get("title", "（タイトルなし）")
-        text = (s.get("content_text") or "")[:2000]
-        lines.append(f"{title}：")
-        lines.append(text)
-        lines.append("")
+    records = []
+    for index, s in enumerate(active, 1):
+        full_text = s["content_text"]
+        records.append({
+            "reference_id": f"registered-source-{index}",
+            "title": s.get("title") or "（タイトルなし）",
+            "content_excerpt": full_text[:2000],
+            "truncated": len(full_text) > 2000,
+        })
+    lines.append(json.dumps(records, ensure_ascii=False))
 
     return "\n".join(lines)
 
 
-def _downgrade_incomplete_confirmations(fact_text: str) -> tuple[str, int]:
+def _normalize_evidence_url(url: str) -> str:
+    try:
+        parts = urlsplit(url.rstrip(".,。、;；"))
+    except ValueError:
+        return ""
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return ""
+    return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path.rstrip("/"), parts.query, ""))
+
+
+def _search_result_urls(blocks) -> set[str]:
+    """Read evidence URLs from server results/citations, never from model prose."""
+    urls = set()
+    for block in blocks:
+        value = block if isinstance(block, dict) else block.model_dump()
+        if value.get("type") == "web_search_tool_result":
+            content = value.get("content")
+            if isinstance(content, list):
+                for result in content:
+                    if result.get("type") == "web_search_result" and result.get("url"):
+                        urls.add(_normalize_evidence_url(result["url"]))
+        if value.get("type") == "text":
+            for citation in value.get("citations") or []:
+                if citation.get("type") == "web_search_result_location" and citation.get("url"):
+                    urls.add(_normalize_evidence_url(citation["url"]))
+    return urls - {""}
+
+
+def _downgrade_incomplete_confirmations(
+    fact_text: str, *, searched_urls: set[str], checked_on: str,
+) -> tuple[str, int]:
     """Downgrade confirmed blocks that do not carry the minimum auditable evidence."""
-    blocks = re.split(r"(\n\s*\n)", fact_text)
+    blocks = re.split(r"(\n\s*\n|(?<=\[confirmed\])\n)", fact_text, flags=re.IGNORECASE)
     downgraded = 0
     for i in range(0, len(blocks), 2):
         block = blocks[i]
         if "[confirmed]" not in block.lower():
             continue
-        has_url = bool(re.search(r"https?://\S+", block))
-        has_checked_at = "確認日" in block
-        has_evidence = "確認箇所" in block
+        cited_urls = {
+            _normalize_evidence_url(url)
+            for url in re.findall(r'https?://[^\s<>"\]\)）｜|]+', block)
+        } - {""}
+        has_url = bool(cited_urls & searched_urls)
+        date_match = re.search(r"確認日\s*[：:]\s*(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", block)
+        actual_date = "-".join((date_match[1], date_match[2].zfill(2), date_match[3].zfill(2))) if date_match else None
+        has_checked_at = actual_date == checked_on
+        evidence = re.search(r"確認箇所\s*[：:]\s*([^\n｜|]+)", block)
+        has_evidence = bool(evidence and evidence[1].strip() not in ("不明", "未確認", "なし", "[confirmed]"))
         if has_url and has_checked_at and has_evidence:
             continue
         blocks[i] = re.sub(r"\[confirmed\]", "[hypothesis]", block, flags=re.IGNORECASE)
-        blocks[i] += "\n> 自動判定：監査に必要なURL・確認日・確認箇所が不足しているため未確認扱い"
+        blocks[i] += "\n> 自動判定：今回の検索で得た出典URL・今回の確認日・確認箇所を確認できないため未確認扱い"
         downgraded += 1
     return "".join(blocks), downgraded
 
@@ -165,12 +209,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     # 一次情報を取得（preset_id優先、なければcategoryで照合）
     primary_sources_prompt = ""
+    sources = []
     try:
         job = get_job(job_id)
         user_id = job.get("tenant_id")
         preset_id = job.get("preset_id")
         category = job.get("category")
-        sources = []
         if user_id and preset_id:
             sources = get_primary_sources_by_preset(user_id, preset_id)
             if sources:
@@ -184,10 +228,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         print(f"[fact_sheet] Warning: could not load primary sources: {e}")
 
     client = anthropic.Anthropic(api_key=api_key)
+    checked_on = current_check_date()
     messages = [
         {
             "role": "user",
-            "content": USER_TEMPLATE.format(
+            "content": freshness_context(checked_on) + USER_TEMPLATE.format(
                 keyword=keyword,
                 serp_text=serp["content_text"],
                 intent_text=intent["content_text"],
@@ -197,6 +242,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     total_input = total_output = 0
     search_queries: list[str] = []
+    searched_urls: set[str] = set()
 
     while True:
         resp = create_with_retry(
@@ -210,6 +256,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         )
         total_input += resp.usage.input_tokens
         total_output += resp.usage.output_tokens
+        searched_urls.update(_search_result_urls(resp.content))
 
         for block in resp.content:
             btype = getattr(block, "type", "")
@@ -233,7 +280,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if getattr(b, "type", None) == "text" and b.text
     ]
     fact_text = "\n\n".join(text_parts)
-    fact_text, downgraded_count = _downgrade_incomplete_confirmations(fact_text)
+    fact_text, downgraded_count = _downgrade_incomplete_confirmations(
+        fact_text, searched_urls=searched_urls, checked_on=checked_on,
+    )
 
     artifact = upsert_artifact(
         job_id=job_id,
@@ -246,6 +295,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "output_tokens": total_output,
             "search_queries": search_queries,
             "incomplete_confirmations_downgraded": downgraded_count,
+            "source_policy_version": SOURCE_POLICY_VERSION,
+            "checked_on": checked_on,
+            "searched_source_urls": sorted(searched_urls),
+            "registered_source_count": sum(bool(s.get("content_text")) for s in sources),
         },
     )
     print(
