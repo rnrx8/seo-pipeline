@@ -7,6 +7,8 @@ from .db import get_artifact, get_job, get_primary_sources, get_primary_sources_
 from .ai import create_with_retry, get_step_config
 from .source_freshness import SOURCE_FRESHNESS_POLICY, SOURCE_POLICY_VERSION, current_check_date, freshness_context
 
+from .fresh_sources import FreshSources, load_settings, run_with_fetch
+
 MODEL, MAX_TOKENS = get_step_config("fact_sheet")
 
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 15}
@@ -20,7 +22,7 @@ SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 - 業界の最新動向・トレンド
 
 【重要】出力する各事実・データには必ず以下のいずれかを付記してください：
-- [confirmed] : web_searchで実際に確認できた情報
+- [confirmed] : 今回直接取得した本文で根拠を確認できた情報
 - [hypothesis] : SERPや推測に基づく情報（web_searchで未確認）
 
 web_searchを最低5回は実行してから、ファクトシートをまとめてください。
@@ -173,7 +175,7 @@ def _search_result_urls(blocks) -> set[str]:
 
 
 def _downgrade_incomplete_confirmations(
-    fact_text: str, *, searched_urls: set[str], checked_on: str,
+    fact_text: str, *, searched_urls: set[str], checked_on: str, fresh: FreshSources | None = None,
 ) -> tuple[str, int]:
     """Downgrade confirmed blocks that do not carry the minimum auditable evidence."""
     blocks = re.split(r"(\n\s*\n|(?<=\[confirmed\])\n)", fact_text, flags=re.IGNORECASE)
@@ -192,10 +194,12 @@ def _downgrade_incomplete_confirmations(
         has_checked_at = actual_date == checked_on
         evidence = re.search(r"確認箇所\s*[：:]\s*([^\n｜|]+)", block)
         has_evidence = bool(evidence and evidence[1].strip() not in ("不明", "未確認", "なし", "[confirmed]"))
+        if fresh is not None:
+            has_url = has_evidence = fresh.evidence_matches(block)
         if has_url and has_checked_at and has_evidence:
             continue
         blocks[i] = re.sub(r"\[confirmed\]", "[hypothesis]", block, flags=re.IGNORECASE)
-        blocks[i] += "\n> 自動判定：今回の検索で得た出典URL・今回の確認日・確認箇所を確認できないため未確認扱い"
+        blocks[i] += "\n> 自動判定：今回の出典URL・確認日・取得本文の根拠を確認できないため未確認扱い"
         downgraded += 1
     return "".join(blocks), downgraded
 
@@ -210,79 +214,74 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # 一次情報を取得（preset_id優先、なければcategoryで照合）
     primary_sources_prompt = ""
     sources = []
-    try:
-        job = get_job(job_id)
-        user_id = job.get("tenant_id")
-        preset_id = job.get("preset_id")
-        category = job.get("category")
-        if user_id and preset_id:
-            sources = get_primary_sources_by_preset(user_id, preset_id)
-            if sources:
-                print(f"[fact_sheet] Loaded {len(sources)} primary sources for preset_id='{preset_id}'")
-        if not sources and user_id and category:
-            sources = get_primary_sources(user_id, category)
-            if sources:
-                print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
-        primary_sources_prompt = _build_primary_sources_prompt(sources)
-    except Exception as e:
-        print(f"[fact_sheet] Warning: could not load primary sources: {e}")
+    job = get_job(job_id)
+    user_id = job.get("tenant_id")
+    preset_id = job.get("preset_id")
+    category = job.get("category")
+    if user_id and preset_id:
+        sources = get_primary_sources_by_preset(user_id, preset_id)
+        if sources:
+            print(f"[fact_sheet] Loaded {len(sources)} primary sources for preset_id='{preset_id}'")
+    if not sources and user_id and category:
+        sources = get_primary_sources(user_id, category)
+        if sources:
+            print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
+    primary_sources_prompt = _build_primary_sources_prompt(sources)
+    fresh = FreshSources(job, load_settings(job, sources))
+    fresh.prefetch()
+    fresh.save(job_id)
 
     client = anthropic.Anthropic(api_key=api_key)
     checked_on = current_check_date()
-    messages = [
-        {
-            "role": "user",
-            "content": freshness_context(checked_on) + USER_TEMPLATE.format(
-                keyword=keyword,
-                serp_text=serp["content_text"],
-                intent_text=intent["content_text"],
-            ) + primary_sources_prompt,
-        }
-    ]
-
-    total_input = total_output = 0
-    search_queries: list[str] = []
-    searched_urls: set[str] = set()
-
-    while True:
-        resp = create_with_retry(
-            client,
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            tools=[WEB_SEARCH_TOOL],
-            messages=messages,
-            extra_headers={"anthropic-beta": "web-search-2025-03-05"},
+    prompt = freshness_context(checked_on) + USER_TEMPLATE.format(
+        keyword=keyword, serp_text=serp["content_text"], intent_text=intent["content_text"],
+    ) + primary_sources_prompt
+    try:
+        resp, fact_text, search_queries, observed = run_with_fetch(
+            client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT, prompt=prompt, search_tool=WEB_SEARCH_TOOL, fresh=fresh,
         )
-        total_input += resp.usage.input_tokens
-        total_output += resp.usage.output_tokens
-        searched_urls.update(_search_result_urls(resp.content))
-
-        for block in resp.content:
-            btype = getattr(block, "type", "")
-            # web_search_20250305 may surface as tool_use or server_tool_use
-            if btype in ("tool_use", "server_tool_use") and getattr(block, "name", "") == "web_search":
-                query = (block.input or {}).get("query", "")
-                search_queries.append(query)
-                print(f"[fact_sheet] Web search: {query!r}")
-            elif btype not in ("text", "tool_use", "server_tool_use", "tool_result", "web_search_tool_result"):
-                print(f"[fact_sheet] Unknown block type: {btype}")
-
-        if resp.stop_reason != "tool_use":
-            break
-
-        # Continue the agentic loop (web_search_20250305 is server-side)
-        messages.append({"role": "assistant", "content": resp.content})
-
-    # Collect all text blocks from the final response
-    text_parts = [
-        b.text for b in resp.content
-        if getattr(b, "type", None) == "text" and b.text
-    ]
-    fact_text = "\n\n".join(text_parts)
-    fact_text, downgraded_count = _downgrade_incomplete_confirmations(
-        fact_text, searched_urls=searched_urls, checked_on=checked_on,
+    finally:
+        fresh.save(job_id)
+    searched_urls = _search_result_urls(observed)
+    total_input, total_output = resp.usage.input_tokens, resp.usage.output_tokens
+    fresh.fetch_confirmed_citations(fact_text)
+    _, needs_repair = _downgrade_incomplete_confirmations(
+        fact_text, searched_urls=searched_urls, checked_on=checked_on, fresh=fresh,
     )
+    if needs_repair:
+        # One bounded repair pass gives the writer actual bodies, not merely a
+        # downgraded draft which could leave the central service claim unusable.
+        try:
+            repair_resp, fact_text, repair_queries, repair_observed = run_with_fetch(
+                client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
+                system=SOURCE_FRESHNESS_POLICY + "\nあなたはファクトシートの出典照合担当です。",
+                prompt=freshness_context(checked_on) +
+                    "以下の下書きを今回取得した本文と照合し、修正したファクトシート全体だけを返してください。"
+                    "新しい話題・主張を増やさない。設定と矛盾する古い情報は、今回の公式本文の適用条件を確認して更新する。"
+                    "根拠URLは実際に取得したページに合わせる。引用はそのページ本文から短い連続した原文を正確に抜き出す。"
+                    "各事実とURL・確認日・確認箇所・判定を一つの段落にまとめ、段落間を空行で区切る。"
+                    "根拠がない事実は[hypothesis]へ移し、冒頭の説明・要約・表・注意点にも未確認の断定を残さない。"
+                    "検索要約と公式本文が矛盾する場合は、同じ対象・条件の公式本文を優先する。\n\n" + fact_text,
+                search_tool={**WEB_SEARCH_TOOL, "max_uses": 3}, fresh=fresh,
+            )
+            total_input += repair_resp.usage.input_tokens
+            total_output += repair_resp.usage.output_tokens
+            search_queries.extend(repair_queries)
+            searched_urls.update(_search_result_urls(repair_observed))
+            fresh.fetch_confirmed_citations(fact_text)
+        finally:
+            fresh.save(job_id)
+    else:
+        fresh.save(job_id)
+    fact_text, downgraded_count = _downgrade_incomplete_confirmations(
+        fact_text, searched_urls=searched_urls, checked_on=checked_on, fresh=fresh,
+    )
+
+    failures = [p for p in fresh.pages.values() if p['status'] != 'success']
+    if failures:
+        fact_text += "\n\n### URL再取得で確認できなかった資料\n" + "\n".join(
+            f"- {p['url']}：{p['reason']}。登録値は確認済みとして使用しない。" for p in failures)
 
     artifact = upsert_artifact(
         job_id=job_id,
@@ -298,6 +297,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "source_policy_version": SOURCE_POLICY_VERSION,
             "checked_on": checked_on,
             "searched_source_urls": sorted(searched_urls),
+            "directly_fetched_urls": [p["url"] for p in fresh.pages.values() if p["status"] == "success"],
+            "direct_fetch_failures": len(failures),
             "registered_source_count": sum(bool(s.get("content_text")) for s in sources),
         },
     )

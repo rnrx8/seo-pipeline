@@ -1,3 +1,4 @@
+from .fresh_sources import WRITING_POLICY
 import json
 import re
 import anthropic
@@ -8,10 +9,15 @@ from .step_structure_guard import validate_structure
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 あなたはSEOライティングの品質レビュー担当編集者です。
 提供された記事を以下のチェックリストに従って検査・修正し、
 修正済み記事とレビューサマリーを指定フォーマットで出力してください。
+
+【登録情報への巻き戻り防止】
+- 本文・比較表・CTA内のサービスの料金・件数・機能・条件を、今回のファクトシートと照合する。
+- 今回の[confirmed]と矛盾する古い登録値は修正し、根拠がない断定は削除する。CTAのリンク先・配置は保持する。
+- 以下の「内容・事実は変えない」は文体整形時の原則。今回の確認済み事実と矛盾する記述の修正は実施し、サマリーに記録する。
 
 【チェック・修正項目】
 
@@ -176,6 +182,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
+    fact_sheet_text = get_artifact(job_id, "fact_sheet")["content_text"]
     try:
         contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
     except Exception as exc:
@@ -220,7 +227,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     word_count_instruction=word_count_instruction,
                     content_contract_block=content_contract_block,
                     learned_rules_block=learned_rules_block,
-                ),
+                ) + "\n## 今回のファクトシート\n" + fact_sheet_text,
             }
         ],
     )

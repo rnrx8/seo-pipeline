@@ -1,3 +1,5 @@
+from .fresh_sources import FreshSources, load_settings, load_primary_sources, run_with_fetch
+from .db import get_job
 import re
 
 import anthropic
@@ -61,7 +63,7 @@ VERIFY_SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 - 根拠: URL
 - 発行主体: ...
 - 公開・更新日: ...
-- 確認箇所: 根拠となる短い要約（原文の長文転載は禁止）
+- 確認箇所: 「今回取得した本文から根拠となる連続した短い原文（8〜240文字）」
 - 独立性・条件確認: ...
 ===FACTCHECK_REPORT_END===
 """
@@ -83,37 +85,39 @@ AUDIT_SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 """
 
 
-def _collect_response(resp) -> tuple[str, list[str]]:
-    text_parts: list[str] = []
-    queries: list[str] = []
-    for block in resp.content:
-        btype = getattr(block, "type", "")
-        if btype == "text" and getattr(block, "text", None):
-            text_parts.append(block.text)
-        elif btype in ("tool_use", "server_tool_use") and getattr(block, "name", "") == "web_search":
-            query = (getattr(block, "input", None) or {}).get("query", "")
-            if query:
-                queries.append(query)
-    return "\n\n".join(text_parts), queries
-
-
 def _parse_block(text: str, start: str, end: str) -> str | None:
     match = re.search(rf"{re.escape(start)}\s*\n(.*?)\n{re.escape(end)}", text, re.DOTALL)
     return match.group(1).strip() if match else None
 
 
-def _run_search_pass(client, *, system: str, prompt: str, tool: dict):
-    resp = create_with_retry(
-        client,
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=system,
-        tools=[tool],
-        messages=[{"role": "user", "content": prompt}],
-        extra_headers={"anthropic-beta": "web-search-2025-03-05"},
+def _run_search_pass(client, *, system: str, prompt: str, tool: dict, fresh):
+    report_tag = "FINAL_AUDIT" if "===FINAL_AUDIT_START===" in system else "FACTCHECK_REPORT"
+    prompt += ("\n\n出力は必ず===ARTICLE_START===と===ARTICLE_END===で囲んだ記事全文、および"
+               f"==={report_tag}_START===と==={report_tag}_END===で囲んだレポート全文を含めてください。"
+               "変更がなくても本文を省略しないでください。確認箇所のラベルは各主張につき『確認箇所:』に統一してください。")
+    resp, raw, queries, _ = run_with_fetch(
+        client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
+        system=system, prompt=prompt, search_tool=tool, fresh=fresh,
     )
-    raw, queries = _collect_response(resp)
+    required = ("===ARTICLE_START===", "===ARTICLE_END===", f"==={report_tag}_START===", f"==={report_tag}_END===")
+    if any(marker not in raw for marker in required):
+        repaired, raw, more_queries, _ = run_with_fetch(
+            client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
+            system=system, prompt=prompt + "\n前回の応答は必須の出力ブロックが不足しています。全ブロックを省略せず再出力してください。\n" + raw,
+            search_tool=tool, fresh=fresh,
+        )
+        repaired.usage.input_tokens += resp.usage.input_tokens
+        repaired.usage.output_tokens += resp.usage.output_tokens
+        resp = repaired
+        queries.extend(more_queries)
     return resp, raw, queries
+
+
+def _require_direct_evidence(report, fresh):
+    report = report.replace("**", "").replace("`", "")
+    for block in re.split(r"\n(?=###?\s)", report):
+        if re.search(r"判定[：:]\s*(?:VERIFIED_T[12]|CORRECTED)", block) and not fresh.evidence_matches(block):
+            raise ValueError("確認済み判定に直接取得した本文の根拠がありません。元の記事を保持しました。")
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -122,35 +126,51 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     original = get_artifact(job_id, "article")["content_text"]
     client = anthropic.Anthropic(api_key=api_key)
     checked_on = current_check_date()
+    job = get_job(job_id)
+    fresh = FreshSources(job, load_settings(job, load_primary_sources(job)))
+    fresh.prefetch(extra=original)
+    fresh.save(job_id, "fresh_sources_review")
 
-    verify_resp, verify_raw, verify_queries = _run_search_pass(
-        client,
-        system=VERIFY_SYSTEM_PROMPT,
-        prompt=freshness_context(checked_on) + f"キーワード: {keyword}\n\n## 完成記事\n{original}",
-        tool=VERIFY_SEARCH_TOOL,
-    )
+    try:
+        verify_resp, verify_raw, verify_queries = _run_search_pass(
+            client,
+            system=VERIFY_SYSTEM_PROMPT,
+            prompt=freshness_context(checked_on) + f"キーワード: {keyword}\n\n## 完成記事\n{original}",
+            tool=VERIFY_SEARCH_TOOL, fresh=fresh,
+        )
+    finally:
+        fresh.save(job_id, "fresh_sources_review")
     verified_article = _parse_block(verify_raw, "===ARTICLE_START===", "===ARTICLE_END===")
     report = _parse_block(verify_raw, "===FACTCHECK_REPORT_START===", "===FACTCHECK_REPORT_END===")
     verify_truncated = getattr(verify_resp, "stop_reason", None) == "max_tokens"
     if verify_truncated or not verified_article or not report:
         raise ValueError("Fact review response was incomplete; original article was preserved")
 
+    fresh.save(job_id, "fresh_sources_review")
+    _require_direct_evidence(report, fresh)
+
     audit_prompt = (
         freshness_context(checked_on) +
         f"## 検証後の記事\n{verified_article}\n\n"
         f"## 主張別検証レポート\n{report}"
     )
-    audit_resp, audit_raw, audit_queries = _run_search_pass(
-        client,
-        system=AUDIT_SYSTEM_PROMPT,
-        prompt=audit_prompt,
-        tool=AUDIT_SEARCH_TOOL,
-    )
+    try:
+        audit_resp, audit_raw, audit_queries = _run_search_pass(
+            client,
+            system=AUDIT_SYSTEM_PROMPT,
+            prompt=audit_prompt,
+            tool=AUDIT_SEARCH_TOOL, fresh=fresh,
+        )
+    finally:
+        fresh.save(job_id, "fresh_sources_review")
     final_article = _parse_block(audit_raw, "===ARTICLE_START===", "===ARTICLE_END===")
     audit_report = _parse_block(audit_raw, "===FINAL_AUDIT_START===", "===FINAL_AUDIT_END===")
     audit_truncated = getattr(audit_resp, "stop_reason", None) == "max_tokens"
     if audit_truncated or not final_article or not audit_report:
         raise ValueError("Final fact audit response was incomplete; original article was preserved")
+
+    fresh.save(job_id, "fresh_sources_review")
+    _require_direct_evidence(audit_report, fresh)
 
     full_report = f"# 強化ファクトチェックレポート\n\n{report}\n\n## 最終再検査\n{audit_report}"
     all_queries = verify_queries + audit_queries

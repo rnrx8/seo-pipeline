@@ -1,3 +1,4 @@
+from .fresh_sources import WRITING_POLICY
 import json
 import re
 import anthropic
@@ -15,7 +16,7 @@ from .db import (
 
 MODEL, MAX_TOKENS = get_step_config("outline")
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 あなたはSEOライティングの専門家です。
 検索意図・ファクトシート・競合データをもとに、上位表示を狙える記事構成を作成してください。
 """
@@ -305,7 +306,7 @@ def _build_service_prompt(service: dict) -> str:
         for sp in sps:
             lines.append(f"  - {sp}")
     if service.get("must_include"):
-        lines.append(f"必ず構成に含める内容：{service['must_include']}")
+        lines.append(f"必ず構成に含める内容（事実・数値は今回の確認結果を優先）：{service['must_include']}")
     if service.get("must_exclude"):
         lines.append(f"構成への記載禁止事項：{service['must_exclude']}")
     lines.append("上記のサービスを記事の主要な紹介対象として構成を設計してください。")
@@ -363,7 +364,7 @@ def _build_extra_instructions(job: dict) -> str:
 
     must_urls = job.get("must_reference_urls")
     if must_urls:
-        lines.append(f"\n【参照必須URL】\n以下のURLの内容を記事中で必ず参照・引用・リンクしてください（[confirmed]情報として扱う）：\n{must_urls}")
+        lines.append(f"\n【参照必須URL】\n以下のURLの内容を記事中で必ず参照・引用・リンクしてください（今回取得した本文で確認できた事実のみ使用。URL指定だけで[confirmed]にしない）：\n{must_urls}")
 
     never_urls = job.get("never_reference_urls")
     if never_urls:

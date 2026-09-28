@@ -1,3 +1,4 @@
+from .fresh_sources import WRITING_POLICY
 import json
 import re as _re
 import time
@@ -11,7 +12,7 @@ MODEL, MAX_TOKENS = get_step_config("article")
 
 PART_DELAY = 20  # seconds between API calls
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 あなたはSEOライティングの専門家です。
 構成案とファクトシートに基づき、読者にとって価値が高くSEOにも強い記事を執筆してください。
 
@@ -496,7 +497,7 @@ def _build_service_prompt(service: dict) -> str:
     if service.get("raw_content"):
         lines.append(f"サービス詳細情報：\n{service['raw_content'][:1200]}")
     if service.get("must_include"):
-        lines.append(f"必ず本文に含める内容：{service['must_include']}")
+        lines.append(f"必須記載内容（事実・数値は今回の確認結果で更新し、未確認なら断定しない）：{service['must_include']}")
     if service.get("must_exclude"):
         lines.append(f"本文への記載禁止事項：{service['must_exclude']}")
     lines.append("上記のサービスを記事の主要な紹介対象として自然に取り上げてください。")

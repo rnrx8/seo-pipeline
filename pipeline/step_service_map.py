@@ -3,6 +3,7 @@
 This step is deliberately read-only for the outline. Structural mutation belongs
 to step_structure_guard so an LLM placement decision cannot append duplicate H2s.
 """
+from .fresh_sources import WRITING_POLICY
 import json
 import re as _re
 import anthropic
@@ -13,7 +14,7 @@ MODEL, MAX_TOKENS = get_step_config("service_map")
 
 _COMPARISON_KEYWORDS = ("比較", "おすすめ", "ランキング", "一覧")
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 あなたはSEOコンテンツ設計の専門家です。
 記事構成案を分析して、自社サービスの最適な紹介方法とCTA挿入位置を決定してください。
 必ず指定のJSON形式のみで回答してください。余分なテキストは書かないこと。
@@ -112,7 +113,7 @@ def _format_service_info(service: dict) -> str:
     if sps:
         lines.append("セールスポイント：" + "、".join(sps))
     if service.get("must_include"):
-        lines.append(f"必ず含める内容：{service['must_include']}")
+        lines.append(f"必須記載内容（事実・数値は今回の確認結果で更新し、未確認なら断定しない）：{service['must_include']}")
     if service.get("must_exclude"):
         lines.append(f"記載禁止：{service['must_exclude']}")
     return "\n".join(lines)
@@ -204,7 +205,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {
                 "role": "user",
                 "content": USER_TEMPLATE.format(
-                    outline_text=outline_text,
+                    outline_text=outline_text + "\n## 今回のファクトシート\n" + get_artifact(job_id, "fact_sheet")["content_text"],
                     service_info=service_info,
                     cta_info=cta_info,
                     article_purpose=article_purpose,

@@ -136,6 +136,7 @@ def get_company_settings(user_id: str, category: str) -> list:
     resp = requests.get(
         f"{_base()}/company_settings",
         headers=_headers(),
+        timeout=20,
         params={
             "tenant_id": f"eq.{user_id}",
             "category": f"eq.{category}",
@@ -143,7 +144,8 @@ def get_company_settings(user_id: str, category: str) -> list:
             "select": "*",
         },
     )
-    return resp.json() if resp.status_code == 200 else []
+    resp.raise_for_status()
+    return resp.json()
 
 
 def get_primary_sources(user_id: str, category: str) -> list:
@@ -151,13 +153,15 @@ def get_primary_sources(user_id: str, category: str) -> list:
     resp = requests.get(
         f"{_base()}/primary_sources",
         headers=_headers(),
+        timeout=20,
         params={
             "tenant_id": f"eq.{user_id}",
             "category": f"eq.{category}",
             "select": "title,content_text",
         },
     )
-    return resp.json() if resp.status_code == 200 else []
+    resp.raise_for_status()
+    return resp.json()
 
 
 def get_primary_sources_by_preset(user_id: str, preset_id: str) -> list:
@@ -165,13 +169,15 @@ def get_primary_sources_by_preset(user_id: str, preset_id: str) -> list:
     resp = requests.get(
         f"{_base()}/primary_sources",
         headers=_headers(),
+        timeout=20,
         params={
             "tenant_id": f"eq.{user_id}",
             "preset_id": f"eq.{preset_id}",
             "select": "title,content_text",
         },
     )
-    return resp.json() if resp.status_code == 200 else []
+    resp.raise_for_status()
+    return resp.json()
 
 
 def get_service_by_id(service_id: str) -> dict | None:
@@ -179,9 +185,11 @@ def get_service_by_id(service_id: str) -> dict | None:
     resp = requests.get(
         f"{_base()}/services",
         headers=_headers(),
+        timeout=20,
         params={"id": f"eq.{service_id}", "limit": "1", "select": "*"},
     )
-    rows = resp.json() if resp.status_code == 200 else []
+    resp.raise_for_status()
+    rows = resp.json()
     return rows[0] if rows else None
 
 
@@ -190,9 +198,11 @@ def get_cta_by_id(cta_id: str) -> dict | None:
     resp = requests.get(
         f"{_base()}/cta_blocks",
         headers=_headers(),
+        timeout=20,
         params={"id": f"eq.{cta_id}", "limit": "1", "select": "*"},
     )
-    rows = resp.json() if resp.status_code == 200 else []
+    resp.raise_for_status()
+    rows = resp.json()
     return rows[0] if rows else None
 
 

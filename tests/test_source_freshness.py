@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from pipeline import step_fact_sheet as sheet, step_fact_review as review
 from pipeline.source_freshness import SOURCE_POLICY_VERSION
+from pipeline.fresh_sources import FreshSources
 
 
 TODAY = "2026-09-28"
@@ -12,7 +13,7 @@ OFFICIAL = "https://official.example/pricing"
 
 
 def fact(value="月額2,000円", *, url=OFFICIAL, day=TODAY):
-    return f"> {value}。出典：{url} ｜確認日：{day}｜確認箇所：料金表に記載｜[confirmed]"
+    return f"> {value}。出典：{url} ｜確認日：{day}｜確認箇所：「現在の料金は月額2,000円」｜[confirmed]"
 
 
 class Block(SimpleNamespace):
@@ -45,7 +46,7 @@ class SourceFreshnessTests(unittest.TestCase):
                 self.assertEqual(self.check_fact(content)[1], 1)
 
     def test_unknown_evidence_is_not_confirmed(self):
-        self.assertEqual(self.check_fact(fact().replace("料金表に記載", "不明"))[1], 1)
+        self.assertEqual(self.check_fact(fact().replace("「現在の料金は月額2,000円」", "不明"))[1], 1)
 
     def test_adjacent_facts_do_not_borrow_each_others_sources(self):
         content = fact() + "\n> 登録資料では会員数100万人。[confirmed]"
@@ -86,6 +87,9 @@ class SourceFreshnessTests(unittest.TestCase):
         with patch.object(sheet, "get_artifact", return_value={"content_text": "テスト資料"}), \
              patch.object(sheet, "get_job", return_value={"tenant_id": "owner", "preset_id": "preset"}), \
              patch.object(sheet, "get_primary_sources_by_preset", return_value=[{"title": "旧資料", "content_text": "月額1,000円"}]) as sources, \
+             patch.object(FreshSources, "save"), \
+             patch.object(FreshSources, "fetch"), \
+             patch.object(FreshSources, "prefetch", lambda self: self.pages.update({OFFICIAL: {"url": OFFICIAL, "status": "success", "text": "現在の料金は月額2,000円"}})), \
              patch.object(sheet, "current_check_date", return_value=TODAY), \
              patch.object(sheet.anthropic, "Anthropic"), \
              patch.object(sheet, "create_with_retry", return_value=response) as generate, \
@@ -107,6 +111,8 @@ class SourceFreshnessTests(unittest.TestCase):
         second = "===ARTICLE_START===\n最終本文\n===ARTICLE_END===\n===FINAL_AUDIT_START===\nPASS\n===FINAL_AUDIT_END==="
         resp = SimpleNamespace(stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1))
         with patch.object(review, "get_artifact", return_value={"content_text": "旧記事"}), \
+             patch.object(review, "get_job", return_value={}), \
+             patch.object(FreshSources, "save"), \
              patch.object(review, "current_check_date", return_value=TODAY), \
              patch.object(review.anthropic, "Anthropic"), \
              patch.object(review, "_run_search_pass", side_effect=[(resp, first, []), (resp, second, [])]) as passes, \
