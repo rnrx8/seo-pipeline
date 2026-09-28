@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 
-from .db import get_artifact, upsert_artifact
+from .db import get_artifact, get_job, upsert_artifact
+from .article_quality import validate_delivery
 from .step_structure_guard import extract_h2_titles, validate_structure
 
 
@@ -12,6 +13,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article = get_artifact(job_id, "article")
     contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
     violations = validate_structure(article["content_text"], contract, outline=False)
+    outline = get_artifact(job_id, 'outline')['content_text']
+    job = get_job(job_id)
+    violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'))
     report = {
         "stage": "final_article",
         "valid": not violations,

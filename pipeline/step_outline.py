@@ -2,6 +2,7 @@ from .fresh_sources import WRITING_POLICY
 import json
 import re
 import anthropic
+from .article_quality import parse_length_budget, outline_sections
 from .ai import create_with_retry, get_step_config
 from .content_contract import contract_prompt, reference_prompt
 from .db import (
@@ -192,12 +193,8 @@ def _calc_target_word_count(serp_text: str) -> tuple[str, int] | None:
 
 
 def _target_chars(setting: str | None) -> int:
-    nums = [int(value.replace(",", "")) for value in re.findall(r"[\d,]+", setting or "")]
-    if len(nums) >= 2:
-        return (nums[0] + nums[1]) // 2
-    if nums:
-        return nums[0]
-    return 5000
+    budget = parse_length_budget(setting)
+    return budget.target if budget else 5000
 
 
 def ensure_complete_volume_design(outline_text: str, word_count_setting: str | None) -> tuple[str, bool]:
@@ -212,18 +209,31 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
         return outline_text, False
     marker = re.search(r"^###\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
     existing_titles: list[str] = []
+    existing_chars: list[int] = []
     if marker:
         for line in outline_text[marker.end():].splitlines():
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
             if len(cells) >= 4 and re.fullmatch(r"[1-5]", cells[1]) and re.fullmatch(r"[\d,]+字", cells[2]):
                 existing_titles.append(cells[0])
-    if len(existing_titles) == len(h2s) and all(title in existing_titles for title in h2s):
+                existing_chars.append(int(cells[2][:-1].replace(',', '')))
+    target = _target_chars(word_count_setting)
+    sections = outline_sections(outline_text)
+    children = [sum(s['level'] == 3 and s['parent'] == title for s in sections) for title in h2s]
+    floors = [150 + count * 200 for count in children]
+    if (len(existing_titles) == len(h2s) and all(title in existing_titles for title in h2s)
+            and .9 * target <= sum(existing_chars) <= 1.1 * target
+            and all(existing_chars[existing_titles.index(title)] >= floor
+                    for title, floor in zip(h2s, floors))):
         return outline_text, False
 
-    target = _target_chars(word_count_setting)
+    if sum(floors) > target:
+        raise ValueError('文字数目標に対して構成の子見出しが多すぎます。構成を絞って再生成してください。')
     weights = [5 if any(term in title for term in ("比較", "おすすめ", "ランキング")) else 4 for title in h2s]
-    unit = target / sum(weights)
-    allocations = [max(100, round(unit * weight / 100) * 100) for weight in weights]
+    # Reserve space for every H3 before distributing the rest by depth/importance.
+    depth_weights = [weight * (count + 1) for weight, count in zip(weights, children)]
+    remaining = target - sum(floors)
+    allocations = [floor + int(remaining * weight / sum(depth_weights))
+                   for floor, weight in zip(floors, depth_weights)]
     allocations[-1] += target - sum(allocations)
     rows = [
         f"| {title} | {weight} | {chars:,}字 | 検索意図と構造契約に基づく配分 |"
@@ -409,10 +419,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     service_prompt = ""
     cta_prompt = ""
     extra_instructions = ""
-    job = {}
+    job = get_job(job_id)
+    computed_target = None
     word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
     try:
-        job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
         if user_id and category:
@@ -438,15 +448,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             computed = _calc_target_word_count(serp["content_text"])
             if computed:
                 computed_str, hard_cap = computed
+                job['word_count_setting'] = computed_str
+                computed_target = computed_str
                 word_count_instruction = (
                     f"- 目標文字数は「{computed_str}」とする（競合本文の異常値除外平均×1.2。これは推定ではなく確定値）\n"
                     f"- 全H2の推奨文字数合計がこの目標（上限{hard_cap:,}字）に収まるよう設計すること"
                 )
-                try:
-                    update_job_word_count_setting(job_id, computed_str)
-                    print(f"[outline] computed word_count_setting={computed_str!r} (persisted)")
-                except Exception as e:
-                    print(f"[outline] Warning: could not persist word_count_setting: {e}")
         extra_instructions = _build_extra_instructions(job)
         service_id = job.get("service_id")
         if service_id:
@@ -462,6 +469,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 print(f"[outline] Loaded CTA: {cta.get('name')}")
     except Exception as e:
         print(f"[outline] Warning: could not load job settings: {e}")
+
+    # Persistence is mandatory: later stages read this same budget from the job.
+    # Do not swallow a DB failure and let them silently fall back to 5,000 chars.
+    if computed_target is not None:
+        update_job_word_count_setting(job_id, computed_target)
+        print(f'[outline] computed word_count_setting={computed_target!r} (persisted)')
 
     client = anthropic.Anthropic(api_key=api_key)
     message = create_with_retry(
@@ -482,9 +495,23 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             }
         ],
     )
-    outline_text = message.content[0].text
+    total_input = message.usage.input_tokens
+    total_output = message.usage.output_tokens
     if getattr(message, "stop_reason", None) == "max_tokens":
-        print("[outline] Response hit max_tokens; checking generated structure completeness")
+        print('[outline] Response truncated; regenerating the complete outline with a larger limit')
+        message = create_with_retry(
+            client, model=MODEL, max_tokens=MAX_TOKENS * 2, system=SYSTEM_PROMPT,
+            messages=[{'role': 'user', 'content': USER_TEMPLATE.format(
+                keyword=keyword, intent_text=intent['content_text'], fact_text=fact['content_text'],
+                serp_text=serp['content_text'], word_count_instruction=word_count_instruction,
+            ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
+                + '\n前回は出力上限で中断しました。全H2/H3と配分表まで省略せず、構成案全体を出力してください。'}],
+        )
+        total_input += message.usage.input_tokens
+        total_output += message.usage.output_tokens
+        if getattr(message, 'stop_reason', None) == 'max_tokens':
+            raise ValueError('構成案が出力上限で中断されました。未完成の構成から本文は生成できません。')
+    outline_text = message.content[0].text
     outline_text, volume_repaired = ensure_complete_volume_design(
         outline_text, job.get("word_count_setting")
     )
@@ -498,8 +525,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_text=outline_text,
         meta={
             "model": MODEL,
-            "input_tokens": message.usage.input_tokens,
-            "output_tokens": message.usage.output_tokens,
+            "input_tokens": total_input,
+            "output_tokens": total_output,
             "volume_design_repaired": volume_repaired,
         },
     )

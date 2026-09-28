@@ -2,6 +2,7 @@ from .fresh_sources import WRITING_POLICY
 import json
 import re
 import anthropic
+from .article_quality import parse_length_budget, validate_delivery
 from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
@@ -120,14 +121,17 @@ WORD_COUNT_INSTRUCTION = """\
 
 def _word_count_action(actual: int, target_str: str) -> str | None:
     """目標文字数と実文字数を比較し、調整指示文を返す。範囲内ならNone。"""
-    import re as _re
-    nums = [int(n.replace(',', '')) for n in _re.findall(r'[\d,]+', target_str)]
-    if not nums:
+    budget = parse_length_budget(target_str)
+    if budget is None:
         return None
-    lo = nums[0] if len(nums) >= 1 else 0
-    hi = nums[1] if len(nums) >= 2 else nums[0]
-    if actual <= hi * 1.1:
-        return None  # ±10%以内は調整不要
+    if actual < budget.minimum:
+        return (
+            f'目標{budget.target:,}字に対し大幅に不足しています。構成案の未執筆項目と比較対象ごとの説明を補完してください。'
+            '確認済みの根拠だけを使用し、同じ説明の反復や水増しは禁止です。'
+        )
+    if actual <= budget.maximum:
+        return None
+    hi = budget.maximum
     # 超過している場合
     excess = actual - hi
     return (
@@ -183,6 +187,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
     fact_sheet_text = get_artifact(job_id, "fact_sheet")["content_text"]
+    outline_text = get_artifact(job_id, 'outline')['content_text']
+    job = get_job(job_id)
     try:
         contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
     except Exception as exc:
@@ -193,7 +199,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     word_count_instruction = ""
     learned_rules_block = ""
     try:
-        job = get_job(job_id)
         target_str = job.get("word_count_setting")
         if target_str:
             action = _word_count_action(actual_count, target_str)
@@ -227,7 +232,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     word_count_instruction=word_count_instruction,
                     content_contract_block=content_contract_block,
                     learned_rules_block=learned_rules_block,
-                ) + "\n## 今回のファクトシート\n" + fact_sheet_text,
+                ) + '\n## 完成すべき構成案\n' + outline_text
+                + '\n構成のH2/H3/H4を省略せず、見出しの主題を維持する。内部メモ・要確認の比較表は完成品に残さない。\n'
+                + "\n## 今回のファクトシート\n" + fact_sheet_text,
             }
         ],
     )
@@ -254,6 +261,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         )
 
     structure_violations = validate_structure(corrected_article, contract, outline=False)
+    structure_violations += validate_delivery(corrected_article, outline_text, job.get('word_count_setting'))
     if structure_violations:
         print(f"[review] WARNING: review broke protected structure: {structure_violations}. Keeping pre-review article.")
         corrected_article = article_text

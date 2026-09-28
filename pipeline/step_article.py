@@ -2,6 +2,8 @@ from .fresh_sources import WRITING_POLICY
 import json
 import re as _re
 import time
+from .article_quality import parse_length_budget, select_outline, validate_delivery
+from .step_outline import ensure_complete_volume_design
 import anthropic
 from .ai import create_with_retry, get_step_config
 from .content_contract import contract_prompt, reference_prompt
@@ -183,34 +185,24 @@ def _split_sections_into_parts(
     if n <= 2:
         return sections[:1], [], sections[1:]
 
-    total = sum(wc for _, _, wc in sections)
-    t1, t2 = total / 3, 2 * total / 3
-
-    cum = 0
-    split1 = split2 = 0
-    for i, (_, _, wc) in enumerate(sections):
-        cum += wc
-        if cum <= t1:
-            split1 = i + 1
-        if cum <= t2:
-            split2 = i + 1
-
-    split1 = max(1, min(split1, n - 2))
-    split2 = max(split1 + 1, min(split2, n - 1))
+    prefix = [0]
+    for _, _, chars in sections:
+        prefix.append(prefix[-1] + chars)
+    target = prefix[-1] / 3
+    # Choose boundaries around whole H2 subtrees. The old floor-at-1/3 split
+    # pushed a large comparison chapter into an already oversized middle part.
+    split1, split2 = min(
+        ((i, j) for i in range(1, n - 1) for j in range(i + 1, n)),
+        key=lambda ij: sum((size - target) ** 2 for size in (
+            prefix[ij[0]], prefix[ij[1]] - prefix[ij[0]], prefix[-1] - prefix[ij[1]])),
+    )
     return sections[:split1], sections[split1:split2], sections[split2:]
 
 
 def _parse_word_count(word_count_setting: str | None) -> int | None:
     """'3,000〜5,000字' などの文字列を数値（目標文字数）に変換する。相対指定はNoneを返す。"""
-    import re
-    if not word_count_setting:
-        return None
-    nums = [int(n.replace(',', '')) for n in re.findall(r'[\d,]+', word_count_setting)]
-    if not nums:
-        return None
-    if len(nums) == 1:
-        return nums[0]
-    return (nums[0] + nums[1]) // 2
+    budget = parse_length_budget(word_count_setting)
+    return budget.target if budget else None
 
 
 # Safety cap (chars) for one PART when neither volume design nor
@@ -355,7 +347,40 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
         system=SYSTEM_PROMPT,
         messages=messages,
     )
+    if getattr(msg, 'stop_reason', None) == 'max_tokens':
+        raise ValueError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
     return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
+
+
+def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
+                         sections: list, part_number: int) -> tuple[str, int, int]:
+    """Retry a defective part once, before allowing the next part to start."""
+    required_outline = select_outline(outline, [title for title, _, _ in sections])
+    target = sum(chars for _, _, chars in sections)
+    instruction = (
+        '\n【このパートの完成条件】以下の構成のH2/H3/H4をすべて本文まで書き切る。'
+        '見出しは表記を維持し、次パートに持ち越さない。'
+        '内部メモ・執筆予定・要確認の比較表は禁止。根拠は提供済みconfirmedのみ。\n'
+        + required_outline
+    )
+    attempt_messages = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + instruction}]
+    total_input = total_output = 0
+    for attempt in range(2):
+        text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
+        total_input += ti
+        total_output += to
+        cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
+        issues = validate_delivery(cleaned, required_outline, f'{target}字')
+        if not issues:
+            return cleaned, total_input, total_output
+        if attempt == 0:
+            attempt_messages += [
+                {'role': 'assistant', 'content': text},
+                {'role': 'user', 'content': '以下の欠落・不備を修正し、このパート全体を再出力してください。'
+                 '省略せず、内部メモを消すだけでなく未執筆の解説を補完する。'
+                 '不明な事実を捏造せず、確認済み情報で説明する。\n' + json.dumps(issues, ensure_ascii=False)},
+            ]
+    raise ValueError(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
 
 
 def _insert_repair_blocks(
@@ -631,9 +656,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     extra_instructions = ""
     service_prompt = ""
     cta_prompt = ""
-    job = {}
+    job = get_job(job_id)
     try:
-        job = get_job(job_id)
         user_id = job.get("tenant_id")
         category = job.get("category")
         if user_id and category:
@@ -661,7 +685,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     word_count_setting = job.get("word_count_setting") if job else None
 
     # Load volume design from outline and service_map if available
-    volume_sections = _parse_volume_design(outline["content_text"])
+    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
+    volume_sections = _parse_volume_design(outline_text)
+    if not volume_sections:
+        raise ValueError('章別の文字数配分がありません。構成から再生成してください。')
     service_map: dict | None = None
     try:
         sm_artifact = get_artifact(job_id, "service_map")
@@ -720,7 +747,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
         intent_text=intent["content_text"],
-        outline_text=outline["content_text"],
+        outline_text=outline_text,
         fact_text=fact["content_text"],
     ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
 
@@ -730,7 +757,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _call(client, messages, max_tokens=p1_max)
+    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1)
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -740,11 +767,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     # --- Part 2 ---
     print("[article] Part 2/3...")
-    messages += [
-        {"role": "assistant", "content": part1_text},
-        {"role": "user", "content": part2_inst},
-    ]
-    part2_text, ti, to = _call(client, messages, max_tokens=p2_max)
+    if p2_secs:
+        messages += [
+            {"role": "assistant", "content": part1_text},
+            {"role": "user", "content": part2_inst},
+        ]
+    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2) if p2_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -755,10 +783,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 3 ---
     print("[article] Part 3/3...")
     messages += [
-        {"role": "assistant", "content": part2_text},
+        {"role": "assistant", "content": part2_text if p2_secs else part1_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _call(client, messages, max_tokens=p3_max)
+    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3) if p3_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")
@@ -816,6 +844,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             raise ValueError(f"Article structure repair did not satisfy content contract: {remaining}")
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             raise ValueError("Structure repair introduced [hypothesis] content")
+
+    delivery_issues = validate_delivery(article_text, outline_text, word_count_setting)
+    if delivery_issues:
+        raise ValueError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 
     artifact = upsert_artifact(
         job_id=job_id,

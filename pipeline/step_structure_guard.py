@@ -458,11 +458,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     final_text = outline["content_text"]
     if violations:
         final_text, added = repair_outline(final_text, contract, violations)
-        try:
-            word_count_setting = get_job(job_id).get("word_count_setting")
-        except Exception:
-            word_count_setting = None
-        final_text, volume_repaired = ensure_complete_volume_design(final_text, word_count_setting)
+    word_count_setting = get_job(job_id).get("word_count_setting")
+    final_text, volume_repaired = ensure_complete_volume_design(final_text, word_count_setting)
+    if violations or volume_repaired:
         remaining = validate_structure(final_text, contract, outline=True)
         if remaining:
             raise ValueError(f"Outline structure contract could not be satisfied: {remaining}")
