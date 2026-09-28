@@ -72,6 +72,12 @@ class BrowserFallbackTests(unittest.TestCase):
             self.assertEqual(classify_failure(exc),expected)
         self.assertNotIn('JavaScript',unverified_message('connection_failed'))
 
+    def test_container_start_resolves_the_runtime_port(self):
+        from pipeline import serve
+        with patch.dict(os.environ, {'PORT':'9876'}), patch.object(serve.uvicorn, 'run') as run:
+            serve.main()
+        run.assert_called_once_with('api_server:app', host='0.0.0.0', port=9876)
+
     def test_child_environment_excludes_credentials(self):
         process=Mock(returncode=0);process.communicate.return_value=(json.dumps({'status':'success'}),'')
         with patch.dict(os.environ,{'SUPABASE_KEY':'secret','ANTHROPIC_API_KEY':'secret'}), patch.object(browser_fetch.subprocess,'Popen',return_value=process) as popen:

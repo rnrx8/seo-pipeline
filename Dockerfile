@@ -8,4 +8,4 @@ COPY --chown=browseruser:browseruser pipeline ./pipeline
 COPY --chown=browseruser:browseruser api_server.py .
 USER browseruser
 RUN python -c "from pipeline.browser_fetch import browser_probe; assert browser_probe(), 'Browser runtime probe failed'"
-CMD ["sh", "-c", "exec uvicorn api_server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["python", "-m", "pipeline.serve"]
