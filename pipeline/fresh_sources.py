@@ -89,6 +89,43 @@ def load_primary_sources(job):
     return sources
 
 
+def preserve_table_grid(soup):
+    """Render HTML table spans into explicit rows before flattening page text."""
+    for table in list(soup.find_all('table')):
+        if table.find_parent('table') is not None:
+            continue
+        rows = [r for r in table.find_all('tr') if r.find_parent('table') is table]
+        grid = {}
+        for row_index, row in enumerate(rows[:100]):
+            col = 0
+            for cell in row.find_all(['td', 'th'], recursive=False):
+                while (row_index, col) in grid:
+                    col += 1
+                if col >= 40:
+                    break
+                def span(name):
+                    try: value = int(cell.get(name, 1))
+                    except (ValueError, TypeError): value = 1
+                    if name == 'rowspan' and value == 0: value = len(rows) - row_index
+                    return min(max(value, 1), 100 if name == 'rowspan' else 40)
+                text = cell.get_text(' ', strip=True)
+                for r in range(row_index, min(len(rows), row_index + span('rowspan'), 100)):
+                    for c in range(col, min(col + span('colspan'), 40)):
+                        grid[(r, c)] = text
+                col += span('colspan')
+        if not grid:
+            continue
+        width = max(c for _, c in grid) + 1
+        rendered = ['[表：列の順序と結合セルを保持]']
+        caption = table.find('caption')
+        if caption: rendered.append(caption.get_text(' ', strip=True))
+        for r in range(min(len(rows), 100)):
+            rendered.append('[行] ' + ' | '.join(grid.get((r, c), '') for c in range(width)))
+        if len(rows) > 100 or width >= 40: rendered.append('[表の一部を省略]')
+        rendered.append('[表終わり]')
+        table.replace_with('\n'.join(rendered))
+
+
 class FreshSources:
     def __init__(self, job, settings):
         self.high_accuracy = job.get("high_accuracy_mode") is True
@@ -159,6 +196,7 @@ class FreshSources:
                                    for target, label in sorted(links.items(), key=priority)[:30]]
                 for node in soup.select('script,style,noscript,nav,header,footer,form,svg,iframe'):
                     node.decompose()
+                preserve_table_grid(soup)
                 text = (soup.find('main') or soup.find('article') or soup).get_text(' ', strip=True)
             elif 'text/plain' in mime:
                 text = response.content.decode(response.encoding or 'utf-8', errors='replace')
