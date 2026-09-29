@@ -73,6 +73,9 @@ def _service_name_from_label(raw_name: str) -> str:
 def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool = False) -> bool:
     if not name or name in _GENERIC_HEADINGS or len(name) > 45:
         return False
+    if name.endswith(("とは", "利用実態", "既婚率", "男女比", "料金", "キャンペーン",
+                      "会員数", "方法", "所在地", "機能", "年齢層", "調査", "運営", "掲載実績", "メディア掲載")):
+        return False
     if any(category in name for category in _GENERIC_SERVICE_CATEGORIES):
         return False
     if any(term in name for term in (
