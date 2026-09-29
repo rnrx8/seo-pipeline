@@ -21,6 +21,8 @@ _FIT_TERMS = ("向いて", "向き不向き", "適性", "自分に合う")
 _GENERIC_HEADINGS = {
     "定義・基本情報", "重要な事実・データ", "主要な企業・サービス情報", "主要な企業・サービス・求人情報",
     "よくある誤解・注意点", "専門用語・キーワード", "確認済み情報源", "編集者への追記提案",
+    "料金体系", "支払い方法", "身バレ防止機能", "本人確認方法", "ユーザー層",
+    "会員数・マッチング数", "運営会社", "運営会社・届出", "会員数", "男女比", "年齢層",
 }
 _GENERIC_SERVICE_CATEGORIES = (
     "既婚者専用マッチングアプリ",
@@ -101,16 +103,19 @@ def extract_service_candidates(fact_text: str, featured_service: str = "") -> li
             in_service_section = h2_title.startswith("主要な企業・サービス")
 
         heading_match = re.match(r"^#{3,5}\s+(.+?)\s*$", line)
+        # Service definitions also appear in the basic-information section.
+        # Restricting these labels to the service section loses one side of a
+        # named A-vs-B query and incorrectly introduces a third competitor.
         fact_item_match = re.match(
             r"^>\s*\*\*(.+?)\*\*(?:（[^）]*）|\([^)]*\))?\s*[：:]", line
-        ) if in_service_section else None
+        )
         service_label_match = re.match(r"^\*\*(.+?)\*\*\s*$", line) if in_service_section else None
         match = heading_match or fact_item_match or service_label_match
         if not match:
             continue
         raw_name = match.group(1).strip()
         name = _service_name_from_label(raw_name)
-        if _is_service_candidate(raw_name, name, from_service_fact=bool(fact_item_match or service_label_match)):
+        if _is_service_candidate(raw_name, name, from_service_fact=bool(in_service_section and (fact_item_match or service_label_match))):
             candidates.append(name)
     if featured_service:
         candidates.insert(0, featured_service)

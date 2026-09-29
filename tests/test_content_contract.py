@@ -25,6 +25,32 @@ FACTS = """\
 
 
 class ContentContractTests(unittest.TestCase):
+    def test_named_pair_definitions_outside_service_section_do_not_add_third_item(self):
+        facts = '''## 定義・基本情報
+> **既婚者クラブ**：サービスの説明。
+> **ヒールメイト（Healmate）**：サービスの説明。
+### 既婚者クラブ 運営
+### ヒールメイト 運営
+### カドル（Cuddle）
+'''
+        contract = build_content_contract(
+            keyword='既婚者クラブ ヒールメイト', intent_text='Primary: 比較検討',
+            query_attrs_text=None, fact_text=facts, job={'article_purpose': 'CV'},
+            service={'name': '既婚者クラブ'},
+        )
+        comparison = contract['required_sections'][0]
+        self.assertEqual(comparison['candidate_services'], ['既婚者クラブ', 'ヒールメイト'])
+        self.assertEqual(comparison['minimum_named_items'], 2)
+
+    def test_service_fields_are_not_comparison_candidates(self):
+        facts = '''## 主要な企業・サービス情報
+> **料金体系（男性）**：金額。
+> **身バレ防止機能**：機能。
+> **本人確認方法**：方法。
+> **Cuddle**：サービス。
+'''
+        self.assertEqual(extract_service_candidates(facts, '既婚者クラブ'), ['既婚者クラブ', 'Cuddle'])
+
     def test_named_pair_query_ignores_decorative_service_heading_bullets(self):
         for bullet in ('■', '●', '◆', '▶'):
             with self.subTest(bullet=bullet):
