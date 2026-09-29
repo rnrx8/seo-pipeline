@@ -1,4 +1,6 @@
 import json
+
+SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -105,7 +107,7 @@ class QualityTests(unittest.TestCase):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
                      'outline': {'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
-                     'fact_sheet': {'content_text': ''}}
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}}
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_final_validate, 'get_job', return_value={}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
@@ -116,7 +118,7 @@ class QualityTests(unittest.TestCase):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
                      'outline': {'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
-                     'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
         response = SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text='## 比較\n修正した説明。')])
         with patch.object(step_content_audit, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_content_audit, 'get_job', return_value={}), \
@@ -132,7 +134,7 @@ class QualityTests(unittest.TestCase):
 
     def test_missing_research_reruns_retrieval_once_and_rejects_persistent_gap(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
-        artifacts = {'outline': {'content_text': '### H2：比較8選'}, 'fact_sheet': {'content_text': ''},
+        artifacts = {'outline': {'content_text': '### H2：比較8選'}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
                      'content_contract': {'content_text': '{}'}}
         with patch.object(step_research_guard, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_research_guard, 'get_job', return_value={}), \

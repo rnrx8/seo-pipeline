@@ -5,7 +5,7 @@ import json
 
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
-from .content_quality import ContentQualityError, audit_facts, require_audit, requirements_for, snapshot
+from .content_quality import ContentQualityError, audit_facts, require_audit, requirements_for, snapshot, source_evidence
 from .step_structure_guard import extract_h2_titles, validate_structure
 
 
@@ -21,9 +21,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], article,
                            high_accuracy=bool(job.get('high_accuracy_mode')),
                            evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)
+        source_artifacts = [get_artifact(job_id, 'fresh_sources')]
+        if job.get('high_accuracy_mode'): source_artifacts.append(get_artifact(job_id, 'fresh_sources_review'))
+        sources = source_evidence(*source_artifacts)
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         require_audit(audit_report, snapshot(article['content_text'], facts, outline, contract,
-                                             requirements_for(job, keyword)))
+                                             requirements_for(job, keyword), sources))
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {

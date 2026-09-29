@@ -1,10 +1,12 @@
 import json
+
+SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from pipeline import step_fact_review, step_service_map, step_content_audit
-from pipeline.content_quality import audit_facts, digest, ContentQualityError, requirements_for
+from pipeline.content_quality import audit_facts, digest, ContentQualityError, requirements_for, source_evidence, snapshot
 from pipeline.fresh_sources import FreshSources
 
 
@@ -44,7 +46,7 @@ class QualityIntegrationTests(unittest.TestCase):
 
     def test_service_map_cannot_reintroduce_hypothesis_via_placement_instructions(self):
         artifacts = {'outline':{'content_text':'### H2：料金の比較'},
-                     'fact_sheet':{'content_text':'> 月額500円 [confirmed]\n\n> 月額123456円 [hypothesis]'}}
+                     'fresh_sources':SOURCE, 'fact_sheet':{'content_text':'> 月額500円 [confirmed]\n\n> 月額123456円 [hypothesis]'}}
         response = SimpleNamespace(content=[SimpleNamespace(text=json.dumps({
             'service_section_type':'none','primary_h2':'','per_section_instructions':{},'cta_after_h2':[]}))],
             usage=SimpleNamespace(input_tokens=1,output_tokens=1))
@@ -61,7 +63,7 @@ class QualityIntegrationTests(unittest.TestCase):
     def test_semantic_repair_pass_sets_consistent_article_metadata(self):
         from pipeline.content_quality import CHECKS
         artifacts={'article':{'content_text':'## 比較\n条件を揃えます。','meta':{'content_repaired':True}},
-                   'fact_sheet':{'content_text':''},'outline':{'content_text':'### H2：比較'},
+                   'fresh_sources':SOURCE, 'fact_sheet':{'content_text':''},'outline':{'content_text':'### H2：比較'},
                    'content_contract':{'content_text':'{"required_sections":[]}'}}
         report={'valid':True,'snapshot':'verified','checks':[{'key':k,'status':'pass','reason':'確認済み'} for k in CHECKS]}
         with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
@@ -74,6 +76,24 @@ class QualityIntegrationTests(unittest.TestCase):
         self.assertTrue(final['meta']['content_audited'])
         self.assertTrue(final['meta']['content_repaired'])
         self.assertEqual(final['meta']['content_audit_snapshot'],'verified')
+
+    def test_fetched_bodies_and_later_corrections_reach_audit_and_snapshot(self):
+        first = {'content_text': json.dumps([{'url': 'https://official.example/', 'status': 'success', 'text': '女性は無料。男性は有料。'}])}
+        later = {'content_text': json.dumps([{'url': 'https://official.example/', 'status': 'success', 'text': '女性の基本機能は無料です。'}])}
+        current = source_evidence(first, later)
+        self.assertIn('女性の基本機能は無料です。', current)
+        self.assertNotIn('男性は有料', current)
+        self.assertNotEqual(snapshot('text','facts','outline',{}, {}, source_evidence(first)), snapshot('text','facts','outline',{}, {}, current))
+
+    def test_missing_direct_source_bodies_fail_closed(self):
+        with self.assertRaises(ContentQualityError):
+            source_evidence({'content_text':'[{"url":"https://example.com", "status":"failed"}]'})
+
+    def test_large_source_context_is_bounded_and_marks_omitted_text(self):
+        rows=[{'url':f'https://example.com/{n}', 'status':'success','text':'a'*25000+'末尾の料金表'} for n in range(10)]
+        result=json.loads(source_evidence({'content_text':json.dumps(rows)}))
+        self.assertLess(sum(len(p['text']) for p in result),181000)
+        self.assertTrue(all(p['truncated'] and p['text'].endswith('末尾の料金表') for p in result))
 
     def test_editorial_constraints_are_part_of_audit_requirements(self):
         job={'citation_style':'inline','target_audience':'初心者','tone_style':'丁寧','service_id':'a','cta_id':'b'}

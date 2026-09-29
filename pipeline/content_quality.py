@@ -8,7 +8,7 @@ import re
 from .ai import create_with_retry, get_step_config
 from .price_comparison import comparison_evidence
 
-POLICY_VERSION = 'content-quality-v2'
+POLICY_VERSION = 'content-quality-v3'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees')
 
@@ -49,10 +49,37 @@ def response_text(message) -> str:
                      if getattr(b, 'type', 'text') == 'text' and hasattr(b, 'text'))
 
 
-def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: dict) -> str:
-    value = json.dumps([POLICY_VERSION, text, facts, outline, contract, requirements],
+def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: dict, sources: str = "") -> str:
+    value = json.dumps([POLICY_VERSION, text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def source_evidence(*artifacts: dict) -> str:
+    """Keep current fetched bodies available to auditors, not just AI summaries.
+
+    Bound the shared body budget, mark excerpts explicitly, and hash this exact
+    context with the verdict. A later verification fetch overrides the same URL.
+    """
+    pages = {}
+    for artifact in artifacts:
+        for page in json.loads(artifact['content_text']):
+            if page.get('status') == 'success' and page.get('text'):
+                pages[page['url']] = page
+    if not pages:
+        raise ContentQualityError('内容検査に必要な直接取得本文がありません。')
+    limit = max(1, 180000 // len(pages))
+    result = []
+    for url, page in sorted(pages.items()):
+        text = page['text']
+        clipped = len(text) > limit
+        if clipped:
+            half = limit // 2
+            text = text[:half] + '\n[中略：取得本文の抜粋]\n' + text[-half:]
+        result.append({'url': url, 'final_url': page.get('final_url', url),
+                       'title': page.get('title', ''), 'text': text,
+                       'truncated': bool(page.get('truncated')) or clipped})
+    return json.dumps(result, ensure_ascii=False, sort_keys=True)
 
 
 def requirements_for(job: dict, keyword: str) -> dict:
@@ -112,7 +139,12 @@ reasonは対象の見出し・問題の引用・比較した数値や条件・�
 coverage: 検索意図・ユーザー指定を満たすか。「N選」はN個の実在する別の対象に
 同じ必須比較項目と選択に足る説明が必要。名称だけの列挙、同一サービスの別プラン、
 和名/英名の重複は数に含めない。独立H3は必須でなく、情報の充足で判定。
-evidence_support: 料金・機能・件数等の具体的主張が確認済み事実から裏付けられるか。
+evidence_support: 料金・機能・件数等の具体的主張を直接取得したsource_documentsの原文で照合する。
+ファクトシートの[confirmed]も誤り得る要約であり、原文より優先しない。
+表の性別・期間・プランの列や注釈を取り違えた要約はfailとし、正しい原文と条件を指摘する。
+料金・機能・提供条件は公式本文を優先し、比較サイトだけの断定を認めない。
+researchでは本文へ渡すファクトシートの誤りも修正対象とし、outlineに未使用でも明示する。
+原文が抜粋の場合は省略部分の内容・非公表を推測しない。
 引用の一部だけで段落の全主張を保証しない。未確認の値を注釈で残すことは禁止。
 一般的な選び方の助言には事実のような出典を強制しない。
 comparison_conditions: 比較の契約期間、税込/税別、対象性別、必要機能、プラン、
@@ -139,12 +171,12 @@ stage=articleでは完成本文全体を対象にし、構成の誤った結論�
 
 
 def audit(client, *, stage: str, text: str, facts: str, outline: str,
-          contract: dict, requirements: dict) -> dict:
+          contract: dict, requirements: dict, sources: str = "") -> dict:
     model, _ = get_step_config('review')
     prices, price_issues = comparison_evidence(text, contract)
     message = create_with_retry(client, model=model, max_tokens=7000, system=AUDIT_SYSTEM,
         messages=[{'role': 'user', 'content': json.dumps({
-            'stage': stage, 'document': text, 'confirmed_facts': facts, 'outline': outline,
+            'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources, 'outline': outline,
             'contract': contract, 'requirements': requirements,
             'calculated_price_minima': prices, 'price_contradictions': price_issues}, ensure_ascii=False)}])
     report = parse_audit(response_text(message))
@@ -154,7 +186,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         report['valid'] = False
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
-                  snapshot=snapshot(text, facts, outline, contract, requirements),
+                  snapshot=snapshot(text, facts, outline, contract, requirements, sources),
                   input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens)
     return report
 

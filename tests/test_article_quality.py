@@ -1,4 +1,6 @@
 import json
+
+SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -43,7 +45,7 @@ class ArticleQualityTests(unittest.TestCase):
         artifacts = {
             'serp': {'content_text': json.dumps({'competitor_headings': [
                 {'fetch_status': 'success', 'word_count': 12000} for _ in range(4)]})},
-            'search_intent': {'content_text': ''}, 'fact_sheet': {'content_text': ''},
+            'search_intent': {'content_text': ''}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
             'content_contract': {'content_text': json.dumps(CONTRACT)},
         }
         message = SimpleNamespace(content=[SimpleNamespace(text=OUTLINE)], stop_reason='end_turn',
@@ -159,7 +161,7 @@ class ArticleQualityTests(unittest.TestCase):
 
     def test_outline_truncation_retries_once_and_never_saves_partial(self):
         artifacts = {'serp': {'content_text': '{}'}, 'search_intent': {'content_text': ''},
-                     'fact_sheet': {'content_text': ''}, 'content_contract': {'content_text': json.dumps(CONTRACT)}}
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_contract': {'content_text': json.dumps(CONTRACT)}}
         def response(reason):
             return SimpleNamespace(content=[SimpleNamespace(text=OUTLINE)], stop_reason=reason,
                                    usage=SimpleNamespace(input_tokens=10, output_tokens=20))
@@ -183,7 +185,7 @@ class ArticleQualityTests(unittest.TestCase):
     def test_review_cannot_replace_complete_article_with_missing_sections(self):
         good = complete_article()
         artifacts = {'article': {'content_text': good, 'meta': {}}, 'outline': {'content_text': OUTLINE},
-                     'fact_sheet': {'content_text': ''}, 'content_contract': {'content_text': json.dumps(CONTRACT)}}
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_contract': {'content_text': json.dumps(CONTRACT)}}
         response = SimpleNamespace(
             content=[SimpleNamespace(text='===ARTICLE_START===\n## おすすめサービス比較\n省略\n===ARTICLE_END===\n===SUMMARY_START===\n編集済み\n===SUMMARY_END===')],
             stop_reason='end_turn', usage=SimpleNamespace(input_tokens=10, output_tokens=20))
@@ -203,9 +205,9 @@ class ArticleQualityTests(unittest.TestCase):
         job = {'word_count_setting': '1,000字'}
         audit = {'checks': [{'key': k, 'status': 'pass', 'reason': '検証済み'} for k in CHECKS],
                  'valid': True, 'policy_version': POLICY_VERSION,
-                 'snapshot': snapshot(complete_article(), '', OUTLINE, CONTRACT, requirements_for(job, '比較'))}
+                 'snapshot': snapshot(complete_article(), '', OUTLINE, CONTRACT, requirements_for(job, '比較'), step_final_validate.source_evidence(SOURCE))}
         artifacts = {'article': {'content_text': complete_article()}, 'outline': {'content_text': OUTLINE},
-                     'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
                      'content_contract': {'content_text': json.dumps(CONTRACT)}}
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '1,000字'}), \

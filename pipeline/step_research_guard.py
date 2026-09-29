@@ -3,7 +3,7 @@ import json
 
 import anthropic
 
-from .content_quality import ContentQualityError, audit, confirmed_facts, requirements_for
+from .content_quality import ContentQualityError, audit, confirmed_facts, requirements_for, source_evidence
 from .db import get_artifact, get_job, upsert_artifact
 
 
@@ -17,9 +17,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         outline = get_artifact(job_id, 'outline')['content_text']
         facts = confirmed_facts(get_artifact(job_id, 'fact_sheet')['content_text'])
         contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
+        sources = source_evidence(get_artifact(job_id, 'fresh_sources'))
         try:
             report = audit(client, stage='research', text=outline, facts=facts, outline=outline,
-                           contract=contract, requirements=requirements_for(job, keyword))
+                           contract=contract, requirements=requirements_for(job, keyword), sources=sources)
         except ContentQualityError as exc:
             upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
