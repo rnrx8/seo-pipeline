@@ -5,7 +5,7 @@ import json
 
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
-from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot
+from .content_quality import ContentQualityError, audit_facts, require_audit, requirements_for, snapshot
 from .step_structure_guard import extract_h2_titles, validate_structure
 
 
@@ -18,7 +18,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'))
     try:
-        facts = confirmed_facts(get_artifact(job_id, 'fact_sheet')['content_text'])
+        facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], article,
+                           high_accuracy=bool(job.get('high_accuracy_mode')),
+                           evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         require_audit(audit_report, snapshot(article['content_text'], facts, outline, contract,
                                              requirements_for(job, keyword)))

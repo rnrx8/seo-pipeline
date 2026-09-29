@@ -1,5 +1,6 @@
 from .fresh_sources import FreshSources, load_settings, load_primary_sources, run_with_fetch
 from .db import get_job
+from .content_quality import ContentQualityError, digest
 import re
 
 import anthropic
@@ -81,6 +82,12 @@ AUDIT_SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 - 再確認した主張: N件
 - 追加修正: N件
 - 詳細: ...
+本文の事実を変更した場合は、変更した主張ごとに次の形式を必ず追加する。
+### Claim（元のレポートのClaim番号）
+- 判定: CORRECTED
+- 修正後: 最終記事に採用した事実（変更後の値・適用条件を明記）
+- 根拠: URL
+- 確認箇所: 「直接取得した本文の連続した原文」
 ===FINAL_AUDIT_END===
 """
 
@@ -118,6 +125,30 @@ def _require_direct_evidence(report, fresh):
     for block in re.split(r"\n(?=###?\s)", report):
         if re.search(r"判定[：:]\s*(?:VERIFIED_T[12]|CORRECTED)", block) and not fresh.evidence_matches(block):
             raise ValueError("確認済み判定に直接取得した本文の根拠がありません。元の記事を保持しました。")
+
+
+def _verified_facts(report: str, fresh) -> dict[str, str]:
+    """Forward only adopted claims, never the superseded original claim."""
+    result = {}
+    for block in re.split(r'\n(?=###?\s)', '\n' + report.replace('**', '').replace('`', '')):
+        status = re.search(r'判定[：:]\s*(VERIFIED_T[12]|CORRECTED)', block)
+        if not status:
+            continue
+        def field(label):
+            match = re.search(rf'^\s*-\s*{label}[：:]\s*(.+?)(?=\n\s*-\s*[^\n：:]+[：:]|\Z)', block, re.M | re.S)
+            return match[1].strip() if match else ''
+        claim = field('修正後')
+        if status[1].startswith('VERIFIED') and (not claim or claim in ('変更なし', '原文のまま', '同上')):
+            claim = field('元の主張')
+        urls = field('根拠(?:URL)?')
+        quote = field('確認箇所(?:（[^）]*）)?')
+        heading = re.search(r'^###?\s*(.+)$', block, re.M)
+        if not claim or not urls or not quote or not fresh.evidence_matches(block):
+            raise ContentQualityError('確認済みの主張を次工程へ渡すための事実・出典・引用が不足しています。')
+        key_match = re.search(r'Claim\s*[（(]?\s*(\d+)', heading[1] if heading else '', re.I)
+        key = key_match[1] if key_match else claim
+        result[key] = f'> {claim}\n> 出典：{urls}\n> 確認箇所：{quote}\n> [confirmed]'
+    return result
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -171,6 +202,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     fresh.save(job_id, "fresh_sources_review")
     _require_direct_evidence(audit_report, fresh)
+    adopted = _verified_facts(report, fresh)
+    final_corrections = _verified_facts(audit_report, fresh)
+    if re.search(r'監査結果[：:]\s*CHANGED', audit_report) and not final_corrections:
+        raise ContentQualityError('最終ファクト監査の訂正根拠が不足しています。')
+    adopted.update(final_corrections)
+    evidence_text = '\n\n'.join(adopted.values())
 
     full_report = f"# 強化ファクトチェックレポート\n\n{report}\n\n## 最終再検査\n{audit_report}"
     all_queries = verify_queries + audit_queries
@@ -189,6 +226,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "output_tokens": verify_resp.usage.output_tokens + audit_resp.usage.output_tokens,
         },
     )
+    upsert_artifact(job_id=job_id, step='fact_review_evidence', content_type='text/markdown',
+                    content_text=evidence_text,
+                    meta={'base_fact_sha256': digest(get_artifact(job_id, 'fact_sheet')['content_text']),
+                          'source_policy_version': SOURCE_POLICY_VERSION})
     artifact = upsert_artifact(
         job_id=job_id,
         step="article",
@@ -198,6 +239,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "model": MODEL,
             "fact_reviewed": True,
             "final_fact_audited": True,
+            "fact_review_evidence_sha256": digest(evidence_text),
             "search_queries": all_queries,
         },
     )

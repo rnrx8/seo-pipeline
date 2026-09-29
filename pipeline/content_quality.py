@@ -58,7 +58,26 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
 def requirements_for(job: dict, keyword: str) -> dict:
     return {'keyword': keyword, **{k: job.get(k) for k in
             ('custom_prompt', 'must_include', 'must_reference_urls', 'never_reference_urls',
-             'company_restriction', 'word_count_setting')}}
+             'company_restriction', 'word_count_setting', 'article_purpose', 'target_audience',
+             'tone_style', 'citation_style', 'service_id', 'cta_id')}}
+
+
+def digest(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def audit_facts(fact_sheet: str, article: dict, *, high_accuracy: bool, evidence: dict | None = None) -> str:
+    facts = confirmed_facts(fact_sheet)
+    if not high_accuracy:
+        return facts
+    # A later content repair can retain this evidence lineage, but a new writer
+    # run or a changed fact sheet must not inherit an older fact-check report.
+    if not evidence or evidence.get('meta', {}).get('base_fact_sha256') != digest(fact_sheet) \
+            or article.get('meta', {}).get('fact_review_evidence_sha256') != digest(evidence['content_text']):
+        raise ContentQualityError('強化ファクトチェックの確認結果が現在の本文・調査資料に対応していません。')
+    return (facts + '\n\n## 本文の強化ファクトチェックで直接確認した事実\n'
+            '以下は執筆後に原典確認した訂正・追加事実です。同じ対象・条件で矛盾する場合は以下を優先する。\n'
+            + evidence['content_text'])
 
 
 def parse_audit(raw: str) -> dict:

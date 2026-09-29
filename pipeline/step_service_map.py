@@ -4,6 +4,7 @@ This step is deliberately read-only for the outline. Structural mutation belongs
 to step_structure_guard so an LLM placement decision cannot append duplicate H2s.
 """
 from .fresh_sources import WRITING_POLICY
+from .content_quality import confirmed_facts
 import json
 import re as _re
 import anthropic
@@ -57,6 +58,7 @@ USER_TEMPLATE = """\
 - 独立したサービスH2がなくても、比較H2内のサービスH3で十分に紹介できる場合は
   comparison_featured とし、専用H2を新設する前提で判断しない
 - per_section_instructions: 比較セクション・サービス専用セクションなど、サービスへの言及が必要なH2のみ記載
+  確認済みの構成とファクトシートの範囲に限定し、新たな数値・機能・優劣を作らない。
 - cta_after_h2: 以下の優先順で最大3箇所を選ぶ
   1. 比較セクションの末尾
   2. サービス専用紹介セクションの末尾（あれば）
@@ -205,7 +207,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {
                 "role": "user",
                 "content": USER_TEMPLATE.format(
-                    outline_text=outline_text + "\n## 今回のファクトシート\n" + get_artifact(job_id, "fact_sheet")["content_text"],
+                    outline_text=outline_text + "\n## 今回の確認済み事実\n" + confirmed_facts(get_artifact(job_id, "fact_sheet")["content_text"]),
                     service_info=service_info,
                     cta_info=cta_info,
                     article_purpose=article_purpose,

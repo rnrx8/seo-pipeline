@@ -5,8 +5,8 @@ import anthropic
 
 from .ai import create_with_retry, get_step_config
 from .article_quality import validate_delivery
-from .content_quality import (ContentQualityError, audit, confirmed_facts, requirements_for,
-                              response_text)
+from .content_quality import (ContentQualityError, audit, requirements_for,
+                              response_text, audit_facts)
 from .db import get_artifact, get_job, upsert_artifact
 from .step_structure_guard import validate_structure
 
@@ -15,7 +15,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     artifact = get_artifact(job_id, 'article')
     text = artifact['content_text']
-    facts = confirmed_facts(get_artifact(job_id, 'fact_sheet')['content_text'])
+    facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], artifact,
+                       high_accuracy=bool(job.get('high_accuracy_mode')),
+                       evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)
     outline = get_artifact(job_id, 'outline')['content_text']
     contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
     requirements = requirements_for(job, keyword)
@@ -39,6 +41,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         upsert_artifact(job_id=job_id, step=f'content_audit_{attempt + 1}', content_type='application/json',
                         content_text=json.dumps(report, ensure_ascii=False), meta={'valid': report['valid']})
         if report['valid']:
+            upsert_artifact(job_id=job_id, step='article', content_type='text/markdown', content_text=text,
+                            meta={**(artifact.get('meta') or {}), 'content_audited': True,
+                                  'content_repaired': bool((artifact.get('meta') or {}).get('content_repaired')) or attempt > 0,
+                                  'content_audit_snapshot': report['snapshot']})
             return saved
         if attempt == 2:
             break
