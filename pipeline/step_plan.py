@@ -53,7 +53,7 @@ def build_step_plan(job: dict) -> list[Step]:
         ("outline", step_outline.run),
         # Repair required comparison/service sections before service_map chooses
         # its primary section and CTA positions.
-        ("structure_guard", step_structure_guard.run),
+        ("structure_guard", step_structure_guard.run_before_research),
         ("research_validation", step_research_guard.run),
     ])
     if job.get("service_id") or job.get("cta_id"):

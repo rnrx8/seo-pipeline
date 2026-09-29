@@ -495,3 +495,18 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_text=json.dumps(report, ensure_ascii=False),
         meta={"stage": "outline", "valid": True, "added_count": len(added)},
     )
+
+
+def run_before_research(job_id: str, keyword: str, api_key: str | None = None) -> dict:
+    """Defer unresolved outline gaps to the bounded research recovery stage.
+
+    This records failure, never approval. Research validation must re-check the
+    mechanical contract before the writer can start.
+    """
+    try:
+        return run(job_id, keyword, api_key=api_key)
+    except ContentQualityError as exc:
+        return upsert_artifact(job_id=job_id, step='structure_validation', content_type='application/json',
+                               content_text=json.dumps({'stage':'outline','valid':False,'needs_research':True,
+                                                        'error':str(exc)}, ensure_ascii=False),
+                               meta={'stage':'outline','valid':False})

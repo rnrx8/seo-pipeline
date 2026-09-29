@@ -25,6 +25,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
             raise
+        issues = step_structure_guard.validate_structure(outline, contract, outline=True)
+        report['structural_issues'] = issues
+        if issues:
+            report['valid'] = False
+            check = next(c for c in report['checks'] if c['key'] == 'coverage')
+            check.update(status='fail', reason=check['reason'] + '\n構成の必須項目: ' + json.dumps(issues, ensure_ascii=False))
         report['attempt'] = attempt + 1
         artifact = upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                                   content_text=json.dumps(report, ensure_ascii=False), meta={'valid': report['valid']})
@@ -39,5 +45,5 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
             step_content_contract.run(job_id, keyword, api_key=api_key)
             step_outline.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
-            step_structure_guard.run(job_id, keyword, api_key=api_key)
+            step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
     raise ContentQualityError('追加調査後も必要情報・比較条件が未充足です。research_validationを確認してください。')

@@ -150,4 +150,32 @@ class QualityTests(unittest.TestCase):
         self.assertIn('research_gaps', research.call_args.kwargs)
 
 
+    def test_structure_failure_routes_to_research_without_becoming_pass(self):
+        from pipeline import step_structure_guard
+        with patch.object(step_structure_guard, 'run', side_effect=quality.ContentQualityError('比較対象が不足')), \
+             patch.object(step_structure_guard, 'upsert_artifact', side_effect=lambda **kw:kw):
+            result=step_structure_guard.run_before_research('j','比較')
+        self.assertFalse(result['meta']['valid'])
+        self.assertTrue(json.loads(result['content_text'])['needs_research'])
+
+    def test_mechanical_outline_gap_cannot_pass_even_if_model_approves(self):
+        from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
+        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+                   'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
+        with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_research_guard,'get_job',return_value={}), \
+             patch.object(step_research_guard.anthropic,'Anthropic'), \
+             patch.object(step_research_guard,'audit',side_effect=lambda *a,**kw:report()), \
+             patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
+             patch.object(step_fact_sheet,'run') as research, \
+             patch.object(step_content_contract,'run'),patch.object(step_outline,'run'), \
+             patch.object(step_structure_guard,'run_before_research'), \
+             patch.object(step_structure_guard,'validate_structure',return_value=[{'key':'named_service_comparison','reason':'不足'}]):
+            with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j','比較')
+        self.assertEqual(research.call_count,1)
+        self.assertFalse(save.call_args.kwargs['meta']['valid'])
+        checks=json.loads(save.call_args.kwargs['content_text'])['checks']
+        self.assertEqual(next(c for c in checks if c['key']=='coverage')['status'],'fail')
+
+
 if __name__ == '__main__':unittest.main()
