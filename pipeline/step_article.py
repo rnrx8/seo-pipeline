@@ -1,4 +1,5 @@
 from .fresh_sources import WRITING_POLICY
+from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot
 import json
 import re as _re
 import time
@@ -47,6 +48,8 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - 本筋と無関係な市場規模・背景の数値的な前置きは書かない。
   ただし読者の状況を察させる具体的な事実・数字は冒頭で使ってよい。
 - concrete_phrase は原文のまま活かす（具体ワードで共感を作る方向と整合）。
+  ただし含まれる数値・サービスの事実・安全性や成果の主張は確認済み情報と一致させる。
+  検索意図の仮説を実際の読者の発言や検証済みデータとして扱わない。
 
 ▼ H2見出し
 - 疑問詞を積極的に使う（〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？）
@@ -348,7 +351,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
         messages=messages,
     )
     if getattr(msg, 'stop_reason', None) == 'max_tokens':
-        raise ValueError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
+        raise ContentQualityError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
     return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
 
 
@@ -380,7 +383,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
                  '省略せず、内部メモを消すだけでなく未執筆の解説を補完する。'
                  '不明な事実を捏造せず、確認済み情報で説明する。\n' + json.dumps(issues, ensure_ascii=False)},
             ]
-    raise ValueError(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
+    raise ContentQualityError(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
 
 
 def _insert_repair_blocks(
@@ -543,7 +546,7 @@ def _build_cta_prompt(cta: dict) -> str:
 
 
 def _build_chains_prompt(chains: list) -> str:
-    """検索意図chainsを読者の判断課題として参照する（原文転記は要求しない）。"""
+    """原文を活かす表現方針を維持し、事実としての利用だけを制限する。"""
     if not chains:
         return ""
     phrases = [c for c in chains if c.get("concrete_phrase")]
@@ -553,9 +556,8 @@ def _build_chains_prompt(chains: list) -> str:
         "",
         "【検索意図チェーン：読者の関心を理解するための分析資料】",
         "以下は検索意図の仮説であり、読者の実際の発言や確認済み事実ではない。",
-        "判断に必要な説明・比較項目へ変換し、原文の転記や各H2末尾への挿入はしない。",
-        "不自然な表現、恐怖を煽る表現、未検証の数値・安全性・成果の保証は採用しない。",
-        "共感表現を反復せず、確認済みの具体的な条件や機能で疑問に答える。",
+        "具体的な言葉は原文を活かしてよい。ただし含まれる数値・事実・安全性や成果の主張は確認済み情報と一致させる。",
+        "事実として使えない部分は修正し、感情表現や読者の関心を示す表現は維持する。",
     ]
     for c in phrases:
         direction = c.get("direction", "")
@@ -630,11 +632,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     intent = get_artifact(job_id, "search_intent")
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
+    fact = {**fact, 'content_text': confirmed_facts(fact['content_text'])}
 
     try:
         contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
     except Exception as exc:
-        raise ValueError(f"content_contract artifact is required before article: {exc}") from exc
+        raise ContentQualityError(f"content_contract artifact is required before article: {exc}") from exc
     structure_prompts = contract_prompt(contract)
     try:
         reference = json.loads(get_artifact(job_id, "reference_structure")["content_text"])
@@ -659,6 +662,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     service_prompt = ""
     cta_prompt = ""
     job = get_job(job_id)
+    readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
+    require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
+                                     contract, requirements_for(job, keyword)))
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
@@ -690,7 +696,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
     volume_sections = _parse_volume_design(outline_text)
     if not volume_sections:
-        raise ValueError('章別の文字数配分がありません。構成から再生成してください。')
+        raise ContentQualityError('章別の文字数配分がありません。構成から再生成してください。')
     service_map: dict | None = None
     try:
         sm_artifact = get_artifact(job_id, "service_map")
@@ -818,7 +824,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
     if hypothesis_hits:
         print(f"[article] WARNING: {len(hypothesis_hits)} [hypothesis] tag(s) found in article — Claude may have included unverified facts.")
-        raise ValueError(
+        raise ContentQualityError(
             f"Article contains {len(hypothesis_hits)} [hypothesis] tag(s). "
             "Only [confirmed] facts are allowed in the article body. "
             "Please retry or review the fact sheet."
@@ -843,13 +849,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         structure_repaired = True
         remaining = validate_structure(article_text, contract, outline=False)
         if remaining:
-            raise ValueError(f"Article structure repair did not satisfy content contract: {remaining}")
+            raise ContentQualityError(f"Article structure repair did not satisfy content contract: {remaining}")
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
-            raise ValueError("Structure repair introduced [hypothesis] content")
+            raise ContentQualityError("Structure repair introduced [hypothesis] content")
 
     delivery_issues = validate_delivery(article_text, outline_text, word_count_setting)
     if delivery_issues:
-        raise ValueError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
+        raise ContentQualityError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 
     artifact = upsert_artifact(
         job_id=job_id,

@@ -14,6 +14,8 @@ _STEP_TO_FILE = {
 }
 
 _RULES = [
+    (re.compile(r"ContentQualityError"),
+     False, "operational", "記事の根拠・比較内容が品質基準を満たしていません"),
     (re.compile(r"SerpQualityError|SerpConfigurationError"),
      False, "operational", "競合情報の取得・検証エラー"),
     (re.compile(r"credit balance|billing|insufficient_quota|exceeded.*quota", re.I),

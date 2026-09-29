@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from .content_contract import build_content_contract
+from .content_quality import confirmed_facts
 from .db import get_artifact, get_job, get_service_by_id, upsert_artifact
 
 
@@ -38,7 +39,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         keyword=keyword,
         intent_text=intent["content_text"],
         query_attrs_text=(attrs or {}).get("content_text"),
-        fact_text=fact["content_text"],
+        fact_text=confirmed_facts(fact["content_text"]),
         job=job,
         service=service,
         reference_structure=reference,

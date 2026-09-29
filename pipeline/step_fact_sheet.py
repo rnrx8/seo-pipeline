@@ -204,7 +204,7 @@ def _downgrade_incomplete_confirmations(
     return "".join(blocks), downgraded
 
 
-def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: str = '') -> dict:
     """Generate a fact sheet with real-time web search verification via Claude."""
     print("[fact_sheet] Generating fact sheet with web search...")
 
@@ -236,6 +236,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     prompt = freshness_context(checked_on) + USER_TEMPLATE.format(
         keyword=keyword, serp_text=serp["content_text"], intent_text=intent["content_text"],
     ) + primary_sources_prompt
+    if research_gaps:
+        prompt += ('\n## 前回の構成で不足した根拠・比較条件\n' + research_gaps
+                   + '\n不足したサービスと比較項目を優先し、公式の料金・機能・FAQ・規約へのリンクを探索して直接取得する。'
+                   '取得できないURLを推測で埋めず、別の公式ページを探す。必要情報を注釈で済ませない。'
+                   '数値は対象・契約期間・プラン・必要機能・単位・総額を区別する。'
+                   '1主張ごとに根拠を分離し、無関係な話題へ調査量を使わない。')
     try:
         resp, fact_text, search_queries, observed = run_with_fetch(
             client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,

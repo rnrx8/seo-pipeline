@@ -1,6 +1,8 @@
 """Validate and repair protected structural requirements before article writing."""
 from __future__ import annotations
 
+from .content_quality import ContentQualityError
+
 import json
 import re
 from typing import Any
@@ -463,7 +465,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if violations or volume_repaired:
         remaining = validate_structure(final_text, contract, outline=True)
         if remaining:
-            raise ValueError(f"Outline structure contract could not be satisfied: {remaining}")
+            raise ContentQualityError(f"Outline structure contract could not be satisfied: {remaining}")
         upsert_artifact(
             job_id=job_id,
             step="outline",

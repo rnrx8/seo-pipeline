@@ -1,4 +1,5 @@
 from .fresh_sources import WRITING_POLICY
+from .content_quality import ContentQualityError, confirmed_facts
 import json
 import re
 import anthropic
@@ -186,7 +187,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
-    fact_sheet_text = get_artifact(job_id, "fact_sheet")["content_text"]
+    fact_sheet_text = confirmed_facts(get_artifact(job_id, "fact_sheet")["content_text"])
     outline_text = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
     try:
@@ -301,5 +302,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print(summary)
     print("======================")
     print(f"artifact id={artifact['id']}")
-
+    if not review_ok:
+        raise ContentQualityError('校閲が完了しませんでした。元の本文を保持し、完了扱いを停止しました。')
     return artifact

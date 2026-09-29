@@ -17,11 +17,14 @@ from . import (
     step_serp,
     step_service_map,
     step_structure_guard,
+    step_research_guard,
+    step_content_audit,
 )
 
 Step = tuple[str, Callable]
 RATE_LIMITED_STEPS = {
-    "search_intent", "fact_sheet", "outline", "service_map", "article", "review", "fact_review"
+    "search_intent", "fact_sheet", "outline", "service_map", "article", "review", "fact_review",
+    "research_validation", "content_audit"
 }
 
 
@@ -51,6 +54,7 @@ def build_step_plan(job: dict) -> list[Step]:
         # Repair required comparison/service sections before service_map chooses
         # its primary section and CTA positions.
         ("structure_guard", step_structure_guard.run),
+        ("research_validation", step_research_guard.run),
     ])
     if job.get("service_id") or job.get("cta_id"):
         steps.append(("service_map", step_service_map.run))
@@ -63,5 +67,6 @@ def build_step_plan(job: dict) -> list[Step]:
     steps.append(("review", step_review.run))
     if job.get("high_accuracy_mode"):
         steps.append(("fact_review", step_fact_review.run))
+    steps.append(("content_audit", step_content_audit.run))
     steps.append(("final_structure_validation", step_final_validate.run))
     return steps

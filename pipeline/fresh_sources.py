@@ -7,7 +7,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
@@ -19,7 +19,7 @@ from .public_fetch import get_public_page
 MAX_URLS = 40
 FETCH_TOOL = {
     "name": "fetch_current_page",
-    "description": "公開URLを今回直接取得し、本文・取得日時・取得成否を返す。検索要約や登録資料だけで確認済みにせず、公式出典の本文をこのツールで確認する。",
+    "description": "公開URLを今回直接取得し、本文・取得日時・取得成否・同一サイト内リンクを返す。必要な料金や機能がなければlinksから該当ページを選び取得する。検索要約や登録資料だけで確認済みにしない。",
     "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"], "additionalProperties": False},
 }
 DIRECT_POLICY = """
@@ -140,6 +140,23 @@ class FreshSources:
                 title = soup.title.get_text(' ', strip=True) if soup.title else ''
                 if re.search(r'just a moment|access denied|attention required|captcha|sign in|log in|ログイン', title, re.I):
                     raise ValueError('認証・アクセス制限画面のため本文を確認できません')
+                # Keep real navigation targets before removing page chrome. A
+                # text-only root page otherwise encourages guessed /price URLs.
+                links = {}
+                for anchor in soup.select('a[href]'):
+                    target = normalize_url(urljoin(response.url, anchor['href']))
+                    if not target or urlsplit(target).netloc != urlsplit(response.url).netloc:
+                        continue
+                    try:
+                        self.check_allowed(target)
+                    except ValueError:
+                        continue
+                    if target not in links:
+                        links[target] = anchor.get_text(' ', strip=True)[:120]
+                priority = lambda item: not re.search(r'料金|機能|プラン|よくある|規約|price|pricing|plan|faq|feature|terms',
+                                                       ' '.join(item), re.I)
+                record['links'] = [{'url': target, 'label': label}
+                                   for target, label in sorted(links.items(), key=priority)[:30]]
                 for node in soup.select('script,style,noscript,nav,header,footer,form,svg,iframe'):
                     node.decompose()
                 text = (soup.find('main') or soup.find('article') or soup).get_text(' ', strip=True)

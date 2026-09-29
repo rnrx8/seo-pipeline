@@ -14,6 +14,14 @@ def response(body=BODY):
 
 
 class FreshSourcesTests(unittest.TestCase):
+    def test_navigation_urls_survive_text_extraction_and_respect_blocklist(self):
+        html = '<nav><a href="/pricing.html">料金表</a><a href="/blocked">禁止</a>' \
+               '<a href="https://other.example/pricing">外部</a></nav>' + BODY
+        with patch.object(fs, 'get_public_page', return_value=response(html)):
+            result = fs.FreshSources({'never_reference_urls': 'https://official.example/blocked'}, []).fetch(URL)
+        self.assertEqual(result['links'], [{'url': 'https://official.example/pricing.html', 'label': '料金表'}])
+        self.assertNotIn('料金表', result['text'])
+
     def test_http_charset_takes_priority_over_conflicting_html_meta(self):
         html = '<meta charset="utf-8"><title>料金</title><main>' + '男性の有料会員は月額料金がかかります。' * 12 + '</main>'
         page = SimpleNamespace(url=URL, status_code=200, content=html.encode('shift_jis'),

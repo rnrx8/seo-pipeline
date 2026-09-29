@@ -77,7 +77,7 @@ def article_sections(text: str) -> list[dict]:
 
 
 def validate_delivery(text: str, outline: str, setting: str | None = None) -> list[dict]:
-    issues = []
+    issues = validate_promised_comparison_count(text)
     if not outline_sections(outline):
         issues.append({'key': 'missing_outline', 'reason': '完成確認に必要な構成がありません'})
     actual = article_sections(text)
@@ -108,4 +108,39 @@ def validate_delivery(text: str, outline: str, setting: str | None = None) -> li
     if budget and len(text) < budget.minimum:
         issues.append({'key': 'article_too_short', 'actual': len(text), 'minimum': budget.minimum,
                        'reason': '構成の説明不足を補完する。水増しや未確認情報の追加は禁止'})
+    return issues
+
+
+def validate_promised_comparison_count(text: str) -> list[dict]:
+    """Check explicit N-selection promises against named comparison tables.
+
+    Only recognized service/entity tables count, not tips, plan rows, or incidental
+    mentions. Semantic audit handles aliases, transposed tables and evidence depth.
+    """
+    headings = list(re.finditer(r'^(#{1,2})\s+(.+)$', text, re.M))
+    issues = []
+    for index, heading in enumerate(headings):
+        promised = re.search(r'(\d+)選', unicodedata.normalize('NFKC', heading[2]))
+        if not promised:
+            continue
+        end = len(text)
+        if len(heading[1]) == 2:
+            end = next((h.start() for h in headings[index + 1:]), len(text))
+        names = set()
+        named_table = False
+        for line in text[heading.end():end].splitlines():
+            if not line.lstrip().startswith('|'):
+                named_table = False
+                continue
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            name = re.sub(r'[*_`]', '', cells[0]).strip()
+            if name in ('サービス名', 'アプリ名', '会社名', '企業名', 'サービス', 'アプリ'):
+                named_table = True
+                continue
+            if named_table and name and not set(name) <= {'-', ':', ' '}:
+                names.add(unicodedata.normalize('NFKC', name).casefold())
+        if names and len(names) != int(promised[1]):
+            issue = {'key': 'comparison_count_mismatch', 'promised': int(promised[1]),
+                     'table_count': len(names), 'title': heading[2]}
+            issues.append(issue)
     return issues

@@ -1,4 +1,5 @@
 from .fresh_sources import WRITING_POLICY
+from .content_quality import ContentQualityError, confirmed_facts
 import json
 import re
 import anthropic
@@ -227,7 +228,7 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
         return outline_text, False
 
     if sum(floors) > target:
-        raise ValueError('文字数目標に対して構成の子見出しが多すぎます。構成を絞って再生成してください。')
+        raise ContentQualityError('文字数目標に対して構成の子見出しが多すぎます。構成を絞って再生成してください。')
     weights = [5 if any(term in title for term in ("比較", "おすすめ", "ランキング")) else 4 for title in h2s]
     # Reserve space for every H3 before distributing the rest by depth/importance.
     depth_weights = [weight * (count + 1) for weight, count in zip(weights, children)]
@@ -383,13 +384,14 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
-def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: str = '') -> dict:
     """Generate article outline using Claude."""
     print("[outline] Generating outline...")
 
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
     fact = get_artifact(job_id, "fact_sheet")
+    fact = {**fact, 'content_text': confirmed_facts(fact['content_text'])}
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""
@@ -403,11 +405,18 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         pass
 
     structure_prompts = ""
+    structure_prompts += '''\n比較対象の件数は必要な情報を確認できた別々の対象から決める。
+ユーザー指定件数は減らさない。自分で付けるN選の数字は実際の説明対象数と一致させる。
+料金は同じ利用期間・必要機能・対象・税条件で比較し、プラン名だけで対応づけない。
+優劣の結論は確認済み事実から導く。片方の指標が非公表なら大小を断定しない。
+必要情報の未調査を「公式サイトで確認」の注釈で済ませない。'''
+    if research_gaps:
+        structure_prompts += '\n前回の不合格理由。追加調査結果を使い、この問題を解消する：\n' + research_gaps
     try:
         contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
         structure_prompts += contract_prompt(contract)
     except Exception as exc:
-        raise ValueError(f"content_contract artifact is required before outline: {exc}") from exc
+        raise ContentQualityError(f"content_contract artifact is required before outline: {exc}") from exc
     try:
         reference = json.loads(get_artifact(job_id, "reference_structure")["content_text"])
         structure_prompts += reference_prompt(reference)
@@ -510,7 +519,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         total_input += message.usage.input_tokens
         total_output += message.usage.output_tokens
         if getattr(message, 'stop_reason', None) == 'max_tokens':
-            raise ValueError('構成案が出力上限で中断されました。未完成の構成から本文は生成できません。')
+            raise ContentQualityError('構成案が出力上限で中断されました。未完成の構成から本文は生成できません。')
     outline_text = message.content[0].text
     outline_text, volume_repaired = ensure_complete_volume_design(
         outline_text, job.get("word_count_setting")

@@ -18,7 +18,7 @@ class StepPlanTests(unittest.TestCase):
 
     def test_outline_only_still_runs_structure_guard(self):
         keys = [key for key, _ in build_step_plan({"delivery_type": "outline_only"})]
-        self.assertEqual(keys[-1], "structure_guard")
+        self.assertEqual(keys[-1], "research_validation")
         self.assertNotIn("article", keys)
 
     def test_research_only_stops_before_contract(self):

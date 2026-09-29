@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from pipeline import step_article, step_outline, step_review, step_final_validate, step_structure_guard
 from pipeline.article_quality import parse_length_budget, validate_delivery, select_outline
+from pipeline.content_quality import CHECKS, POLICY_VERSION, ContentQualityError, snapshot, requirements_for
 
 
 OUTLINE = '''### H2：おすすめサービス比較
@@ -190,14 +191,21 @@ class ArticleQualityTests(unittest.TestCase):
              patch.object(step_review, 'get_job', return_value={'word_count_setting': '1,000字'}), \
              patch.object(step_review.anthropic, 'Anthropic'), \
              patch.object(step_review, 'create_with_retry', return_value=response) as model, \
-             patch.object(step_review, 'upsert_artifact', side_effect=lambda **kw: {'id': 'test', **kw}):
-            result = step_review.run('test', '比較')
+             patch.object(step_review, 'upsert_artifact', side_effect=lambda **kw: {'id': 'test', **kw}) as save:
+            with self.assertRaises(ContentQualityError):
+                step_review.run('test', '比較')
+        result = next(c.kwargs for c in save.call_args_list if c.kwargs['step'] == 'article')
         self.assertEqual(result['content_text'], good)
         self.assertFalse(result['meta']['reviewed'])
         self.assertIn(OUTLINE, model.call_args.kwargs['messages'][0]['content'])
 
     def test_complete_article_passes_final_gate(self):
+        job = {'word_count_setting': '1,000字'}
+        audit = {'checks': [{'key': k, 'status': 'pass', 'reason': '検証済み'} for k in CHECKS],
+                 'valid': True, 'policy_version': POLICY_VERSION,
+                 'snapshot': snapshot(complete_article(), '', OUTLINE, CONTRACT, requirements_for(job, '比較'))}
         artifacts = {'article': {'content_text': complete_article()}, 'outline': {'content_text': OUTLINE},
+                     'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
                      'content_contract': {'content_text': json.dumps(CONTRACT)}}
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '1,000字'}), \
