@@ -25,8 +25,6 @@ SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 - [confirmed] : 今回直接取得した本文で根拠を確認できた情報
 - [hypothesis] : SERPや推測に基づく情報（web_searchで未確認）
 
-web_searchを最低5回は実行してから、ファクトシートをまとめてください。
-
 【出典信頼性の基準】
 以下の基準でソースの信頼性を判断し、[confirmed] / [hypothesis] を付記してください：
 
@@ -66,6 +64,7 @@ Tier 2のソース1件のみで確認できた情報は [hypothesis] とする�
 
 USER_TEMPLATE = """\
 キーワード: {keyword}
+web_searchを最低5回は実行してから、ファクトシートをまとめてください。
 
 ## 検索意図の分析
 {intent_text}
@@ -189,7 +188,8 @@ def _downgrade_incomplete_confirmations(
             for url in re.findall(r'https?://[^\s<>"\]\)）｜|]+', block)
         } - {""}
         has_url = bool(cited_urls & searched_urls)
-        date_match = re.search(r"確認日\s*[：:]\s*(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", block)
+        date_label = r"(?:確認日|取得日)" if fresh is not None else "確認日"
+        date_match = re.search(date_label + r"\s*[：:]\s*(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", block)
         actual_date = "-".join((date_match[1], date_match[2].zfill(2), date_match[3].zfill(2))) if date_match else None
         has_checked_at = actual_date == checked_on
         evidence = re.search(r"確認箇所\s*[：:]\s*([^\n｜|]+)", block)
@@ -199,7 +199,10 @@ def _downgrade_incomplete_confirmations(
         if has_url and has_checked_at and has_evidence:
             continue
         blocks[i] = re.sub(r"\[confirmed\]", "[hypothesis]", block, flags=re.IGNORECASE)
-        blocks[i] += "\n> 自動判定：今回の出典URL・確認日・取得本文の根拠を確認できないため未確認扱い"
+        reasons = []
+        if not has_checked_at: reasons.append("今回の確認日が不足・不一致")
+        if not has_url or not has_evidence: reasons.append("出典URLと連続した8〜240文字の引用が直接取得本文に一致しない（省略・言い換え・短すぎる引用を確認）")
+        blocks[i] += "\n> 自動判定：" + "、".join(reasons) + "ため未確認扱い"
         downgraded += 1
     return "".join(blocks), downgraded
 
@@ -252,7 +255,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     searched_urls = _search_result_urls(observed)
     total_input, total_output = resp.usage.input_tokens, resp.usage.output_tokens
     fresh.fetch_confirmed_citations(fact_text)
-    _, needs_repair = _downgrade_incomplete_confirmations(
+    checked_draft, needs_repair = _downgrade_incomplete_confirmations(
         fact_text, searched_urls=searched_urls, checked_on=checked_on, fresh=fresh,
     )
     if needs_repair:
@@ -261,14 +264,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         try:
             repair_resp, fact_text, repair_queries, repair_observed = run_with_fetch(
                 client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
-                system=SOURCE_FRESHNESS_POLICY + "\nあなたはファクトシートの出典照合担当です。",
+                system=SYSTEM_PROMPT + "\nあなたはファクトシートの出典照合担当です。",
                 prompt=freshness_context(checked_on) +
                     "以下の下書きを今回取得した本文と照合し、修正したファクトシート全体だけを返してください。"
                     "新しい話題・主張を増やさない。設定と矛盾する古い情報は、今回の公式本文の適用条件を確認して更新する。"
                     "根拠URLは実際に取得したページに合わせる。引用はそのページ本文から短い連続した原文を正確に抜き出す。"
                     "各事実とURL・確認日・確認箇所・判定を一つの段落にまとめ、段落間を空行で区切る。"
+                    "自動判定で示された不一致を直す。表全体を省略記号で引用せず、プラン・期間ごとに事実を分け、取得本文の連続した原文を引用する。"
+                    "下書きの[hypothesis]は修正根拠を実際に確認できた場合だけ[confirmed]へ変更する。"
                     "根拠がない事実は[hypothesis]へ移し、冒頭の説明・要約・表・注意点にも未確認の断定を残さない。"
-                    "検索要約と公式本文が矛盾する場合は、同じ対象・条件の公式本文を優先する。\n\n" + fact_text,
+                    "検索要約と公式本文が矛盾する場合は、同じ対象・条件の公式本文を優先する。\n\n" + checked_draft,
                 search_tool={**WEB_SEARCH_TOOL, "max_uses": 3}, fresh=fresh,
             )
             total_input += repair_resp.usage.input_tokens

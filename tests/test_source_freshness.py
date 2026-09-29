@@ -45,6 +45,15 @@ class SourceFreshnessTests(unittest.TestCase):
             with self.subTest(content=content):
                 self.assertEqual(self.check_fact(content)[1], 1)
 
+    def test_fetch_date_alias_requires_direct_matching_evidence(self):
+        fresh = FreshSources({}, [])
+        fresh.pages[OFFICIAL] = {'url': OFFICIAL, 'status': 'success', 'text': '現在の料金は月額2,000円です。'}
+        text = fact().replace('確認日', '取得日')
+        self.assertEqual(sheet._downgrade_incomplete_confirmations(text, searched_urls=set(), checked_on=TODAY, fresh=fresh), (text, 0))
+        self.assertEqual(self.check_fact(text)[1], 1)
+        for invalid in (text.replace(TODAY, '2026-09-20'), text.replace('「現在の料金は月額2,000円」', '「取得本文にない根拠です」')):
+            self.assertEqual(sheet._downgrade_incomplete_confirmations(invalid, searched_urls=set(), checked_on=TODAY, fresh=fresh)[1], 1)
+
     def test_unknown_evidence_is_not_confirmed(self):
         self.assertEqual(self.check_fact(fact().replace("「現在の料金は月額2,000円」", "不明"))[1], 1)
 
@@ -99,6 +108,8 @@ class SourceFreshnessTests(unittest.TestCase):
         request = generate.call_args.kwargs
         self.assertIn(TODAY, request["messages"][0]["content"])
         self.assertIn("登録されているだけで[confirmed]にしない", request["system"])
+        self.assertIn("【公式ソース必須の情報】", request["system"])
+        self.assertIn("Tier 2のソース1件のみ", request["system"])
         stored = save.call_args.kwargs
         self.assertIn(fact(), stored["content_text"])
         self.assertEqual(stored["meta"]["incomplete_confirmations_downgraded"], 1)
