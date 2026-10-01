@@ -1,5 +1,6 @@
 """Mandatory semantic audit, bounded corrections, and re-audit of the final text."""
 import json
+import re
 
 import anthropic
 
@@ -65,6 +66,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 'article': text, 'confirmed_facts': facts, 'source_documents': sources, 'audit': report,
                 'outline': outline, 'requirements': requirements}, ensure_ascii=False)}])
         candidate = response_text(result).strip()
+        upsert_artifact(job_id=job_id, step=f'content_repair_response_{attempt + 1}',
+                        content_type='text/plain', content_text=candidate, meta={'audited': False})
+        # Accept an unambiguous full Markdown fence, never strip arbitrary preambles.
+        fenced = re.fullmatch(r'```(?:markdown|md)?\s*\n(.*?)\n```', candidate, re.S)
+        if fenced:
+            candidate = fenced.group(1).strip()
         if not candidate or not candidate.startswith('#'):
             raise ContentQualityError('内容修正が完了しませんでした。')
         # Preserve every candidate; no correction inherits the prior audit's pass.
