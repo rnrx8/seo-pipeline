@@ -1,5 +1,21 @@
 # Mandatory content quality gates
 
+## Latest verification — 2026-10-01
+
+Current policy is `content-quality-v6`; 169 unit/regression tests pass. The two requested production test articles were replaced with individually reviewed, audited text (UI counts: free-app article 14,308; two-service comparison 12,684). Those published versions include explicit editorial corrections; they are not evidence of wholly automatic recovery.
+
+A separate free-app replay completed from corrected/normalized outline through writing, review, automatic content repair and the final gate without manual body edits (15,084 raw characters, 14,290 UI characters; third semantic audit passed). Writing/review ran on 2335e7d and final audit/repair on 5e9211f after a code-update handoff. Saved SERP/intents were reused and DB writes staged; this was not a new production job on a single revision. A captured real writer response was separately replayed through the latest part-level scope guard, with a real model correction that resolved its missing audience condition. An incomplete content correction was also rejected before saving and successfully resubmitted.
+
+Additional fixes since the earlier records below:
+- Stable section IDs and outline hashes survive local heading corrections. Full rewrites do not infer identity by position; missing sections, changed hierarchy and short bodies remain invalid.
+- Conditional evidence retains audience, plan, term, tax, feature, literal statement and URL. Missing audience conditions are checked before writing, after each part, before accepting repairs, and at final delivery.
+- Paragraph IDs address audit findings and corrections against one immutable text snapshot. Unknown/duplicate IDs, omitted targets and mechanically unresolved corrections are rejected. Structured JSON output is requested for audits/repairs; application validation remains mandatory.
+- Exact local corrections preserve unrelated text. The semantic repair limit remains two, with up to one resubmission of an invalid/incomplete patch and a full re-audit after accepted corrections.
+- Explicit outline heading labels (including bold `**H2: ...**`) are normalized before structure validation, volume allocation and evidence approval. This fixes FAQ children incorrectly assigned to the preceding H2 and missing FAQ allocations. Writer attempts and structural issues are retained for diagnosis.
+
+Model selection, database schema and public pipeline step keys are unchanged. The earlier sections below record intermediate implementations and failed runs, not the current final verification result. Passing these cases does not establish correctness or completion rates for arbitrary generated articles.
+
+
 The normal pipeline now runs `research_validation` after outline structure repair,
 then `content_audit` after editing (and after optional high-accuracy fact review).
 Neither gate changes the configured models. Writing keeps the existing concrete
