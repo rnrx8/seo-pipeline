@@ -4,6 +4,16 @@ from pipeline.claim_scope import conditional_facts, scope_issues, scope_instruct
 FACTS='## サービスA\n> 女性は基本機能が無料。男性はメッセージ送受信が有料。\n> 1ヶ月プランは税込980円。 [confirmed]'
 
 class ClaimScopeTests(unittest.TestCase):
+    def test_metric_definition_survives_redundancy_deletion(self):
+        facts = 'アクティブユーザー率は約75%（2026年2月にアクセスしたユーザーの内、当月後半にもアクティブだった割合）。'
+        table = '| アクティブ率 | 約75% | 公式非公表 |'
+        self.assertEqual(scope_issues(table, facts)[0]['key'], 'missing_metric_cohort')
+        self.assertEqual(scope_issues(table + '\n\n' + facts, facts), [])
+        self.assertTrue(scope_issues(table + '\n\n' + facts.replace('2026年2月', '2026年3月'), facts))
+        self.assertTrue(scope_issues(table + '\n\nアクティブ率約75%（2026年2月時点）。', facts))
+        self.assertEqual(scope_issues('会員数は非公表です。', facts), [])
+        self.assertEqual(scope_issues(table, 'アクティブ率は約75%です。'), [])
+
     def test_conditions_and_values_remain_attached_to_literal_evidence(self):
         row=conditional_facts(FACTS)[0]
         self.assertEqual(row['conditions']['audience'],['女性','男性'])

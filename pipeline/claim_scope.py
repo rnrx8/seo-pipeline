@@ -95,6 +95,24 @@ def feature_scope_issues(text: str, records: list[dict]) -> list[dict]:
     return issues
 
 
+def metric_scope_issues(text: str, facts: str) -> list[dict]:
+    """Preserve the explicit cohort definition of a reported active-user rate.
+
+    Activate only for the source's access/month-half definition. This does not
+    infer definitions for other metrics or require every recap to repeat it.
+    """
+    metric = r'アクティブ(?:ユーザー)?率'
+    definitions = re.findall(metric + r'[^。\n]{0,100}?(\d{4}年\d{1,2}月)にアクセスした[^。\n]{0,60}当月後半', facts)
+    if not definitions or not re.search(metric + r'[^。\n]{0,30}\d+\s*[%％]', text):
+        return []
+    for month in set(definitions):
+        if re.search(metric + r'[^。\n]{0,100}' + re.escape(month)
+                     + r'にアクセスした[^。\n]{0,60}当月後半', text):
+            return []
+    return [{'key': 'missing_metric_cohort', 'claim': 'アクティブ率',
+             'reason': 'アクティブ率の根拠にある対象月・アクセスした利用者・当月後半の条件が本文から欠落しています。数値を残す場合は定義を少なくとも一度明記する。'}]
+
+
 def scope_issues(text: str, facts: str) -> list[dict]:
     """Catch the observed universal free-use claim without a probabilistic verdict.
 
@@ -106,7 +124,7 @@ def scope_issues(text: str, facts: str) -> list[dict]:
         literal = re.sub(r'[*_>`]', '', record['statement'])
         return bool(re.search(r'女性(?:(?!男性|。|有料).){0,90}?無料(?!では(?:ない|ありません|なく|ございません))', literal))
     evidence = [r for r in records if female_free(r)]
-    issues = feature_scope_issues(text, records)
+    issues = feature_scope_issues(text, records) + metric_scope_issues(text, facts)
     if not evidence:
         return issues
     heading_scope = {}

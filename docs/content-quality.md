@@ -1,6 +1,10 @@
 # Mandatory content quality gates
 
-## Latest verification — 2026-10-01
+## Current implementation — 2026-10-02
+
+Policy `content-quality-v7` adds mandatory prose and redundancy checks, a five-check independent editorial audit, prompt-bound audit snapshots, single-owner CTA insertion with exact section identity, duplicate-paragraph rejection, and narrowly grounded feature-audience and active-rate-cohort guards. Repair cannot delete the final definition of a retained metric. 181 unit/regression tests pass. Two real article candidates are being revalidated before replacement; do not read the historical publication record below as proof of their latest prose quality. Individual manual edits are part of that repair. A synthetic full writing-through-final-validation integration case passed without manual edits; an earlier sparse-evidence fixture failed redundancy validation. This is not a measured general success rate.
+
+## Historical verification — 2026-10-01
 
 Current policy is `content-quality-v6`; 169 unit/regression tests pass. The two requested production test articles were replaced with individually reviewed, audited text (UI counts: free-app article 14,308; two-service comparison 12,684). Those published versions include explicit editorial corrections; they are not evidence of wholly automatic recovery.
 
