@@ -217,7 +217,7 @@ def explicit_risk_guarantees(text: str) -> list[str]:
     for sentence in re.split(r'(?<=[。！？\n])', text):
         if re.search(r'ノーリスク|リスク(?:が|は)?(?:ゼロ|0)', sentence):
             prose = re.sub(r'「[^」]*」|『[^』]*』|“[^”]*”', '', sentence)
-            if re.search(r'(?:ノーリスク|リスク(?:が|は)?(?:ゼロ|0))(?:で(?:す|[、\s]|[^は])|です|になります|にでき)', prose) \
+            if re.search(r'(?:ノーリスク|リスク(?:が|は)?(?:ゼロ|0))(?:で(?:す|[、\s]|[^は])|です|になります|にでき|の|な)', prose) \
                     and not re.search(r'では(?:あり|なく|ない)|わけでは|とは(?:いえ|言え)|保証(?:し|でき)|限りません', prose):
                 found.append(sentence.strip())
     return found
@@ -259,6 +259,12 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     if scope_findings:
         check = next(c for c in report['checks'] if c['key'] == 'comparison_conditions')
         check.update(status='fail', reason=json.dumps(scope_findings, ensure_ascii=False))
+        report['valid'] = False
+    guarantees = explicit_risk_guarantees(text)
+    report['risk_issues'] = guarantees
+    if guarantees:
+        check = next(c for c in report['checks'] if c['key'] == 'unsupported_guarantees')
+        check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
         report['valid'] = False
     if stage == 'article':
         focused = editorial_audit(client, text, model)

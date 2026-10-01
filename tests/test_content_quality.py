@@ -250,3 +250,14 @@ class ContentEditTests(unittest.TestCase):
         for edits in [[{'old':'誤り。','new':'修正。','count':1},{'old':'誤り','new':'訂正','count':1}], [{'old':'ない文字','new':'訂正','count':1}], []]:
             with self.assertRaises(quality.ContentQualityError):self.apply('# 記事\n誤り。',edits)
         with self.assertRaises(quality.ContentQualityError):step_content_audit.apply_content_edits('# 記事','修正します。\n{"edits":[]}')
+
+
+class ReadinessInstructionRegressionTests(unittest.TestCase):
+    def test_bad_outline_cannot_pass_even_if_model_approves_it(self):
+        text='### H2：無料の正体\n- 完全無料で出会い切れるアプリは存在せず、ノーリスクの流れを説明する。'
+        facts='> 女性は基本機能が無料。男性のメッセージは有料。 [confirmed]'
+        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(report()))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
+        with patch.object(quality,'create_with_retry',return_value=response):
+            result=quality.audit(None,stage='research',text=text,facts=facts,outline=text,contract={},requirements={})
+        self.assertFalse(result['valid'])
+        self.assertEqual({c['key'] for c in result['checks'] if c['status']=='fail'},{'comparison_conditions','unsupported_guarantees'})

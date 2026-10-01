@@ -75,7 +75,7 @@ def scope_issues(text: str, facts: str) -> list[dict]:
             continue
         for sentence in re.split(r'(?<=[。！？])', line):
             prose = re.sub(r'「[^」]*」|『[^』]*』', '', sentence)
-            if not re.search(r'完全無料.{0,65}(?:存在し(?:ない|ません)|ありません)', prose):
+            if not re.search(r'完全無料.{0,65}(?:存在(?:し(?:ない|ません)|せず)|ありません)', prose):
                 continue
             if re.search(r'とは(?:限|言え|いえ)|わけでは|という(?:誤解|主張)', prose):
                 continue

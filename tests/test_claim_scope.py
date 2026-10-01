@@ -50,3 +50,7 @@ class ClaimScopeTests(unittest.TestCase):
             with self.assertRaises(ContentQualityError):step_final_validate.run('j','比較')
         saved=json.loads(save.call_args.kwargs['content_text'])
         self.assertIn('missing_audience_condition',[i['key'] for i in saved['violations']])
+
+    def test_outline_instruction_is_not_allowed_to_remove_audience(self):
+        text='### H2：無料の正体\n- セクション内容：完全無料で出会い切れるアプリは基本的に存在せず、無料は確認までと説明する。'
+        self.assertEqual(len(scope_issues(text,FACTS)),1)
