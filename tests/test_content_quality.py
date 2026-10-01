@@ -197,3 +197,27 @@ class QualityTests(unittest.TestCase):
 
 
 if __name__ == '__main__':unittest.main()
+
+class FocusedEditorialTests(unittest.TestCase):
+    def response(self, checks):
+        return SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'checks': checks}))], usage=SimpleNamespace(input_tokens=10,output_tokens=10))
+
+    def test_focused_failure_overrides_source_audit_pass(self):
+        source=report()['checks']
+        focused=[{'key':k,'reason':'無料は金銭範囲のみ。ノーリスクは無限定。','status':'fail' if k=='unsupported_guarantees' else 'pass'} for k in quality.EDITORIAL_CHECKS]
+        with patch.object(quality,'create_with_retry',side_effect=[self.response(source),self.response(focused)]) as calls:
+            result=quality.audit(None,stage='article',text='無料なのでノーリスクです。',facts='',outline='',contract={},requirements={})
+        self.assertFalse(result['valid'])
+        self.assertEqual(calls.call_count,2)
+        self.assertEqual(calls.call_args.kwargs['messages'][0]['content'],'無料なのでノーリスクです。')
+        self.assertIn('editorial_audit',result)
+
+    def test_incomplete_focused_response_fails_closed(self):
+        with patch.object(quality,'create_with_retry',return_value=self.response([])):
+            with self.assertRaises(quality.ContentQualityError):quality.editorial_audit(None,'本文','model')
+
+    def test_focused_pass_does_not_erase_source_failure(self):
+        focused=[{'key':k,'reason':'条件に一致','status':'pass'} for k in quality.EDITORIAL_CHECKS]
+        with patch.object(quality,'create_with_retry',side_effect=[self.response(report('evidence_support')['checks']),self.response(focused)]):
+            result=quality.audit(None,stage='article',text='本文',facts='',outline='',contract={},requirements={})
+        self.assertFalse(result['valid'])

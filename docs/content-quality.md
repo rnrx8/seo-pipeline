@@ -87,3 +87,7 @@ neither was published. It exposed a missing evidence handoff to authors and
 property labels being counted as extra services. Those paths and conflicting
 confirmed-only writing instructions are now corrected. A fresh two-article
 replay is underway; unit tests are not evidence of completed article quality.
+
+## 2026-10-01 本文単独の整合性検査
+
+大量の原文を伴う監査が「ノーリスク」「退会すれば記録が残らない」を見逃した実生成例から、本文単独の検査を追加。出典監査とどちらか一方でも不合格なら修正・再検査。対象条件の矛盾、安全保証、編集用のH2/H3案内を検査する。共通執筆方針にも対象・範囲の維持を追加。policy v4で旧合格は無効。回帰テスト136件成功。実生成で検証中。
