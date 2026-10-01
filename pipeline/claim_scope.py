@@ -106,7 +106,7 @@ def metric_scope_issues(text: str, facts: str) -> list[dict]:
     if not definitions or not re.search(metric + r'[^。\n]{0,30}\d+\s*[%％]', text):
         return []
     for month in set(definitions):
-        if re.search(metric + r'[^。\n]{0,100}' + re.escape(month)
+        if re.search(metric + r'[^\n]{0,100}' + re.escape(month)
                      + r'にアクセスした[^。\n]{0,60}当月後半', text):
             return []
     return [{'key': 'missing_metric_cohort', 'claim': 'アクティブ率',

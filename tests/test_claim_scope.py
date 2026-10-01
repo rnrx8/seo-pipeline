@@ -9,6 +9,7 @@ class ClaimScopeTests(unittest.TestCase):
         table = '| アクティブ率 | 約75% | 公式非公表 |'
         self.assertEqual(scope_issues(table, facts)[0]['key'], 'missing_metric_cohort')
         self.assertEqual(scope_issues(table + '\n\n' + facts, facts), [])
+        self.assertEqual(scope_issues('アクティブユーザー率は約75%です。これは2026年2月にアクセスしたユーザーのうち当月後半にもアクティブだった割合です。', facts), [])
         self.assertTrue(scope_issues(table + '\n\n' + facts.replace('2026年2月', '2026年3月'), facts))
         self.assertTrue(scope_issues(table + '\n\nアクティブ率約75%（2026年2月時点）。', facts))
         self.assertEqual(scope_issues('会員数は非公表です。', facts), [])
