@@ -41,6 +41,23 @@ def heading_matches(a: str, b: str) -> bool:
     return a == b or SequenceMatcher(None, a, b).ratio() >= .88
 
 
+def normalize_outline_headings(text: str) -> str:
+    """Canonicalize explicit H2/H3/H4 labels; never promote editorial labels."""
+    pattern = re.compile(r'^[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*)?H([234])(?:[-−]?\d+)?[ \t]*[.．:：｜|][ \t]*(.+?)(?:\*\*)?[ \t]*$')
+    lines = []
+    fenced = False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith(('```','~~~')):
+            fenced = not fenced
+        match = pattern.match(line.rstrip('\r\n')) if not fenced else None
+        if match:
+            level = int(match[1])
+            ending = '\r\n' if line.endswith('\r\n') else '\n' if line.endswith('\n') else ''
+            line = '#' * (level + 1) + f' H{level}：{match[2].strip()}' + ending
+        lines.append(line)
+    return ''.join(lines)
+
+
 def outline_sections(text: str) -> list[dict]:
     """Read the explicit H2/H3/H4 labels, not editorial metadata headings."""
     matches = list(re.finditer(r'^#{2,5}\s+H([234])(?:[-−]?\d+)?\s*[.．:：｜|]\s*(.+)$', text, re.M))

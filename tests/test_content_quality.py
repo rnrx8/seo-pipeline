@@ -196,7 +196,6 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(next(c for c in checks if c['key']=='coverage')['status'],'fail')
 
 
-if __name__ == '__main__':unittest.main()
 
 class FocusedEditorialTests(unittest.TestCase):
     def response(self, checks):
@@ -366,3 +365,5 @@ class ScopeRepairCompletenessTests(unittest.TestCase):
         written=[c.kwargs['content_text'] for c in save.call_args_list if c.kwargs['step']=='article']
         self.assertTrue(all(replies[0] not in t for t in written))
         self.assertIn(replies[1],written[-1])
+
+if __name__ == '__main__':unittest.main()

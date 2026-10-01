@@ -357,7 +357,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
 
 
 def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
-                         sections: list, part_number: int, contract: dict | None = None) -> tuple[str, int, int]:
+                         sections: list, part_number: int, contract: dict | None = None, job_id: str | None = None) -> tuple[str, int, int]:
     """Retry a defective part once, before allowing the next part to start."""
     required_outline = select_outline(outline, [title for title, _, _ in sections])
     target = sum(chars for _, _, chars in sections)
@@ -375,6 +375,11 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
         issues = validate_delivery(cleaned, required_outline, f'{target}字', contract=contract)
+        if job_id:
+            upsert_artifact(job_id=job_id, step=f'article_part_{part_number}_attempt_{attempt + 1}',
+                            content_type='text/markdown', content_text=cleaned,
+                            meta={'part':part_number,'attempt':attempt + 1,'valid':not issues,
+                                  'issues':issues,'required_outline':required_outline,'audited':False})
         if not issues:
             return cleaned, total_input, total_output
         if attempt == 0:
@@ -696,6 +701,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     # Load volume design from outline and service_map if available
     outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
+    if outline_text != outline['content_text']:
+        raise ContentQualityError('構成の見出し表記または文字数配分が未正規化です。執筆前検査から再開してください。')
     volume_sections = _parse_volume_design(outline_text)
     if not volume_sections:
         raise ContentQualityError('章別の文字数配分がありません。構成から再生成してください。')
@@ -767,7 +774,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract)
+    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract, job_id=job_id)
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -782,7 +789,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {"role": "assistant", "content": part1_text},
             {"role": "user", "content": part2_inst},
         ]
-    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract) if p2_secs else ('', 0, 0)
+    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract, job_id=job_id) if p2_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -796,7 +803,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text if p2_secs else part1_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract) if p3_secs else ('', 0, 0)
+    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract, job_id=job_id) if p3_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")

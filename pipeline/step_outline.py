@@ -3,7 +3,7 @@ from .content_quality import ContentQualityError, source_evidence, writing_evide
 import json
 import re
 import anthropic
-from .article_quality import parse_length_budget, outline_sections
+from .article_quality import parse_length_budget, outline_sections, normalize_outline_headings
 from .ai import create_with_retry, get_step_config
 from .content_contract import contract_prompt, reference_prompt
 from .db import (
@@ -200,6 +200,9 @@ def _target_chars(setting: str | None) -> int:
 
 def ensure_complete_volume_design(outline_text: str, word_count_setting: str | None) -> tuple[str, bool]:
     """Rebuild a truncated/incomplete volume table from the actual H2 list."""
+    original = outline_text
+    outline_text = normalize_outline_headings(outline_text)
+    normalized = outline_text != original
     h2s = [
         match.group(1).strip()
         for match in re.finditer(
@@ -207,7 +210,7 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
         )
     ]
     if not h2s:
-        return outline_text, False
+        return outline_text, normalized
     marker = re.search(r"^###\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
     existing_titles: list[str] = []
     existing_chars: list[int] = []
@@ -225,7 +228,7 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
             and .9 * target <= sum(existing_chars) <= 1.1 * target
             and all(existing_chars[existing_titles.index(title)] >= floor
                     for title, floor in zip(h2s, floors))):
-        return outline_text, False
+        return outline_text, normalized
 
     if sum(floors) > target:
         raise ContentQualityError('文字数目標に対して構成の子見出しが多すぎます。構成を絞って再生成してください。')

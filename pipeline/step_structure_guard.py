@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .content_quality import ContentQualityError
+from .article_quality import normalize_outline_headings
 
 import json
 import re
@@ -455,13 +456,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     del keyword, api_key
     outline = get_artifact(job_id, "outline")
     contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
-    violations = validate_structure(outline["content_text"], contract, outline=True)
+    canonical = normalize_outline_headings(outline["content_text"])
+    violations = validate_structure(canonical, contract, outline=True)
     added: list[str] = []
-    final_text = outline["content_text"]
+    final_text = canonical
     if violations:
         final_text, added = repair_outline(final_text, contract, violations)
     word_count_setting = get_job(job_id).get("word_count_setting")
     final_text, volume_repaired = ensure_complete_volume_design(final_text, word_count_setting)
+    volume_repaired = volume_repaired or canonical != outline["content_text"]
     if violations or volume_repaired:
         remaining = validate_structure(final_text, contract, outline=True)
         if remaining:

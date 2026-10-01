@@ -14,7 +14,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
     for attempt in range(3):
         job = get_job(job_id)
-        outline = get_artifact(job_id, 'outline')['content_text']
+        outline_artifact = get_artifact(job_id, 'outline')
+        outline, normalized = step_outline.ensure_complete_volume_design(outline_artifact['content_text'], job.get('word_count_setting'))
+        if normalized:
+            upsert_artifact(job_id=job_id, step='outline', content_type='text/markdown', content_text=outline,
+                            meta={**(outline_artifact.get('meta') or {}), 'normalized_before_readiness':True})
         facts = confirmed_facts(get_artifact(job_id, 'fact_sheet')['content_text'])
         contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
         sources = source_evidence(get_artifact(job_id, 'fresh_sources'))
