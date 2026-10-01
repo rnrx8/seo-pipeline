@@ -5,6 +5,7 @@ import json
 
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
+from .claim_scope import scope_issues
 from .content_quality import ContentQualityError, audit_facts, require_audit, requirements_for, snapshot, source_evidence
 from .step_structure_guard import extract_h2_titles, validate_structure
 
@@ -21,6 +22,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], article,
                            high_accuracy=bool(job.get('high_accuracy_mode')),
                            evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)
+        violations += scope_issues(article['content_text'], facts)
         source_artifacts = [get_artifact(job_id, 'fresh_sources')]
         if job.get('high_accuracy_mode'): source_artifacts.append(get_artifact(job_id, 'fresh_sources_review'))
         sources = source_evidence(*source_artifacts)

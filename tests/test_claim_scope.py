@@ -28,9 +28,25 @@ class ClaimScopeTests(unittest.TestCase):
     def test_questions_negation_and_opposite_gender_prices_are_not_counterexamples(self):
         for text in ['「完全無料は存在しません」と思っていませんか。','完全無料は存在しないとは限りません。']:
             self.assertEqual(scope_issues(text,FACTS),[])
-        for facts in ['> 女性は有料。男性は無料。 [confirmed]','> 女性は無料ではありません。 [confirmed]']:
+        for facts in ['> 女性は有料。男性は無料。 [confirmed]','> 女性は無料ではありません。 [confirmed]', '> 女性は無料ではなく有料です。 [confirmed]']:
             self.assertEqual(scope_issues('完全無料は存在しません。',facts),[])
 
     def test_gender_comparison_heading_is_not_a_male_only_condition(self):
         text='# 男性・女性の無料範囲\n## まとめ\n完全無料のサービスは存在しません。'
         self.assertEqual(len(scope_issues(text,FACTS)),1)
+
+    def test_final_gate_rejects_scope_error_even_with_forged_pass_verdict(self):
+        import json
+        from unittest.mock import patch
+        from pipeline import step_final_validate
+        from pipeline.content_quality import CHECKS,POLICY_VERSION,snapshot,source_evidence,confirmed_facts,requirements_for,ContentQualityError
+        text='## まとめ\n完全無料で使えるサービスは存在しません。';outline='### H2：まとめ'
+        source={'content_text':'[{"url":"https://example.com","status":"success","text":"女性は無料。男性は有料。"}]'}
+        artifacts={'article':{'content_text':text},'outline':{'content_text':outline},'fact_sheet':{'content_text':FACTS},'content_contract':{'content_text':'{"required_sections":[]}'},'fresh_sources':source}
+        report={'valid':True,'policy_version':POLICY_VERSION,'checks':[{'key':k,'reason':'確認','status':'pass'} for k in CHECKS],
+                'snapshot':snapshot(text,confirmed_facts(FACTS),outline,{'required_sections':[]},requirements_for({},'比較'),source_evidence(source))}
+        artifacts['content_audit']={'content_text':json.dumps(report)}
+        with patch.object(step_final_validate,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_final_validate,'get_job',return_value={}),patch.object(step_final_validate,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            with self.assertRaises(ContentQualityError):step_final_validate.run('j','比較')
+        saved=json.loads(save.call_args.kwargs['content_text'])
+        self.assertIn('missing_audience_condition',[i['key'] for i in saved['violations']])

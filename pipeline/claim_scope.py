@@ -59,7 +59,7 @@ def scope_issues(text: str, facts: str) -> list[dict]:
     records = conditional_facts(facts)
     def female_free(record):
         literal = re.sub(r'[*_>`]', '', record['statement'])
-        return bool(re.search(r'女性(?:(?!男性|。|有料).){0,90}?無料(?!では(?:ない|ありません))', literal))
+        return bool(re.search(r'女性(?:(?!男性|。|有料).){0,90}?無料(?!では(?:ない|ありません|なく|ございません))', literal))
     evidence = [r for r in records if female_free(r)]
     if not evidence:
         return []
