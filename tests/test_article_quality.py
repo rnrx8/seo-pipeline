@@ -110,6 +110,9 @@ class ArticleQualityTests(unittest.TestCase):
         self.assertEqual((ti, to), (40, 60))
         self.assertEqual(call.call_count, 2)
         self.assertEqual(validate_delivery(text, wanted), [])
+        prompt=call.call_args_list[0].args[1][-1]["content"]
+        self.assertIn("直接取得本文",prompt)
+        self.assertNotIn("confirmedのみ",prompt)
 
     def test_part_stops_after_failed_repair(self):
         with patch.object(step_article, '_call', return_value=('## おすすめサービス比較\n未完成', 1, 1)) as call:

@@ -76,8 +76,8 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - 構成案の各H2・H3・H4に割り当てられた根拠URLは、原則として割り当て先のセクションで使用する。
 - 根拠URLと併記された「根拠となる内容」の範囲だけを裏付けとして扱い、URLが裏付けていない内容へ拡張しない。
 - URL・出典名はファクトシートの表記を維持し、推測・補完・改変しない。
-- 「該当資料なし」のH3では、根拠が必要な数値・固有の事実を新たに作らない。一般的な説明に留めるか、ファクトシート内の適切な[confirmed]情報がある場合のみ使用する。
-- 構成案の割り当てとファクトシートが矛盾する場合はファクトシートを優先し、[hypothesis]情報は本文に使用しない。
+- 「該当資料なし」のH3では、根拠が必要な数値・固有の事実を新たに作らない。一般的な説明に留めるか、提供された確認済み要約または直接取得本文に適切な根拠がある場合に使用する。
+- 構成案・要約・取得本文が矛盾する場合は、同じ対象・条件の公式取得本文を優先する。[hypothesis]の主張自体を根拠にしない。
 
 ▼ リスト・表の活用（並列・列挙はリスト化を優先）
 - 並列・列挙関係の内容は、文で連ねず原則として箇条書きリストまたは表にする：
@@ -109,7 +109,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
   「〜が大切です」「〜をおすすめします」
 
 ▼ ファクトの使い方
-- [confirmed]タグのついた数値・データのみ本文に使用する
+- [confirmed]の要約または今回直接取得した原文で対象・条件を照合できる数値・データを使用する
 - [hypothesis]タグのものは本文に書かない
 - 根拠のない数値・推測を断言しない
 
@@ -134,7 +134,7 @@ USER_TEMPLATE = """\
 ## 構成案
 {outline_text}
 
-## ファクトシート（[confirmed]のみ本文に使用）
+## 根拠資料（確認済み要約・今回の直接取得本文）
 {fact_text}
 
 ---
@@ -363,7 +363,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     instruction = (
         '\n【このパートの完成条件】以下の構成のH2/H3/H4をすべて本文まで書き切る。'
         '見出しは表記を維持し、次パートに持ち越さない。'
-        '内部メモ・執筆予定・要確認の比較表は禁止。根拠は提供済みconfirmedのみ。\n'
+        '内部メモ・執筆予定・要確認の比較表は禁止。根拠は提供された確認済み要約または直接取得本文。要約の欠落を非公表扱いにしない。\n'
         + required_outline
     )
     attempt_messages = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + instruction}]
@@ -437,7 +437,7 @@ def _repair_missing_structure(
         "named_service_comparison は具体名を同じ比較軸の表で比較する独立H2、"
         "featured_service_coverage は既存の比較H2または関連H2内で、対象サービスの価値と選定理由を"
         f"説明する要件です。{repair_format}\n"
-        "ファクトシートの[confirmed]だけを使い、不明な数値は書かないでください。\n\n"
+        "提供された確認済み要約と直接取得本文だけを根拠に使い、裏付けのない数値は書かないでください。\n\n"
         f"不足: {json.dumps(violations, ensure_ascii=False)}\n"
         f"契約: {json.dumps(contract, ensure_ascii=False)}\n\n"
         f"ファクトシート:\n{fact_text}\n\n"
