@@ -345,3 +345,24 @@ class InternalHeadingReferenceTests(unittest.TestCase):
         issues=validate_delivery(text,'### H2：比較')
         self.assertIn('internal_note',[i['key'] for i in issues])
         self.assertEqual(validate_delivery(text.replace('以下のH3で各サービス','次の章で各サービス'),'### H2：比較'),[])
+
+class ScopeRepairCompletenessTests(unittest.TestCase):
+    def test_changing_target_block_without_fixing_scope_is_not_applied(self):
+        text='## 無料範囲\n\n無料でできるのは検索までです。'
+        artifacts={'article':{'content_text':text},'outline':{'content_text':'### H2：無料範囲'},
+                   'content_contract':{'content_text':'{"required_sections":[]}'},'fresh_sources':SOURCE,
+                   'fact_sheet':{'content_text':'> 女性は基本機能が無料。男性はメッセージが有料。 [confirmed]'}}
+        failure=report('comparison_conditions')
+        next(c for c in failure['checks'] if c['key']=='comparison_conditions')['affected_blocks']=[{'id':'block-0002','reason':'対象条件の欠落'}]
+        replies=['無料でできるのは検索までです。まずは試しましょう。','男性が無料でできるのは検索までです。女性は基本機能を無料で利用できます。']
+        responses=[SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'edits':[{'id':'block-0002','new':t}]}))]) for t in replies]
+        with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_content_audit,'get_job',return_value={}),patch.object(step_content_audit.anthropic,'Anthropic'), \
+             patch.object(step_content_audit,'audit',side_effect=[failure,{**report(),'snapshot':'test'}]), \
+             patch.object(step_content_audit,'create_with_retry',side_effect=responses) as repair, \
+             patch.object(step_content_audit,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            step_content_audit.run('j','無料')
+        self.assertEqual(repair.call_count,2)
+        written=[c.kwargs['content_text'] for c in save.call_args_list if c.kwargs['step']=='article']
+        self.assertTrue(all(replies[0] not in t for t in written))
+        self.assertIn(replies[1],written[-1])

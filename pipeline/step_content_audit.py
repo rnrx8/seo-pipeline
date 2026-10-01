@@ -8,10 +8,10 @@ from .ai import create_with_retry, get_step_config
 from .article_quality import validate_delivery
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import WRITING_POLICY
-from .claim_scope import conditional_facts
+from .claim_scope import conditional_facts, scope_issues
 from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, requirements_for,
-                              response_text, audit_facts, source_evidence)
+                              response_text, audit_facts, source_evidence, explicit_risk_guarantees)
 from .db import get_artifact, get_job, upsert_artifact
 from .step_structure_guard import validate_structure
 
@@ -81,7 +81,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 'requirements': requirements, 'content_contract': contract, 'conditional_facts': conditional_facts(facts),
                 'failed_checks': [c for c in report['checks'] if c['status'] == 'fail'],
                 'structural_issues': issues, 'article_blocks': content_blocks(text)}, ensure_ascii=False)}]
-        # Invalid patches never touch the article. Retry their encoding once,
+        # Invalid or mechanically incomplete patches never touch the article. Retry once,
         # against the same audited original, independently of semantic repairs.
         for encoding_attempt in range(2):
             result = create_with_retry(client, model=model, max_tokens=max_tokens,
@@ -101,6 +101,12 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 missed = required_ids - {edit['id'] for edit in edits}
                 if missed:
                     raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
+                unresolved = scope_issues(candidate, facts)
+                unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
+                unresolved += [v for v in validate_delivery(candidate, outline, job.get('word_count_setting'), contract=contract)
+                               if v['key'] in ('internal_note','unfinished_table')]
+                if unresolved:
+                    raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:
