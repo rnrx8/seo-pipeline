@@ -23,8 +23,9 @@ a check date only when a quote matches a directly fetched body.
 
 Readiness evaluates coverage, evidence, comparison conditions, conclusions,
 metric definitions, unfinished content, and unsupported guarantees. A failed
-readiness check triggers one new research/contract/outline/structure pass, then
-re-audits. Persistent gaps stop the job before writing. The additional research
+readiness check first tries one outline correction using the existing sources
+and re-audits. Persistent failures trigger one new research/contract/outline/
+structure pass and a final re-audit. Persistent gaps stop the job before writing. The additional research
 is supplied with the concrete failed checks, rather than a generic retry.
 
 Final content audit checks the same seven areas, with at most two corrections.
@@ -77,7 +78,7 @@ add one research rebuild and two article corrections. All retries are bounded.
 
 ## Integration verification (2026-10-01)
 
-131 unit/regression tests pass. Additional tests cover evidence handoff,
+133 unit/regression tests pass. Additional tests cover evidence handoff,
 source-bound audit snapshots, row/column spans, erroneous service identities,
 and invalid structure recovery. A live audit rejects a female pricing column
 mix-up and accepts its correct counterpart with table-preserving source text.

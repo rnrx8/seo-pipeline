@@ -12,7 +12,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
-    for attempt in range(2):
+    for attempt in range(3):
         job = get_job(job_id)
         outline = get_artifact(job_id, 'outline')['content_text']
         facts = confirmed_facts(get_artifact(job_id, 'fact_sheet')['content_text'])
@@ -38,12 +38,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                         content_text=json.dumps(report, ensure_ascii=False), meta={'valid': report['valid']})
         if report['valid']:
             return artifact
-        if attempt == 0:
+        if attempt < 2:
             gaps = json.dumps([c for c in report['checks'] if c['status'] == 'fail'], ensure_ascii=False)
-            print('[research_guard] Missing evidence or invalid comparison; researching and rebuilding once')
-            # Re-run retrieval, not a prose-only rewrite that could promote guesses.
-            step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
-            step_content_contract.run(job_id, keyword, api_key=api_key)
+            if attempt == 0:
+                print('[research_guard] Correcting outline with existing source evidence before new retrieval')
+            else:
+                print('[research_guard] Evidence gaps persist; researching and rebuilding once')
+                step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
+                step_content_contract.run(job_id, keyword, api_key=api_key)
+            # Re-audit both semantics and the mechanical contract. Merely removing
+            # missing required topics cannot turn an evidence gap into approval.
             step_outline.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
             step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
     raise ContentQualityError('追加調査後も必要情報・比較条件が未充足です。research_validationを確認してください。')

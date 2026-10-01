@@ -145,10 +145,28 @@ class QualityTests(unittest.TestCase):
              patch.object(step_content_contract, 'run'), patch.object(step_outline, 'run'), \
              patch.object(step_structure_guard, 'run'):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j', '比較')
-        self.assertEqual(audit.call_count, 2)
+        self.assertEqual(audit.call_count, 3)
         self.assertEqual(research.call_count, 1)
         self.assertIn('research_gaps', research.call_args.kwargs)
 
+
+    def test_outline_condition_error_can_recover_without_repeating_source_search(self):
+        from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
+        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+                   'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
+        with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_research_guard,'get_job',return_value={}), \
+             patch.object(step_research_guard.anthropic,'Anthropic'), \
+             patch.object(step_research_guard,'audit',side_effect=[report('comparison_conditions'),report()]), \
+             patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw), \
+             patch.object(step_fact_sheet,'run') as research, \
+             patch.object(step_content_contract,'run'),patch.object(step_outline,'run') as outline, \
+             patch.object(step_structure_guard,'run_before_research'):
+            result=step_research_guard.run('j','比較')
+        research.assert_not_called()
+        outline.assert_called_once()
+        self.assertIn('comparison_conditions',outline.call_args.kwargs['research_gaps'])
+        self.assertTrue(result['meta']['valid'])
 
     def test_structure_failure_routes_to_research_without_becoming_pass(self):
         from pipeline import step_structure_guard
