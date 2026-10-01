@@ -53,7 +53,7 @@ def response_text(message) -> str:
 
 
 def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: dict, sources: str = "") -> str:
-    value = json.dumps([POLICY_VERSION, text, facts, outline, contract, requirements, sources],
+    value = json.dumps([POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -179,7 +179,8 @@ unsupported_guarantees: リスクゼロ・必ず出会える等、根拠のな�
 
 prose_quality: stage=articleでは誤字・脱字、主述の不一致、指示語の不明確さ、不自然な語の組合せ、
 読者に意味の伝わらない分析用語、途切れた文、見出しと本文の不一致を確認。好みの違いだけでfailにしない。
-redundancy: stage=articleでは同じ説明や締め文を情報の追加なく反復していないか確認。
+redundancy: stage=articleでは長い説明段落や複数の文が、新情報なく重複して記事を水増ししていないか確認。
+単文の軽い言い換え、章の結論、短い要約、料金条件の必要な再掲は完成を止める欠陥にしない。
 比較表とその要約、必要な注意点の再掲、設定されたCTAの複数配置はそれだけでfailにしない。
 stage=researchのprose_qualityとredundancyはnot_applicableとする。
 
@@ -226,7 +227,9 @@ prose_quality: 誤字脱字、文の途切れ、主述や修飾のねじれ、�
 見出しが問いかけたことに本文が答えているかも確認。異なる言い方が好ましいというだけではfailにしない。
 「損をするリスク」と「損するリスク」のように意味も文法も通る活用・言い回しの違いは両方許可する。
 より短くできることや語調が好みでないことだけでは不合格にせず、意味の取り違えや不自然さの具体的な原因を示す。
-redundancy: 記事を通して、説明・共感・締め文が新しい情報なく反復され、読み進める妨げになる箇所を特定。
+redundancy: 長い説明段落の二重挿入や、複数文にわたる同じ説明の反復で記事が水増しされている箇所を特定。
+軽い冗長さや単文の言い換えは校閲上の好みでありfailにしない。料金条件の再掲、章の結論や短い要約は許可する。
+「もっと短くできる」だけでは不合格にせず、どの複数文・段落が重複しているか具体的に示す。
 reasonに重複する双方のIDと、何を残し何を省くかを書く。
 affected_blocksには実際に変更・削除するブロックだけを列挙し、比較のため参照した残す側のブロックは含めない。結論の短い要約や重要な条件の再掲は許可。
 登録CTAの案内文・ボタンは章末配置の定型文である。同じCTAが別々のH2末尾にあることはfailにしない。

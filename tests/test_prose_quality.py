@@ -100,3 +100,8 @@ class ProseRegressionTests(unittest.TestCase):
         self.assertNotIn('duplicate_prose',{v['key'] for v in validate_delivery('## 選び方\n\n'+paragraph,outline)})
         quoted='## 選び方\n\n> '+paragraph+'\n\n> '+paragraph
         self.assertNotIn('duplicate_prose',{v['key'] for v in validate_delivery(quoted,outline)})
+
+    def test_audit_prompt_change_invalidates_saved_snapshot(self):
+        before=q.snapshot('article','facts','outline',{}, {})
+        with patch.object(q,'EDITORIAL_SYSTEM',q.EDITORIAL_SYSTEM+'\n新しい必須検査'):
+            self.assertNotEqual(before,q.snapshot('article','facts','outline',{}, {}))
