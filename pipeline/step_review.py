@@ -1,5 +1,5 @@
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts
+from .content_quality import ContentQualityError, source_evidence, writing_evidence
 import json
 import re
 import anthropic
@@ -187,7 +187,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
-    fact_sheet_text = confirmed_facts(get_artifact(job_id, "fact_sheet")["content_text"])
+    fact_sheet_text = writing_evidence(get_artifact(job_id, "fact_sheet")["content_text"], source_evidence(get_artifact(job_id, "fresh_sources")))
     outline_text = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
     try:

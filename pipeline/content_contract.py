@@ -52,7 +52,7 @@ def _clean_heading_name(value: str) -> str:
     value = re.sub(r"^[#\s]+", "", value)
     # Fact sheets use decorative bullets before product labels. They are not
     # part of the product name and must not defeat named-pair query matching.
-    value = re.sub(r"^[■□▪▫●○◆◇▶▷・\s]+", "", value)
+    value = re.sub(r"^[■□▪▫●○◆◇▶▷▼▽・\s]+", "", value)
     value = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）:\s-]*", "", value)
     value = re.split(r"[｜|]", value, maxsplit=1)[0]
     value = re.sub(r"（[^）]{0,40}）|\([^)]{0,40}\)", "", value)
@@ -62,6 +62,12 @@ def _clean_heading_name(value: str) -> str:
 def _service_name_from_label(raw_name: str) -> str:
     """Return the product-name portion of a fact-sheet label."""
     raw_name = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）：:\s-]*", "", raw_name.strip())
+    bracketed = re.search(r"【([^】]+)】", raw_name)
+    if bracketed:
+        return _clean_heading_name(bracketed[1])
+    reversed_label = re.search(r"^[▼▽■□・\s]*(?:料金|会員数|マッチング数|会員層|機能|安全性|身バレ対策)[^（(]*[（(]([^）)]+)[）)]", raw_name)
+    if reversed_label and not re.search(r"男性|女性|プラン|税込|税別|月|円", reversed_label[1]):
+        return _clean_heading_name(reversed_label[1])
     product_match = re.match(
         r"^(.{2,30}?)(?:（[A-Za-z][^）]*）|\([A-Za-z][^)]*\))?"
         r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)",
@@ -74,7 +80,7 @@ def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool =
     if not name or name in _GENERIC_HEADINGS or len(name) > 45:
         return False
     if name.endswith(("とは", "利用実態", "既婚率", "男女比", "料金", "キャンペーン",
-                      "会員数", "方法", "所在地", "機能", "年齢層", "調査", "運営", "掲載実績", "メディア掲載")):
+                      "会員数", "数", "率", "対策", "取得", "違い", "独自", "方法", "所在地", "機能", "年齢層", "調査", "運営", "掲載実績", "メディア掲載")):
         return False
     if any(category in name for category in _GENERIC_SERVICE_CATEGORIES):
         return False
@@ -88,6 +94,7 @@ def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool =
     )) and not any(term in name for term in ("新潟", "北海道", "広島", "沖縄"))
     return (
         from_service_fact
+        or (name in re.findall(r"[（(]([^）)]+)[）)]", raw_name) and bool(re.search(r"[ァ-ヶー]{3,}|[A-Za-z]{2,}", name)))
         or has_romanized_alias
         or has_product_descriptor
         or bool(re.search(r"[A-Za-z]", name))

@@ -1,5 +1,5 @@
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence
+from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, writing_evidence
 import json
 import re as _re
 import time
@@ -633,6 +633,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, "outline")
     fact = get_artifact(job_id, "fact_sheet")
     fact = {**fact, 'content_text': confirmed_facts(fact['content_text'])}
+    sources = source_evidence(get_artifact(job_id, 'fresh_sources'))
 
     try:
         contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
@@ -664,7 +665,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                     contract, requirements_for(job, keyword), source_evidence(get_artifact(job_id, 'fresh_sources'))))
+                                     contract, requirements_for(job, keyword), sources))
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
@@ -756,7 +757,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         keyword=keyword,
         intent_text=intent["content_text"],
         outline_text=outline_text,
-        fact_text=fact["content_text"],
+        fact_text=writing_evidence(fact["content_text"], sources),
     ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -842,7 +843,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if violations:
         print(f"[article] Protected structure missing; running targeted repair: {violations}")
         article_text, ti, to = _repair_missing_structure(
-            client, article_text, fact["content_text"], contract, violations
+            client, article_text, writing_evidence(fact["content_text"], sources), contract, violations
         )
         total_input += ti
         total_output += to

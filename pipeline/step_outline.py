@@ -1,5 +1,5 @@
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts
+from .content_quality import ContentQualityError, source_evidence, writing_evidence
 import json
 import re
 import anthropic
@@ -391,7 +391,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
     fact = get_artifact(job_id, "fact_sheet")
-    fact = {**fact, 'content_text': confirmed_facts(fact['content_text'])}
+    fact = {**fact, 'content_text': writing_evidence(fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')))}
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""

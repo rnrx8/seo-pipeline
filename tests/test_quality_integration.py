@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from pipeline import step_fact_review, step_service_map, step_content_audit
-from pipeline.content_quality import audit_facts, digest, ContentQualityError, requirements_for, source_evidence, snapshot
+from pipeline.content_quality import audit_facts, digest, ContentQualityError, requirements_for, source_evidence, snapshot, writing_evidence
 from pipeline.fresh_sources import FreshSources
 
 
@@ -94,6 +94,18 @@ class QualityIntegrationTests(unittest.TestCase):
         result=json.loads(source_evidence({'content_text':json.dumps(rows)}))
         self.assertLess(sum(len(p['text']) for p in result),181000)
         self.assertTrue(all(p['truncated'] and p['text'].endswith('末尾の料金表') for p in result))
+
+    def test_writer_and_editor_can_access_the_sources_seen_by_auditor(self):
+        text=writing_evidence('> 未確認の価格123456円 [hypothesis]\n\n> 基本機能あり [confirmed]',
+                              source_evidence({'content_text':json.dumps([{'url':'https://official.example/', 'status':'success', 'text':'女性の基本料金は無料、男性は有料です。'}])}))
+        self.assertIn('女性の基本料金は無料',text)
+        self.assertIn('基本機能あり',text)
+        self.assertNotIn('123456',text)
+
+    def test_property_labels_cannot_inflate_required_service_count(self):
+        from pipeline.content_contract import extract_service_candidates
+        facts='## 主要な企業・サービス情報\n> **累計マッチング数**：840万組\n> **アクティブユーザー率**：75%\n> **安全対策**：本人確認\n> **無料会員と有料会員の違い**：あり\n### ▼ 会員数・マッチング数（ヒールメイト）\n> 確認済み\n### JAPHICマーク取得\n### 既婚者クラブ独自'
+        self.assertEqual(extract_service_candidates(facts,'既婚者クラブ'),['既婚者クラブ','ヒールメイト'])
 
     def test_editorial_constraints_are_part_of_audit_requirements(self):
         job={'citation_style':'inline','target_audience':'初心者','tone_style':'丁寧','service_id':'a','cta_id':'b'}
