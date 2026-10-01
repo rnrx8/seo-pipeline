@@ -39,3 +39,30 @@ class SectionIdentityTests(unittest.TestCase):
         binding=bind_sections(TEXT,OUTLINE)
         self.assertIs(unchanged_heading_binding(TEXT,TEXT+'追記',binding),binding)
         self.assertIsNone(unchanged_heading_binding(TEXT,TEXT.replace('会員数','特徴'),binding))
+
+class SectionPipelineIntegrationTests(unittest.TestCase):
+    def test_renamed_section_survives_repair_and_final_gate(self):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from pipeline import step_content_audit,step_final_validate
+        from pipeline.content_quality import CHECKS,POLICY_VERSION,snapshot
+        artifacts={'article':{'content_text':TEXT,'meta':{'section_map':bind_sections(TEXT,OUTLINE)}},
+                   'outline':{'content_text':OUTLINE},'content_contract':{'content_text':'{"required_sections":[]}'},
+                   'fact_sheet':{'content_text':''},'fresh_sources':{'content_text':'[{"url":"https://example.com","status":"success","text":"原文"}]'}}
+        calls=[]
+        def audit(_,**kw):
+            calls.append(kw['text'])
+            return {'valid':len(calls)>1,'policy_version':POLICY_VERSION,
+                    'snapshot':snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources']),
+                    'checks':[{'key':k,'status':'fail' if len(calls)==1 and k=='conclusion_consistency' else 'pass','reason':'確認済み'} for k in CHECKS]}
+        def save(**kw):artifacts[kw['step']]=kw;return kw
+        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'edits':[{'old':'気軽さ・会員数で選ぶならサービスA','new':'機能を重視する人にはサービスA','count':1}]}))])
+        with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_content_audit,'get_job',return_value={}),patch.object(step_content_audit,'upsert_artifact',side_effect=save),patch.object(step_content_audit.anthropic,'Anthropic'),patch.object(step_content_audit,'audit',side_effect=audit),patch.object(step_content_audit,'create_with_retry',return_value=response):
+            step_content_audit.run('j','比較')
+        with patch.object(step_final_validate,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_final_validate,'get_job',return_value={}),patch.object(step_final_validate,'upsert_artifact',side_effect=save):
+            step_final_validate.run('j','比較')
+        self.assertTrue(json.loads(artifacts['structure_validation_final']['content_text'])['valid'])
+        self.assertEqual(len(calls),2)
+        self.assertIn('機能を重視',artifacts['article']['content_text'])
+        self.assertEqual(artifacts['article']['meta']['section_map']['entries'][1]['id'],'section-001')
