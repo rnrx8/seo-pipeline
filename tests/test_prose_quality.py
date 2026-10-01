@@ -113,5 +113,6 @@ class ProseRegressionTests(unittest.TestCase):
         self.assertTrue(scope_issues(bad,facts))
         self.assertFalse(scope_issues(bad.replace('グループチャットや','女性はグループチャットや'),facts))
         self.assertFalse(scope_issues(bad.replace('サービスA','サービスB'),facts))
+        self.assertFalse(scope_issues(bad.replace('サービスAの特徴','サービスAの女性向け機能'),facts))
         universal=facts+'\n\n出典（サービスA）：男女ともグループチャットとイベント参加が無料です。 [confirmed]'
         self.assertFalse(scope_issues(bad,universal))
