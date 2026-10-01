@@ -119,12 +119,12 @@ class QualityTests(unittest.TestCase):
                      'outline': {'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
-        response = SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text='## 比較\n修正した説明。')])
+        responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':[{'old':old,'new':new,'count':1}]}))]) for old,new in [('十分な説明。','一度修正した説明。'),('一度修正した説明。','修正した説明。')]]
         with patch.object(step_content_audit, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_content_audit, 'get_job', return_value={}), \
              patch.object(step_content_audit.anthropic, 'Anthropic'), \
              patch.object(step_content_audit, 'audit', side_effect=lambda *a, **kw: report('conclusion_consistency')) as audit, \
-             patch.object(step_content_audit, 'create_with_retry', return_value=response) as repair, \
+             patch.object(step_content_audit, 'create_with_retry', side_effect=responses) as repair, \
              patch.object(step_content_audit, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
             with self.assertRaises(quality.ContentQualityError):step_content_audit.run('j', '比較')
         self.assertEqual(audit.call_count, 3)
@@ -229,3 +229,24 @@ class RiskGuaranteeRegressionTests(unittest.TestCase):
     def test_negations_and_reader_wishes_are_preserved(self):
         for text in ['無料でもノーリスクではありません。', '「ノーリスクで使いたい」と感じますよね。', 'リスクゼロですとは保証できません。', '金銭負担を抑えて試せます。']:
             self.assertEqual(quality.explicit_risk_guarantees(text), [], text)
+
+
+class ContentEditTests(unittest.TestCase):
+    def apply(self, text, edits):
+        return step_content_audit.apply_content_edits(text,json.dumps({'edits':edits}))
+
+    def test_multiple_exact_edits_leave_other_sections_unchanged(self):
+        t='# 記事\n冒頭の誤り。\n保持する本文。\n結論の誤り。'
+        result=self.apply(t,[{'old':'結論の誤り。','new':'正しい結論。','count':1},{'old':'冒頭の誤り。','new':'正しい冒頭。','count':1}])
+        self.assertEqual(result,'# 記事\n正しい冒頭。\n保持する本文。\n正しい結論。')
+
+    def test_all_repetitions_require_exact_count(self):
+        edit={'old':'誤り。','new':'訂正。','count':2}
+        self.assertEqual(self.apply('# 記事\n誤り。誤り。',[edit]),'# 記事\n訂正。訂正。')
+        edit['count']=1
+        with self.assertRaises(quality.ContentQualityError):self.apply('# 記事\n誤り。誤り。',[edit])
+
+    def test_overlap_missing_match_and_preamble_fail_closed(self):
+        for edits in [[{'old':'誤り。','new':'修正。','count':1},{'old':'誤り','new':'訂正','count':1}], [{'old':'ない文字','new':'訂正','count':1}], []]:
+            with self.assertRaises(quality.ContentQualityError):self.apply('# 記事\n誤り。',edits)
+        with self.assertRaises(quality.ContentQualityError):step_content_audit.apply_content_edits('# 記事','修正します。\n{"edits":[]}')
