@@ -50,6 +50,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             if excerpt:
                 issue['affected_blocks'] = [{'id':b['id'],'reason':issue['key']}
                                             for b in content_blocks(text) if excerpt in b['text']]
+                if issue['key'] == 'duplicate_prose':
+                    issue['affected_blocks'] = issue['affected_blocks'][1:]
         report.update(attempt=attempt + 1, structural_issues=issues)
         report['valid'] = report['valid'] and not issues
         saved = upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
@@ -106,7 +108,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 unresolved = scope_issues(candidate, facts)
                 unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
                 unresolved += [v for v in validate_delivery(candidate, outline, job.get('word_count_setting'), contract=contract)
-                               if v['key'] in ('internal_note','unfinished_table')]
+                               if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
                 if unresolved:
                     raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
                 break

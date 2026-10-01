@@ -108,6 +108,12 @@ def delivery_heading_matches(item, expected, contract=None):
 
 def validate_delivery(text: str, outline: str, setting: str | None = None, contract: dict | None = None, section_map: dict | None = None) -> list[dict]:
     issues = validate_promised_comparison_count(text)
+    paragraphs = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+    for previous, current in zip(paragraphs, paragraphs[1:]):
+        # Adjacent identical prose is an editing defect, not a section recap or CTA.
+        if len(current) >= 50 and current == previous and not re.match(r'^(?:[#>|*\-]|\d+[.)])', current):
+            issues.append({'key': 'duplicate_prose', 'excerpt': current[:180],
+                           'reason': '同じ本文段落が連続して二重に挿入されています。一方だけを残す'})
     if not outline_sections(outline):
         issues.append({'key': 'missing_outline', 'reason': '完成確認に必要な構成がありません'})
     actual = article_sections(text)

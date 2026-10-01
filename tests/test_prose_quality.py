@@ -90,3 +90,13 @@ class ProseRegressionTests(unittest.TestCase):
         after=before.replace('## まとめ','## 選択するときの要点')
         binding=carry_sections(before,after,outline,bind_sections(before,outline))
         self.assertEqual(cta.resolve_cta_targets(['まとめ'],outline,binding),['選択するときの要点'])
+
+    def test_repair_cannot_introduce_adjacent_duplicate_paragraph(self):
+        from pipeline.article_quality import validate_delivery
+        paragraph='無料登録は複数のサービスを併用できます。どれか1つに絞る必要はないため、気になる候補を試して会員層を比較してください。'
+        outline='### H2：選び方'
+        text='## 選び方\n\n'+paragraph+'\n\n'+paragraph
+        self.assertIn('duplicate_prose',{v['key'] for v in validate_delivery(text,outline)})
+        self.assertNotIn('duplicate_prose',{v['key'] for v in validate_delivery('## 選び方\n\n'+paragraph,outline)})
+        quoted='## 選び方\n\n> '+paragraph+'\n\n> '+paragraph
+        self.assertNotIn('duplicate_prose',{v['key'] for v in validate_delivery(quoted,outline)})
