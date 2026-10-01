@@ -30,3 +30,7 @@ class ClaimScopeTests(unittest.TestCase):
             self.assertEqual(scope_issues(text,FACTS),[])
         for facts in ['> 女性は有料。男性は無料。 [confirmed]','> 女性は無料ではありません。 [confirmed]']:
             self.assertEqual(scope_issues('完全無料は存在しません。',facts),[])
+
+    def test_gender_comparison_heading_is_not_a_male_only_condition(self):
+        text='# 男性・女性の無料範囲\n## まとめ\n完全無料のサービスは存在しません。'
+        self.assertEqual(len(scope_issues(text,FACTS)),1)

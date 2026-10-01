@@ -79,8 +79,15 @@ def scope_issues(text: str, facts: str) -> list[dict]:
                 continue
             if re.search(r'とは(?:限|言え|いえ)|わけでは|という(?:誤解|主張)', prose):
                 continue
-            scope = prose+' '+ ' '.join(heading_scope.values())
-            if re.search(r'男性|女性|有料会員|有料プラン', scope):
+            audience = set(re.findall(r'男性|女性', prose))
+            if not audience:
+                # A heading comparing both groups does not restrict a universal claim.
+                for heading in reversed(list(heading_scope.values())):
+                    inherited = set(re.findall(r'男性|女性', heading))
+                    if inherited:
+                        audience = inherited
+                        break
+            if len(audience) == 1 or re.search(r'有料会員|有料プラン', prose):
                 continue
             issues.append({'key':'missing_audience_condition','claim':sentence.strip(),
                            'evidence_ids':[r['id'] for r in evidence],
