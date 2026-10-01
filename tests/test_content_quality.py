@@ -212,6 +212,7 @@ class FocusedEditorialTests(unittest.TestCase):
         self.assertEqual(json.loads(calls.call_args.kwargs['messages'][0]['content']),{'article_blocks':[{'id':'block-0000','text':'無料なのでノーリスクです。'}]})
         self.assertEqual(next(c for c in result['checks'] if c['key']=='unsupported_guarantees')['affected_blocks'][0]['id'],'block-0000')
         self.assertIn('editorial_audit',result)
+        self.assertEqual(calls.call_args.kwargs['output_config']['format']['type'],'json_schema')
 
     def test_invented_editorial_location_is_rejected(self):
         focused=[{'key':k,'reason':'確認','status':'fail' if k=='conclusion_consistency' else 'pass',
@@ -272,6 +273,7 @@ class ReadinessInstructionRegressionTests(unittest.TestCase):
             result=quality.audit(None,stage='research',text=text,facts=facts,outline=text,contract={},requirements={})
         self.assertFalse(result['valid'])
         self.assertEqual({c['key'] for c in result['checks'] if c['status']=='fail'},{'comparison_conditions','unsupported_guarantees'})
+        self.assertEqual(next(c for c in result['checks'] if c['key']=='comparison_conditions')['affected_blocks'][0]['id'],'block-0000')
 
 class RepairEncodingRegressionTests(unittest.TestCase):
     def run_repair(self, responses, succeeds):
@@ -310,3 +312,27 @@ class RepairEncodingRegressionTests(unittest.TestCase):
 
     def test_repeated_invalid_encoding_never_writes_article(self):
         self.run_repair([[{'id':'block-9999','new':'変更'}]]*2,False)
+
+class RequiredRepairLocationsTests(unittest.TestCase):
+    def test_omitted_condition_is_retried_before_any_article_write(self):
+        text='## 比較\n\n対象漏れ。\n\n別の誤り。'
+        artifacts={'article':{'content_text':text},'outline':{'content_text':'### H2：比較'},
+                   'content_contract':{'content_text':'{"required_sections":[]}'},
+                   'fresh_sources':SOURCE,'fact_sheet':{'content_text':''}}
+        failure=report('comparison_conditions')
+        next(c for c in failure['checks'] if c['key']=='comparison_conditions')['affected_blocks']=[{'id':'block-0002','reason':'対象条件の欠落'}]
+        edits=[[{'id':'block-0004','new':'訂正した別の段落。'}],
+               [{'id':'block-0002','new':'対象を明示した段落。'},{'id':'block-0004','new':'訂正した別の段落。'}]]
+        responses=[SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'edits':e}))]) for e in edits]
+        with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_content_audit,'get_job',return_value={}), \
+             patch.object(step_content_audit.anthropic,'Anthropic'), \
+             patch.object(step_content_audit,'audit',side_effect=[failure,{**report(),'snapshot':'test'}]) as audit, \
+             patch.object(step_content_audit,'create_with_retry',side_effect=responses) as repair, \
+             patch.object(step_content_audit,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            step_content_audit.run('j','比較')
+        self.assertEqual(repair.call_count,2)
+        self.assertIn('block-0002',repair.call_args.kwargs['messages'][-1]['content'])
+        self.assertIn('対象を明示した段落。',audit.call_args.kwargs['text'])
+        written=[c.kwargs['content_text'] for c in save.call_args_list if c.kwargs['step']=='article']
+        self.assertTrue(all('対象漏れ。' not in t for t in written))

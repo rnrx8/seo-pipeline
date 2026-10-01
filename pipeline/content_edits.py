@@ -2,6 +2,12 @@
 import json
 import re
 
+REPAIR_OUTPUT_CONFIG = {'format': {'type':'json_schema', 'schema': {
+    'type':'object', 'properties': {'edits': {'type':'array','items': {
+        'type':'object','properties': {'id':{'type':'string'},'new':{'type':'string'}},
+        'required':['id','new'],'additionalProperties':False}}},
+    'required':['edits'],'additionalProperties':False}}}
+
 
 def content_blocks(text: str) -> list[dict]:
     """Address immutable paragraphs/tables without asking a model to copy them."""

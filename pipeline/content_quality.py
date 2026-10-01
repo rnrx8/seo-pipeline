@@ -227,8 +227,22 @@ def explicit_risk_guarantees(text: str) -> list[str]:
     return found
 
 
+
+def audit_output_config(keys, *, locations=False):
+    properties = {'key':{'type':'string','enum':list(keys)},'reason':{'type':'string'},
+                  'status':{'type':'string','enum':['pass','fail'] if locations else ['pass','fail','not_applicable']}}
+    if locations:
+        properties['affected_blocks'] = {'type':'array','items':{
+            'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},
+            'required':['id','reason'],'additionalProperties':False}}
+    return {'format':{'type':'json_schema','schema':{
+        'type':'object','properties':{'checks':{'type':'array','items':{
+            'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}}},
+        'required':['checks'],'additionalProperties':False}}}
+
+
 def editorial_audit(client, text: str, model: str) -> dict:
-    message = create_with_retry(client, model=model, max_tokens=7000, system=EDITORIAL_SYSTEM,
+    message = create_with_retry(client, model=model, max_tokens=7000, system=EDITORIAL_SYSTEM, output_config=audit_output_config(EDITORIAL_CHECKS, locations=True),
         messages=[{'role': 'user', 'content': json.dumps({'article_blocks':content_blocks(text)}, ensure_ascii=False)}])
     raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', response_text(message).strip())
     try:
@@ -253,7 +267,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
           contract: dict, requirements: dict, sources: str = "") -> dict:
     model, _ = get_step_config('review')
     prices, price_issues = comparison_evidence(text, contract)
-    message = create_with_retry(client, model=model, max_tokens=7000, system=AUDIT_SYSTEM,
+    message = create_with_retry(client, model=model, max_tokens=7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
         messages=[{'role': 'user', 'content': json.dumps({
             'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources, 'outline': outline,
             'contract': contract, 'requirements': requirements,
@@ -268,7 +282,9 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     report['scope_issues'] = scope_findings
     if scope_findings:
         check = next(c for c in report['checks'] if c['key'] == 'comparison_conditions')
-        check.update(status='fail', reason=json.dumps(scope_findings, ensure_ascii=False))
+        check.update(status='fail', reason=json.dumps(scope_findings, ensure_ascii=False),
+                     affected_blocks=[{'id':b['id'],'reason':finding['reason']}
+                                      for b in content_blocks(text) for finding in scope_findings if finding['claim'] in b['text']])
         report['valid'] = False
     guarantees = explicit_risk_guarantees(text)
     report['risk_issues'] = guarantees
@@ -286,7 +302,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         for result in focused['checks']:
             if result['status'] == 'fail':
                 check = next(c for c in report['checks'] if c['key'] == result['key'])
-                check.update(status='fail', reason=check['reason'] + '\n本文単独検査: ' + result['reason'], affected_blocks=result.get('affected_blocks', []))
+                check.update(status='fail', reason=check['reason'] + '\n本文単独検査: ' + result['reason'], affected_blocks=check.get('affected_blocks', []) + result.get('affected_blocks', []))
                 report['valid'] = False
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,

@@ -1,5 +1,6 @@
 """Mandatory semantic audit, bounded corrections, and re-audit of the final text."""
 import json
+import re
 
 import anthropic
 
@@ -8,7 +9,7 @@ from .article_quality import validate_delivery
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import WRITING_POLICY
 from .claim_scope import conditional_facts
-from .content_edits import content_blocks, apply_block_edits
+from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, requirements_for,
                               response_text, audit_facts, source_evidence)
 from .db import get_artifact, get_job, upsert_artifact
@@ -79,7 +80,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
         # against the same audited original, independently of semantic repairs.
         for encoding_attempt in range(2):
             result = create_with_retry(client, model=model, max_tokens=max_tokens,
-                                       system=repair_system, messages=messages)
+                                       system=repair_system, messages=messages, output_config=REPAIR_OUTPUT_CONFIG)
             raw = response_text(result).strip()
             response_step = f'content_repair_response_{attempt + 1}'
             if encoding_attempt:
@@ -88,6 +89,12 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                             content_type='application/json', content_text=raw, meta={'audited': False})
             try:
                 candidate = apply_block_edits(text, raw)
+                required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
+                                for loc in check.get('affected_blocks', [])}
+                edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
+                missed = required_ids - {edit['id'] for edit in edits}
+                if missed:
+                    raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:
