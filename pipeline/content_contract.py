@@ -73,7 +73,7 @@ def _service_name_from_label(raw_name: str) -> str:
         return _clean_heading_name(reversed_label[1])
     product_match = re.match(
         r"^(.{2,30}?)(?:（[A-Za-z][^）]*）|\([A-Za-z][^)]*\))?"
-        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)",
+        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者|男女比|年齢構成|身バレ対策|独自機能)",
         raw_name,
     )
     return _clean_heading_name(product_match.group(1) if product_match else raw_name)
@@ -93,7 +93,7 @@ def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool =
         return False
     has_romanized_alias = bool(re.search(r"[（(][A-Za-z]", raw_name))
     has_product_descriptor = bool(re.search(
-        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者)", raw_name
+        r"の(?:会員数|料金|特徴|機能|評判|安全性|マッチング数|利用者|男女比|年齢構成|身バレ対策|独自機能)", raw_name
     )) and not any(term in name for term in ("新潟", "北海道", "広島", "沖縄"))
     return (
         from_service_fact

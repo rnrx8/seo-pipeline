@@ -104,8 +104,9 @@ class QualityIntegrationTests(unittest.TestCase):
 
     def test_quoted_product_definition_retains_named_comparison_partner(self):
         from pipeline.content_contract import extract_service_candidates
-        facts='> **「ヒールメイト（Healmate）」とは**：既婚者専用サービス。'
+        facts='> **「ヒールメイト（Healmate）」とは**：既婚者専用サービス。\n### ■ ヒールメイトの男女比（公式公表値）'
         self.assertEqual(extract_service_candidates(facts,'既婚者クラブ'),['既婚者クラブ','ヒールメイト'])
+        self.assertEqual(extract_service_candidates('### ■ ヒールメイトの男女比（公式公表値）','既婚者クラブ'),['既婚者クラブ','ヒールメイト'])
 
     def test_property_labels_cannot_inflate_required_service_count(self):
         from pipeline.content_contract import extract_service_candidates
