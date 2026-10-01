@@ -1,7 +1,7 @@
 import json
 import re
 import anthropic
-from .ai import create_with_retry, get_step_config
+from .ai import create_with_retry, get_step_config, message_text
 from .db import get_artifact, upsert_artifact
 
 MODEL, MAX_TOKENS = get_step_config("search_intent")
@@ -141,7 +141,7 @@ def _generate_query_attrs(client: anthropic.Anthropic, job_id: str, keyword: str
                 "content": QUERY_ATTRS_PROMPT.format(keyword=keyword, serp_text=serp_text[:3000]),
             }],
         )
-        attrs_text = attrs_msg.content[0].text.strip()
+        attrs_text = message_text(attrs_msg).strip()
         match = re.search(r"\{[\s\S]*\}", attrs_text)
         if not match:
             return {}
@@ -228,7 +228,7 @@ def _generate_chains(
             print("[search_intent] WARNING: chains response hit max_tokens (truncated). "
                   "Consider raising max_tokens in _generate_chains.")
 
-        chains_text = chains_msg.content[0].text.strip()
+        chains_text = message_text(chains_msg).strip()
         match = re.search(r"\{[\s\S]*\}", chains_text)
         if not match:
             print("[search_intent] Warning: no chains JSON found; skipping intent_chains.")
@@ -300,7 +300,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             }
         ],
     )
-    intent_text = message.content[0].text
+    if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
+        from .content_quality import ContentQualityError
+        raise ContentQualityError('検索意図分析が正常終了していません。')
+    intent_text = message_text(message)
 
     artifact = upsert_artifact(
         job_id=job_id,

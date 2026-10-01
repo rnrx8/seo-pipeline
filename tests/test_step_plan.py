@@ -13,7 +13,8 @@ class StepPlanTests(unittest.TestCase):
         })]
         self.assertLess(keys.index("content_contract"), keys.index("outline"))
         self.assertLess(keys.index("structure_guard"), keys.index("service_map"))
-        self.assertLess(keys.index("review"), keys.index("fact_review"))
+        self.assertNotIn("review", keys)
+        self.assertLess(keys.index("fact_review"), keys.index("content_audit"))
         self.assertEqual(keys[-1], "final_structure_validation")
 
     def test_outline_only_still_runs_structure_guard(self):

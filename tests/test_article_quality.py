@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from pipeline import step_article, step_outline, step_review, step_final_validate, step_structure_guard
 from pipeline.article_quality import parse_length_budget, validate_delivery, select_outline
-from pipeline.content_quality import EDITORIAL_CHECKS, CHECKS, POLICY_VERSION, ContentQualityError, snapshot, requirements_for
+from pipeline.content_quality import EDITORIAL_CHECKS, CHECKS, POLICY_VERSION, ContentQualityError, snapshot, requirements_for, final_review_requirements
 
 
 OUTLINE = '''### H2：おすすめサービス比較
@@ -208,7 +208,7 @@ class ArticleQualityTests(unittest.TestCase):
         job = {'word_count_setting': '1,000字'}
         audit = {'checks': [{'key': k, 'status': 'pass', 'reason': '検証済み'} for k in CHECKS],
                  'valid': True, 'policy_version': POLICY_VERSION, 'stage':'article', 'editorial_audit':{'checks':[{'key':k,'status':'pass'} for k in EDITORIAL_CHECKS]},
-                 'snapshot': snapshot(complete_article(), '', OUTLINE, CONTRACT, requirements_for(job, '比較'), step_final_validate.source_evidence(SOURCE))}
+                 'snapshot': snapshot(complete_article(), '', OUTLINE, CONTRACT, final_review_requirements(job, '比較'), step_final_validate.source_evidence(SOURCE))}
         artifacts = {'article': {'content_text': complete_article()}, 'outline': {'content_text': OUTLINE},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
                      'content_contract': {'content_text': json.dumps(CONTRACT)}}

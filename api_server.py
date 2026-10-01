@@ -140,6 +140,8 @@ def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
     print(f"[pipeline] delivery_type={delivery_type}, steps={len(steps)}")
     failed_step = None
     try:
+        from pipeline.ai import validate_model_credentials
+        validate_model_credentials(job)
         update_job_status(job_id, "running")
         for i, (step_key, step_fn) in enumerate(steps):
             failed_step = step_key

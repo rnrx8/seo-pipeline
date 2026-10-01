@@ -7,7 +7,7 @@ from .step_cta_inject import cta_placement_issues
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
 from .claim_scope import scope_issues
-from .content_quality import ContentQualityError, audit_facts, require_audit, requirements_for, snapshot, source_evidence
+from .content_quality import ContentQualityError, audit_facts, require_audit, final_review_requirements, snapshot, source_evidence
 from .step_structure_guard import extract_h2_titles, validate_structure
 
 
@@ -30,7 +30,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         sources = source_evidence(*source_artifacts)
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         require_audit(audit_report, snapshot(article['content_text'], facts, outline, contract,
-                                             requirements_for(job, keyword), sources), stage="article")
+                                             final_review_requirements(job, keyword), sources), stage="article")
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {

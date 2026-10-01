@@ -34,6 +34,8 @@ def main():
                       'source': source, 'steps': [k for k, _ in steps], 'apply': args.apply}, ensure_ascii=False))
     if not args.apply:
         return
+    from pipeline.ai import validate_model_credentials
+    validate_model_credentials(job)
     response = requests.get(f'{db._base()}/artifacts', params={'job_id': f"eq.{job['id']}"},
                             headers=db._headers(), timeout=20)
     response.raise_for_status()

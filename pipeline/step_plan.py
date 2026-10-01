@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from .ai import astra_review_enabled
 
 from . import (
     step_article,
@@ -64,7 +65,8 @@ def build_step_plan(job: dict) -> list[Step]:
     steps.append(("article", step_article.run))
     if job.get("cta_id"):
         steps.append(("cta_inject", step_cta_inject.run))
-    steps.append(("review", step_review.run))
+    if not astra_review_enabled():
+        steps.append(("review", step_review.run))
     if job.get("high_accuracy_mode"):
         steps.append(("fact_review", step_fact_review.run))
     steps.append(("content_audit", step_content_audit.run))

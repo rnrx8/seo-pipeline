@@ -94,7 +94,7 @@ class QualityTests(unittest.TestCase):
         for high in (False, True):
             keys = [k for k, _ in build_step_plan({'high_accuracy_mode': high})]
             self.assertLess(keys.index('research_validation'), keys.index('article'))
-            self.assertLess(keys.index('review'), keys.index('content_audit'))
+            self.assertNotIn('review', keys)
             if high:self.assertLess(keys.index('fact_review'), keys.index('content_audit'))
             self.assertEqual(keys[-2:], ['content_audit', 'final_structure_validation'])
 

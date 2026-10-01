@@ -4,7 +4,7 @@ import json
 import re
 import anthropic
 from .article_quality import parse_length_budget, outline_sections, normalize_outline_headings
-from .ai import create_with_retry, get_step_config
+from .ai import create_with_retry, get_step_config, message_text
 from .content_contract import contract_prompt, reference_prompt
 from .db import (
     get_artifact,
@@ -523,7 +523,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         total_output += message.usage.output_tokens
         if getattr(message, 'stop_reason', None) == 'max_tokens':
             raise ContentQualityError('構成案が出力上限で中断されました。未完成の構成から本文は生成できません。')
-    outline_text = message.content[0].text
+    if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
+        raise ContentQualityError('構成生成が正常終了していません。')
+    outline_text = message_text(message)
     outline_text, volume_repaired = ensure_complete_volume_design(
         outline_text, job.get("word_count_setting")
     )

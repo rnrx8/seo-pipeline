@@ -76,6 +76,10 @@ class QualityIntegrationTests(unittest.TestCase):
         self.assertTrue(final['meta']['content_audited'])
         self.assertTrue(final['meta']['content_repaired'])
         self.assertEqual(final['meta']['content_audit_snapshot'],'verified')
+        self.assertTrue(final['meta']['reviewed'])
+        self.assertEqual(final['meta']['review_model'], 'gpt-6-astra')
+        reviewed = [c.kwargs for c in save.call_args_list if c.kwargs['step'] == 'article_reviewed'][-1]
+        self.assertEqual(reviewed['content_text'], final['content_text'])
 
     def test_fetched_bodies_and_later_corrections_reach_audit_and_snapshot(self):
         first = {'content_text': json.dumps([{'url': 'https://official.example/', 'status': 'success', 'text': '女性は無料。男性は有料。'}])}

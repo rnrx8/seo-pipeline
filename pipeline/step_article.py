@@ -8,7 +8,7 @@ import time
 from .article_quality import parse_length_budget, select_outline, validate_delivery
 from .step_outline import ensure_complete_volume_design
 import anthropic
-from .ai import create_with_retry, get_step_config
+from .ai import create_with_retry, get_step_config, message_text
 from .content_contract import contract_prompt, reference_prompt
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
@@ -349,7 +349,9 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
     )
     if getattr(msg, 'stop_reason', None) == 'max_tokens':
         raise ContentQualityError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
-    return msg.content[0].text, msg.usage.input_tokens, msg.usage.output_tokens
+    if getattr(msg, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(msg).strip():
+        raise ContentQualityError('本文生成が正常終了していません。')
+    return message_text(msg), msg.usage.input_tokens, msg.usage.output_tokens
 
 
 def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
