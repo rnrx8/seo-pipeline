@@ -261,3 +261,41 @@ class ReadinessInstructionRegressionTests(unittest.TestCase):
             result=quality.audit(None,stage='research',text=text,facts=facts,outline=text,contract={},requirements={})
         self.assertFalse(result['valid'])
         self.assertEqual({c['key'] for c in result['checks'] if c['status']=='fail'},{'comparison_conditions','unsupported_guarantees'})
+
+class RepairEncodingRegressionTests(unittest.TestCase):
+    def run_repair(self, responses, succeeds):
+        artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
+                     'outline': {'content_text': '### H2：誤った比較結論'},
+                     'content_contract': {'content_text': '{"required_sections":[]}'},
+                     'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 事実 [confirmed]'}}
+        responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':e}))]) for e in responses]
+        with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_content_audit,'get_job',return_value={}), \
+             patch.object(step_content_audit.anthropic,'Anthropic'), \
+             patch.object(step_content_audit,'validate_delivery',return_value=[]), \
+             patch.object(step_content_audit,'carry_sections',return_value={}), \
+             patch.object(step_content_audit,'audit',side_effect=[report('conclusion_consistency'),{**report(),'snapshot':'test-snapshot'}]) as audit, \
+             patch.object(step_content_audit,'create_with_retry',side_effect=responses) as repair, \
+             patch.object(step_content_audit,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            if succeeds:step_content_audit.run('j','比較')
+            else:
+                with self.assertRaises(quality.ContentQualityError):step_content_audit.run('j','比較')
+        self.assertEqual(repair.call_count,2)
+        request=json.loads(repair.call_args.kwargs['messages'][0]['content'])
+        self.assertNotIn('outline',request)
+        self.assertEqual([c['key'] for c in request['failed_checks']],['conclusion_consistency'])
+        article_saves=[c.kwargs for c in save.call_args_list if c.kwargs['step']=='article']
+        if succeeds:
+            self.assertEqual(audit.call_count,2)
+            self.assertEqual(audit.call_args.kwargs['text'],'## 比較\n正しい説明。')
+            self.assertTrue(article_saves[-1]['meta']['content_audited'])
+        else:
+            self.assertEqual(audit.call_count,1)
+            self.assertEqual(article_saves,[])
+
+    def test_miscount_retry_uses_unmodified_original_and_reaudits(self):
+        self.run_repair([[{'old':'十分な説明。','new':'誤適用。','count':2}],
+                         [{'old':'十分な説明。','new':'正しい説明。','count':1}]],True)
+
+    def test_repeated_invalid_encoding_never_writes_article(self):
+        self.run_repair([[{'old':'不存在','new':'変更','count':1}]]*2,False)
