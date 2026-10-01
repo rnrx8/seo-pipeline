@@ -299,7 +299,7 @@ def audit_output_config(keys, *, locations=False):
 
 
 def editorial_audit(client, text: str, model: str, requirements: dict | None = None) -> dict:
-    message = create_with_retry(client, model=model, max_tokens=16000 if model == 'gpt-6-astra' else 7000, system=EDITORIAL_SYSTEM, output_config=audit_output_config(EDITORIAL_CHECKS, locations=True),
+    message = create_with_retry(client, model=model, max_tokens=get_step_config('content_audit')[1] if model == 'gpt-6-astra' else 7000, system=EDITORIAL_SYSTEM, output_config=audit_output_config(EDITORIAL_CHECKS, locations=True),
         messages=[{'role': 'user', 'content': json.dumps({'current_date': datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements': requirements or {}}, ensure_ascii=False)}])
     raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', response_text(message).strip())
     try:
@@ -322,9 +322,9 @@ def editorial_audit(client, text: str, model: str, requirements: dict | None = N
 
 def audit(client, *, stage: str, text: str, facts: str, outline: str,
           contract: dict, requirements: dict, sources: str = "") -> dict:
-    model, _ = get_step_config('content_audit' if stage == 'article' else 'review')
+    model, configured_budget = get_step_config('content_audit' if stage == 'article' else 'review')
     prices, price_issues = comparison_evidence(text, contract)
-    message = create_with_retry(client, model=model, max_tokens=7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
+    message = create_with_retry(client, model=model, max_tokens=configured_budget if model == 'gpt-6-astra' else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
         messages=[{'role': 'user', 'content': json.dumps({
             'current_date': datetime.now(timezone.utc).date().isoformat(), 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources, 'outline': outline,
             'contract': contract, 'requirements': requirements,

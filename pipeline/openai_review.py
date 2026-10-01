@@ -30,7 +30,9 @@ def _completed_response(response, started):
             if event.get('type') == 'response.completed':
                 return event['response']
             if event.get('type') in ('error', 'response.failed', 'response.incomplete'):
-                raise ContentQualityError('Astra確認の応答が未完了です。')
+                details = (event.get('response') or {}).get('incomplete_details') or {}
+                reason = {'max_output_tokens':'出力上限', 'content_filter':'内容フィルター'}.get(details.get('reason'), '原因未特定')
+                raise ContentQualityError(f'Astra確認の応答が未完了です（{reason}）。')
     raise ContentQualityError('Astra確認の通信が完了通知前に終了しました。')
 
 

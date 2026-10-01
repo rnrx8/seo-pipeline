@@ -158,6 +158,7 @@ class ModelRoutingTests(unittest.TestCase):
             self.assertTrue(result['valid'])
             self.assertEqual(result['model'],'gpt-6-astra')
             self.assertEqual(call.call_args.kwargs['model'],'gpt-6-astra')
+            self.assertEqual([c.kwargs['max_tokens'] for c in call.call_args_list[-2:]], [24000,24000])
             self.assertIn('rule',call.call_args.kwargs['messages'][0]['content'])
 
 
