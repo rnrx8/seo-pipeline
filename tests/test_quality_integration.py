@@ -102,6 +102,11 @@ class QualityIntegrationTests(unittest.TestCase):
         self.assertIn('基本機能あり',text)
         self.assertNotIn('123456',text)
 
+    def test_quoted_product_definition_retains_named_comparison_partner(self):
+        from pipeline.content_contract import extract_service_candidates
+        facts='> **「ヒールメイト（Healmate）」とは**：既婚者専用サービス。'
+        self.assertEqual(extract_service_candidates(facts,'既婚者クラブ'),['既婚者クラブ','ヒールメイト'])
+
     def test_property_labels_cannot_inflate_required_service_count(self):
         from pipeline.content_contract import extract_service_candidates
         facts='## 主要な企業・サービス情報\n> **累計マッチング数**：840万組\n> **アクティブユーザー率**：75%\n> **安全対策**：本人確認\n> **無料会員と有料会員の違い**：あり\n### ▼ 会員数・マッチング数（ヒールメイト）\n> 確認済み\n### JAPHICマーク取得\n### 既婚者クラブ独自'

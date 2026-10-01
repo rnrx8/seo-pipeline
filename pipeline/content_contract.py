@@ -62,6 +62,9 @@ def _clean_heading_name(value: str) -> str:
 def _service_name_from_label(raw_name: str) -> str:
     """Return the product-name portion of a fact-sheet label."""
     raw_name = re.sub(r"^[①-⑳❶-❿\d]+[.．、:)）：:\s-]*", "", raw_name.strip())
+    definition = re.match(r'^[「『](.+?)[」』]とは$', raw_name)
+    if definition:
+        return _clean_heading_name(definition[1])
     bracketed = re.search(r"【([^】]+)】", raw_name)
     if bracketed:
         return _clean_heading_name(bracketed[1])
