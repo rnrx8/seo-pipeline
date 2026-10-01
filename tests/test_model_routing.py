@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+import requests
 from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
@@ -22,14 +23,23 @@ class ModelRoutingTests(unittest.TestCase):
                 'output':[{'type':'reasoning'}, {'type':'message', 'content':[{'type':'output_text','text':'{}'}]}],
                 'usage':{'input_tokens':10,'output_tokens':20}, **overrides}
 
+    def http_response(self, status, data):
+        response = Mock(status_code=status)
+        response.json.return_value = data
+        response.iter_lines.return_value = [
+            b'event: response.completed',
+            ('data: ' + json.dumps({'type':'response.completed','response':data})).encode(), b'']
+        return response
+
     @patch.dict(os.environ, {'OPENAI_API_KEY':'test-only', 'ARTICLE_REVIEW_PROVIDER':'astra'})
     def test_responses_schema_and_usage(self):
-        response=Mock(status_code=200)
-        response.json.return_value=self.response()
+        response=self.http_response(200, self.response())
         with patch('pipeline.openai_review.requests.post',return_value=response) as post:
             msg=create_review_response(**self.request())
         payload=post.call_args.kwargs['json']
         self.assertFalse(payload['store'])
+        self.assertTrue(payload['stream'])
+        self.assertTrue(post.call_args.kwargs['stream'])
         self.assertEqual(payload['reasoning'],{'effort':'high'})
         self.assertTrue(payload['text']['format']['strict'])
         self.assertNotIn('temperature',payload)
@@ -44,11 +54,39 @@ class ModelRoutingTests(unittest.TestCase):
                (200,self.response(output=[{'type':'message','content':[{'type':'refusal'}]}])),
                (401,{'secret':'must not appear'})]
         for status,data in cases:
-            response=Mock(status_code=status);response.json.return_value=data
+            response=self.http_response(status, data)
             with patch('pipeline.openai_review.requests.post',return_value=response), self.assertRaises(ContentQualityError) as caught:
                 create_review_response(**self.request())
             self.assertNotIn('test-only',str(caught.exception))
             self.assertNotIn('must not appear',str(caught.exception))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY':'test-only'})
+    def test_stream_disconnect_and_partial_output_never_complete_or_retry(self):
+        response = self.http_response(200, self.response())
+        for lines in ([b'data: {"type":"response.output_text.delta","delta":"{}"}', b''],
+                      [b'data: {"type":"response.failed","message":"must not appear"}', b''],
+                      [b'data: malformed', b'']):
+            response.iter_lines.return_value = lines
+            with patch('pipeline.openai_review.requests.post',return_value=response) as post, self.assertRaises(ContentQualityError) as caught:
+                create_review_response(**self.request())
+            self.assertEqual(post.call_count, 1)
+            self.assertNotIn('must not appear', str(caught.exception))
+            response.close.assert_called()
+        response.iter_lines.side_effect = requests.exceptions.ReadTimeout('test-only')
+        with patch('pipeline.openai_review.requests.post',return_value=response), self.assertRaises(ContentQualityError) as caught:
+            create_review_response(**self.request())
+        self.assertIn('ReadTimeout',str(caught.exception))
+        self.assertNotIn('test-only',str(caught.exception))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY':'test-only'})
+    def test_stream_wait_and_size_are_bounded(self):
+        response = self.http_response(200, self.response())
+        with patch('pipeline.openai_review.requests.post',return_value=response), \
+             patch('pipeline.openai_review.time.monotonic',side_effect=[0,1201]), self.assertRaises(ContentQualityError):
+            create_review_response(**self.request())
+        response.iter_lines.return_value = [b'data: ' + b'x' * 8_000_001]
+        with patch('pipeline.openai_review.requests.post',return_value=response), self.assertRaises(ContentQualityError):
+            create_review_response(**self.request())
 
     @patch.dict(os.environ, {'OPENAI_API_KEY':'test-only'})
     def test_quota_failure_not_retried(self):
