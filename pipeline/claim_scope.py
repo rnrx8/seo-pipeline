@@ -12,7 +12,7 @@ DIMENSIONS = {
     'term': r'\d+\s*(?:ヶ|か|カ)?月|\d+年|月額|年額|一括',
     'tax': r'税込|税別|非課税',
     'campaign': r'キャンペーン|初回|新規|期間限定|通常料金',
-    'feature': r'メッセージ(?:送受信|送信|受信|交換)?|会員登録|プロフィール(?:閲覧|登録)?|検索|いいね|基本機能|全機能',
+    'feature': r'グループチャット|イベント|メッセージ(?:送受信|送信|受信|交換)?|会員登録|プロフィール(?:閲覧|登録)?|検索|いいね|基本機能|全機能',
 }
 
 
@@ -50,6 +50,49 @@ def scope_instructions(facts: str) -> str:
             + json.dumps(records, ensure_ascii=False))
 
 
+def feature_scope_issues(text: str, records: list[dict]) -> list[dict]:
+    """Do not universalize an explicitly scoped free-feature citation.
+
+    Only use named citations, literal features and single-gender free evidence.
+    This asks for the missing scope; it does not infer that the other group pays.
+    """
+    scoped = []
+    for record in records:
+        literal = re.sub(r'[*_>`]', '', record['statement'])
+        name = re.search(r'出典[（(]([^）)]+)[）)]', literal)
+        audience = set(re.findall(r'男性|女性', literal))
+        if not name or len(audience) != 1 or '無料' not in literal:
+            continue
+        gender = next(iter(audience))
+        for feature in ('グループチャット', 'イベント', 'メッセージ'):
+            if re.search(gender + r'[^。「」]{0,160}' + feature + r'[^。「」]{0,120}無料', literal):
+                scoped.append((name[1], gender, feature, record['id']))
+    issues = []
+    headings = {}
+    for block in re.split(r'\n\s*\n', text):
+        match = re.match(r'^(#{1,4})\s+(.+)', block)
+        if match:
+            level = len(match[1]);headings = {k:v for k,v in headings.items() if k < level}
+            headings[level] = match[2]
+        if not block.strip() or block.lstrip().startswith(('#', '>', '|')):
+            continue
+        prose = re.sub(r'「[^」]*」|『[^』]*』', '', block)
+        for name, gender, feature, evidence_id in scoped:
+            if name not in '\n'.join(headings.values()) + prose or re.search(r'男性|女性|男女', prose):
+                continue
+            pattern = feature + r'[^。！？]{0,100}無料(?:のまま|で|会員のまま)?(?:利用|使|参加|楽し|です|とな|にな)'
+            if re.search(pattern, prose) and not re.search(r'無料[^。！？]{0,20}(?:できません|できない|ではない|ではありません)', prose):
+                # Do not reject an independently confirmed universal/free counterpart.
+                if any(name in r['statement'] + r['subject_context'] and feature in r['statement']
+                       and re.search(r'(?:男女とも|男女共|男性も|女性も)[^。「」]{0,160}' + feature + r'[^。「」]{0,100}無料', r['statement'])
+                       for r in records):
+                    continue
+                issues.append({'key':'missing_feature_audience','claim':block.strip(),
+                               'evidence_ids':[evidence_id],
+                               'reason':f'{name}の{feature}無料の引用は{gender}についての根拠です。その根拠を対象無指定に広げず、対象を明記する。'})
+    return issues
+
+
 def scope_issues(text: str, facts: str) -> list[dict]:
     """Catch the observed universal free-use claim without a probabilistic verdict.
 
@@ -61,10 +104,10 @@ def scope_issues(text: str, facts: str) -> list[dict]:
         literal = re.sub(r'[*_>`]', '', record['statement'])
         return bool(re.search(r'女性(?:(?!男性|。|有料).){0,90}?無料(?!では(?:ない|ありません|なく|ございません))', literal))
     evidence = [r for r in records if female_free(r)]
+    issues = feature_scope_issues(text, records)
     if not evidence:
-        return []
+        return issues
     heading_scope = {}
-    issues = []
     for line in text.splitlines():
         match = re.match(r'^(#{1,4})\s+(.+)', line)
         if match:

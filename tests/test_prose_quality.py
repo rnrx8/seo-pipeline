@@ -105,3 +105,13 @@ class ProseRegressionTests(unittest.TestCase):
         before=q.snapshot('article','facts','outline',{}, {})
         with patch.object(q,'EDITORIAL_SYSTEM',q.EDITORIAL_SYSTEM+'\n新しい必須検査'):
             self.assertNotEqual(before,q.snapshot('article','facts','outline',{}, {}))
+
+    def test_style_repair_cannot_drop_free_feature_audience(self):
+        from pipeline.claim_scope import scope_issues
+        facts='出典（サービスA）：https://example.com/ 確認箇所：「女性は、メッセージのやりとり、グループチャットの利用、イベントの企画・参加など、ほとんどの機能が無料会員のままで利用できます」 [confirmed]'
+        bad='### サービスAの特徴\n\nグループチャットやイベント参加も無料のまま利用できるため、課金前から交流できます。'
+        self.assertTrue(scope_issues(bad,facts))
+        self.assertFalse(scope_issues(bad.replace('グループチャットや','女性はグループチャットや'),facts))
+        self.assertFalse(scope_issues(bad.replace('サービスA','サービスB'),facts))
+        universal=facts+'\n\n出典（サービスA）：男女ともグループチャットとイベント参加が無料です。 [confirmed]'
+        self.assertFalse(scope_issues(bad,universal))
