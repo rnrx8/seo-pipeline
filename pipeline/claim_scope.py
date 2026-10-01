@@ -78,8 +78,8 @@ def feature_scope_issues(text: str, records: list[dict]) -> list[dict]:
             continue
         prose = re.sub(r'「[^」]*」|『[^』]*』', '', block)
         for name, gender, feature, evidence_id in scoped:
-            scoped_heading = next((h for h in reversed(list(headings.values()))
-                                   if len(set(re.findall(r'男性|女性', h))) == 1), '')
+            nearest = next((h for h in reversed(list(headings.values())) if re.search(r'男性|女性', h)), '')
+            scoped_heading = nearest if len(set(re.findall(r'男性|女性', nearest))) == 1 else ''
             if name not in '\n'.join(headings.values()) + prose or re.search(r'男性|女性|男女', prose + scoped_heading):
                 continue
             pattern = feature + r'[^。！？]{0,100}無料(?:のまま|で|会員のまま)?(?:利用|使|参加|楽し|です|とな|にな)'
