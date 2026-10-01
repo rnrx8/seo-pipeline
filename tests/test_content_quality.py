@@ -275,6 +275,16 @@ class ReadinessInstructionRegressionTests(unittest.TestCase):
         self.assertEqual(next(c for c in result['checks'] if c['key']=='comparison_conditions')['affected_blocks'][0]['id'],'block-0000')
 
 class RepairEncodingRegressionTests(unittest.TestCase):
+    def test_checkpoint_requires_same_snapshot_and_never_reuses_pass(self):
+        saved = {**report('evidence_support'), 'stage':'article', 'attempt':2, 'snapshot':'same'}
+        def load(value, snapshot='same'):
+            with patch.object(step_content_audit,'get_artifact',return_value={'content_text':json.dumps(value)}):
+                return step_content_audit.failed_audit_checkpoint('j', snapshot)
+        self.assertEqual(load(saved)['attempt'], 2)
+        self.assertIsNone(load(saved, 'changed-text-source-or-rules'))
+        for changes in ({'valid':True}, {'stage':'research'}, {'attempt':4}, {'attempt':True}, {'checks':[]}):
+            self.assertIsNone(load({**saved, **changes}))
+
     def run_repair(self, responses, succeeds):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
                      'outline': {'content_text': '### H2：誤った比較結論'},
@@ -285,7 +295,6 @@ class RepairEncodingRegressionTests(unittest.TestCase):
              patch.object(step_content_audit,'get_job',return_value={}), \
              patch.object(step_content_audit.anthropic,'Anthropic'), \
              patch.object(step_content_audit,'validate_delivery',return_value=[]), \
-             patch.object(step_content_audit,'carry_sections',return_value={}), \
              patch.object(step_content_audit,'audit',side_effect=[report('conclusion_consistency'),{**report(),'snapshot':'test-snapshot'}]) as audit, \
              patch.object(step_content_audit,'create_with_retry',side_effect=responses) as repair, \
              patch.object(step_content_audit,'upsert_artifact',side_effect=lambda **kw:kw) as save:
@@ -311,6 +320,13 @@ class RepairEncodingRegressionTests(unittest.TestCase):
 
     def test_repeated_invalid_encoding_never_writes_article(self):
         self.run_repair([[{'id':'block-9999','new':'変更'}]]*2,False)
+
+    def test_added_heading_retries_before_writing_candidate(self):
+        self.run_repair([[{'id':'block-0000','new':'## 比較\n\n#### 分割\n長い説明。'}],
+                         [{'id':'block-0000','new':'## 比較\n正しい説明。'}]],True)
+
+    def test_repeated_topology_changes_never_write_article(self):
+        self.run_repair([[{'id':'block-0000','new':'## 比較\n\n#### 分割\n長い説明。'}]]*2,False)
 
 class RequiredRepairLocationsTests(unittest.TestCase):
     def test_omitted_condition_is_retried_before_any_article_write(self):

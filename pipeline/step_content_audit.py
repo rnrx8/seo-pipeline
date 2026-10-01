@@ -12,9 +12,29 @@ from .fresh_sources import WRITING_POLICY
 from .claim_scope import conditional_facts, scope_issues
 from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, final_review_requirements,
-                              response_text, audit_facts, source_evidence, explicit_risk_guarantees)
+                              response_text, audit_facts, source_evidence, explicit_risk_guarantees,
+                              snapshot, parse_audit)
 from .db import get_artifact, get_job, upsert_artifact
 from .step_structure_guard import validate_structure
+
+
+def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
+    """Resume repair only for an unchanged, fully recorded failed audit.
+
+    Never reuse a pass here. Every repaired candidate must receive a fresh audit.
+    The fingerprint includes text, sources, outline, rules and review model.
+    """
+    try:
+        report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
+        if not isinstance(report, dict) or report.get('valid') is not False:
+            return None
+        if (report.get('snapshot') != expected_snapshot or report.get('stage') != 'article'
+                or type(report.get('attempt')) is not int or not 1 <= report['attempt'] <= 3):
+            return None
+        parse_audit(json.dumps(report))
+        return report
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -32,12 +52,18 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     section_map = (artifact.get('meta') or {}).get('section_map') or bind_sections(text, outline, contract)
     requirements = final_review_requirements(job, keyword)
     client = None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key)
+    checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
+    first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
     upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
-    for attempt in range(3):
+    for attempt in range(first_attempt, 3):
         try:
-            report = audit(client, stage='article', text=text, facts=facts, outline=outline,
-                           contract=contract, requirements=requirements, sources=sources)
+            if checkpoint is not None:
+                print('[content_audit] Resuming unchanged failed audit; repaired text will be audited again', flush=True)
+                report, checkpoint = checkpoint, None
+            else:
+                report = audit(client, stage='article', text=text, facts=facts, outline=outline,
+                               contract=contract, requirements=requirements, sources=sources)
         except ContentQualityError as exc:
             upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
@@ -94,6 +120,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
 根拠のない断定を弱めるだけで残さず、未確認の値を使わない。
 ユーザー指定の件数・必須内容を減らさず、説明の不足を注釈で済ませない。
 見出し階層・必要項目は維持するが、誤った比較結論を含む見出しは正しい根拠に沿って改題する。元の構成の誤りを温存しない。
+局所修正では見出しの追加・削除・階層変更は禁止する。長い段落の分割は既存見出しの中で表・箇条書きを使い、H4等の追加で対応しない。監査が小見出しの追加を例示していても、この保存上の制約に沿う別の整理方法で同じ問題を解消する。
 指摘箇所だけでなく、同じ結論を含むリード・箇条書き・比較表・見出し・まとめをすべて照合し、一度の修正で揃える。関係のない内容や反復で文字数を水増ししない。'''
         messages=[{'role': 'user', 'content': json.dumps({
                 'confirmed_facts': facts, 'source_documents': sources,
@@ -126,16 +153,17 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                                if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
                 if unresolved:
                     raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
+                try:
+                    candidate_sections = carry_sections(text, candidate, outline, section_map)
+                except ValueError as exc:
+                    raise ContentQualityError(str(exc) + '。見出しの追加・削除・階層変更をせず、既存見出し内で表・箇条書きを使って修正してください。') from exc
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:
                     raise
                 messages.extend([{'role': 'assistant', 'content': raw},
                                  {'role': 'user', 'content': f'置換は未適用です。元の本文に対して全修正を再提出してください。{exc}。提示した段落ID・重複・空または未変更のnewを再確認し、JSONのみ返す。'}])
-        try:
-            section_map = carry_sections(text, candidate, outline, section_map)
-        except ValueError as exc:
-            raise ContentQualityError(str(exc)) from exc
+        section_map = candidate_sections
         # Preserve every candidate; no correction inherits the prior audit's pass.
         upsert_artifact(job_id=job_id, step=f'article_content_repair_{attempt + 1}',
                         content_type='text/markdown', content_text=candidate, meta={'audited': False})
