@@ -1,3 +1,4 @@
+from .section_identity import bind_sections
 from .fresh_sources import WRITING_POLICY
 from .content_quality import ContentQualityError, source_evidence, writing_evidence
 import json
@@ -285,6 +286,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         "review_input_tokens": msg.usage.input_tokens,
         "review_output_tokens": msg.usage.output_tokens,
         "reviewed": review_ok,
+        "section_map": bind_sections(corrected_article, outline_text, contract),
     }
     if review_skipped_reason:
         meta["review_skipped_reason"] = review_skipped_reason

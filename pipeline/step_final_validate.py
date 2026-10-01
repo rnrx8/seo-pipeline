@@ -16,7 +16,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     violations = validate_structure(article["content_text"], contract, outline=False)
     outline = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
-    violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract)
+    violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
     try:
         facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], article,
                            high_accuracy=bool(job.get('high_accuracy_mode')),

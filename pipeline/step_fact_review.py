@@ -1,3 +1,4 @@
+from .section_identity import unchanged_heading_binding
 from .fresh_sources import FreshSources, load_settings, load_primary_sources, run_with_fetch
 from .db import get_job
 from .content_quality import ContentQualityError, digest
@@ -154,7 +155,8 @@ def _verified_facts(report: str, fresh) -> dict[str, str]:
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Verify the completed article claim-by-claim, persist evidence, then audit it again."""
     print("[fact_review] Starting claim-level verification...")
-    original = get_artifact(job_id, "article")["content_text"]
+    article_artifact = get_artifact(job_id, "article")
+    original = article_artifact["content_text"]
     client = anthropic.Anthropic(api_key=api_key)
     checked_on = current_check_date()
     job = get_job(job_id)
@@ -236,8 +238,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_type="text/markdown",
         content_text=final_article,
         meta={
+            **(article_artifact.get('meta') or {}),
             "model": MODEL,
             "fact_reviewed": True,
+            "section_map": unchanged_heading_binding(article_artifact['content_text'], final_article, (article_artifact.get('meta') or {}).get('section_map')),
+            "content_audited": False,
             "final_fact_audited": True,
             "fact_review_evidence_sha256": digest(evidence_text),
             "search_queries": all_queries,

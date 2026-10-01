@@ -1,3 +1,4 @@
+from .section_identity import bind_sections
 from .fresh_sources import WRITING_POLICY
 from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, writing_evidence
 import json
@@ -868,6 +869,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
+            "section_map": bind_sections(article_text, outline_text, contract),
             "structure_repaired": structure_repaired,
             "duplicate_service_h2s_removed": duplicate_service_h2s_removed,
         },

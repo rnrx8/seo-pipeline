@@ -6,7 +6,9 @@ import anthropic
 
 from .ai import create_with_retry, get_step_config
 from .article_quality import validate_delivery
+from .section_identity import bind_sections, carry_sections
 from .fresh_sources import WRITING_POLICY
+from .claim_scope import conditional_facts
 from .content_quality import (ContentQualityError, audit, requirements_for,
                               response_text, audit_facts, source_evidence)
 from .db import get_artifact, get_job, upsert_artifact
@@ -56,6 +58,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     sources = source_evidence(*source_artifacts)
     outline = get_artifact(job_id, 'outline')['content_text']
     contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
+    section_map = (artifact.get('meta') or {}).get('section_map') or bind_sections(text, outline, contract)
     requirements = requirements_for(job, keyword)
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
@@ -68,7 +71,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
             raise
-        issues = validate_delivery(text, outline, job.get('word_count_setting'), contract=contract)
+        issues = validate_delivery(text, outline, job.get('word_count_setting'), contract=contract, section_map=section_map)
         issues += validate_structure(text, contract, outline=False)
         report.update(attempt=attempt + 1, structural_issues=issues)
         report['valid'] = report['valid'] and not issues
@@ -78,7 +81,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                         content_text=json.dumps(report, ensure_ascii=False), meta={'valid': report['valid']})
         if report['valid']:
             upsert_artifact(job_id=job_id, step='article', content_type='text/markdown', content_text=text,
-                            meta={**(artifact.get('meta') or {}), 'content_audited': True,
+                            meta={**(artifact.get('meta') or {}), 'content_audited': True, 'section_map': section_map,
                                   'content_repaired': bool((artifact.get('meta') or {}).get('content_repaired')) or attempt > 0,
                                   'content_audit_snapshot': report['snapshot']})
             return saved
@@ -100,16 +103,20 @@ oldは原文と完全一致させ、countは本文中の一致数とする。同
 見出しの主題・必要項目は維持する。関係のない内容や反復で文字数を水増ししない。''',
             messages=[{'role': 'user', 'content': json.dumps({
                 'article': text, 'confirmed_facts': facts, 'source_documents': sources, 'audit': report,
-                'outline': outline, 'requirements': requirements}, ensure_ascii=False)}])
+                'outline': outline, 'requirements': requirements, 'conditional_facts': conditional_facts(facts)}, ensure_ascii=False)}])
         raw = response_text(result).strip()
         upsert_artifact(job_id=job_id, step=f'content_repair_response_{attempt + 1}',
                         content_type='application/json', content_text=raw, meta={'audited': False})
         candidate = apply_content_edits(text, raw)
+        try:
+            section_map = carry_sections(text, candidate, outline, section_map)
+        except ValueError as exc:
+            raise ContentQualityError(str(exc)) from exc
         # Preserve every candidate; no correction inherits the prior audit's pass.
         upsert_artifact(job_id=job_id, step=f'article_content_repair_{attempt + 1}',
                         content_type='text/markdown', content_text=candidate, meta={'audited': False})
         text = candidate
         upsert_artifact(job_id=job_id, step='article', content_type='text/markdown', content_text=text,
-                        meta={**(artifact.get('meta') or {}), 'content_repaired': True,
+                        meta={**(artifact.get('meta') or {}), 'content_repaired': True, 'section_map': section_map,
                               'content_audited': False})
     raise ContentQualityError('内容修正後も品質基準を満たしません。content_auditを確認してください。')
