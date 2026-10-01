@@ -119,7 +119,7 @@ class QualityTests(unittest.TestCase):
                      'outline': {'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
-        responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':[{'old':old,'new':new,'count':1}]}))]) for old,new in [('十分な説明。','一度修正した説明。'),('一度修正した説明。','修正した説明。')]]
+        responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':[{'id':'block-0000','new':'## 比較\n'+new}]}))]) for old,new in [('十分な説明。','一度修正した説明。'),('一度修正した説明。','修正した説明。')]]
         with patch.object(step_content_audit, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_content_audit, 'get_job', return_value={}), \
              patch.object(step_content_audit.anthropic, 'Anthropic'), \
@@ -204,13 +204,21 @@ class FocusedEditorialTests(unittest.TestCase):
 
     def test_focused_failure_overrides_source_audit_pass(self):
         source=report()['checks']
-        focused=[{'key':k,'reason':'無料は金銭範囲のみ。ノーリスクは無限定。','status':'fail' if k=='unsupported_guarantees' else 'pass'} for k in quality.EDITORIAL_CHECKS]
+        focused=[{'key':k,'reason':'無料は金銭範囲のみ。ノーリスクは無限定。','status':'fail' if k=='unsupported_guarantees' else 'pass','affected_blocks':[{'id':'block-0000','reason':'無限定な保証'}] if k=='unsupported_guarantees' else []} for k in quality.EDITORIAL_CHECKS]
         with patch.object(quality,'create_with_retry',side_effect=[self.response(source),self.response(focused)]) as calls:
             result=quality.audit(None,stage='article',text='無料なのでノーリスクです。',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
         self.assertEqual(calls.call_count,2)
-        self.assertEqual(calls.call_args.kwargs['messages'][0]['content'],'無料なのでノーリスクです。')
+        self.assertEqual(json.loads(calls.call_args.kwargs['messages'][0]['content']),{'article_blocks':[{'id':'block-0000','text':'無料なのでノーリスクです。'}]})
+        self.assertEqual(next(c for c in result['checks'] if c['key']=='unsupported_guarantees')['affected_blocks'][0]['id'],'block-0000')
         self.assertIn('editorial_audit',result)
+
+    def test_invented_editorial_location_is_rejected(self):
+        focused=[{'key':k,'reason':'確認','status':'fail' if k=='conclusion_consistency' else 'pass',
+                  'affected_blocks':[{'id':'block-9999','reason':'存在しない場所'}] if k=='conclusion_consistency' else []}
+                 for k in quality.EDITORIAL_CHECKS]
+        with patch.object(quality,'create_with_retry',return_value=self.response(focused)):
+            with self.assertRaises(quality.ContentQualityError):quality.editorial_audit(None,'本文','model')
 
     def test_incomplete_focused_response_fails_closed(self):
         with patch.object(quality,'create_with_retry',return_value=self.response([])):
@@ -233,23 +241,26 @@ class RiskGuaranteeRegressionTests(unittest.TestCase):
 
 class ContentEditTests(unittest.TestCase):
     def apply(self, text, edits):
-        return step_content_audit.apply_content_edits(text,json.dumps({'edits':edits}))
+        return step_content_audit.apply_block_edits(text,json.dumps({'edits':edits}))
 
-    def test_multiple_exact_edits_leave_other_sections_unchanged(self):
-        t='# 記事\n冒頭の誤り。\n保持する本文。\n結論の誤り。'
-        result=self.apply(t,[{'old':'結論の誤り。','new':'正しい結論。','count':1},{'old':'冒頭の誤り。','new':'正しい冒頭。','count':1}])
-        self.assertEqual(result,'# 記事\n正しい冒頭。\n保持する本文。\n正しい結論。')
+    def test_ids_target_identical_paragraphs_independently(self):
+        t='# 記事\n\n誤り。\n\n保持する本文。\n\n誤り。'
+        blocks=step_content_audit.content_blocks(t)
+        self.assertEqual(self.apply(t,[{'id':blocks[3]['id'],'new':'正しい結論。'}]),
+                         '# 記事\n\n誤り。\n\n保持する本文。\n\n正しい結論。')
 
-    def test_all_repetitions_require_exact_count(self):
-        edit={'old':'誤り。','new':'訂正。','count':2}
-        self.assertEqual(self.apply('# 記事\n誤り。誤り。',[edit]),'# 記事\n訂正。訂正。')
-        edit['count']=1
-        with self.assertRaises(quality.ContentQualityError):self.apply('# 記事\n誤り。誤り。',[edit])
+    def test_unedited_whitespace_tables_and_blocks_preserved(self):
+        t='# 記事\n \n導入。\n\n| A | B |\n|---|---|\n|1|2|\n\n結論。\n'
+        blocks=step_content_audit.content_blocks(t)
+        self.assertEqual(self.apply(t,[{'id':blocks[1]['id'],'new':'正しい導入。'}]),t.replace('導入。','正しい導入。'))
 
-    def test_overlap_missing_match_and_preamble_fail_closed(self):
-        for edits in [[{'old':'誤り。','new':'修正。','count':1},{'old':'誤り','new':'訂正','count':1}], [{'old':'ない文字','new':'訂正','count':1}], []]:
-            with self.assertRaises(quality.ContentQualityError):self.apply('# 記事\n誤り。',edits)
-        with self.assertRaises(quality.ContentQualityError):step_content_audit.apply_content_edits('# 記事','修正します。\n{"edits":[]}')
+    def test_unknown_duplicate_empty_and_preamble_fail_closed(self):
+        for edits in [[{'id':'block-9999','new':'修正。'}],
+                      [{'id':'block-0000','new':'# A'},{'id':'block-0000','new':'# B'}],
+                      [{'id':'block-0000','new':''}], [],
+                      [{'id':'block-0000','new':'# 記事'}]]:
+            with self.assertRaises(quality.ContentQualityError):self.apply('# 記事',edits)
+        with self.assertRaises(quality.ContentQualityError):step_content_audit.apply_block_edits('# 記事','修正します。\n{"edits":[]}')
 
 
 class ReadinessInstructionRegressionTests(unittest.TestCase):
@@ -293,9 +304,9 @@ class RepairEncodingRegressionTests(unittest.TestCase):
             self.assertEqual(audit.call_count,1)
             self.assertEqual(article_saves,[])
 
-    def test_miscount_retry_uses_unmodified_original_and_reaudits(self):
-        self.run_repair([[{'old':'十分な説明。','new':'誤適用。','count':2}],
-                         [{'old':'十分な説明。','new':'正しい説明。','count':1}]],True)
+    def test_unknown_id_retry_uses_unmodified_original_and_reaudits(self):
+        self.run_repair([[{'id':'block-9999','new':'誤適用。'}],
+                         [{'id':'block-0000','new':'## 比較\n正しい説明。'}]],True)
 
     def test_repeated_invalid_encoding_never_writes_article(self):
-        self.run_repair([[{'old':'不存在','new':'変更','count':1}]]*2,False)
+        self.run_repair([[{'id':'block-9999','new':'変更'}]]*2,False)

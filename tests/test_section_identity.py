@@ -57,7 +57,7 @@ class SectionPipelineIntegrationTests(unittest.TestCase):
                     'snapshot':snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources']),
                     'checks':[{'key':k,'status':'fail' if len(calls)==1 and k=='conclusion_consistency' else 'pass','reason':'確認済み'} for k in CHECKS]}
         def save(**kw):artifacts[kw['step']]=kw;return kw
-        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'edits':[{'old':'気軽さ・会員数で選ぶならサービスA','new':'機能を重視する人にはサービスA','count':1}]}))])
+        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'edits':[{'id':'block-0000','new':TEXT.replace('気軽さ・会員数で選ぶならサービスA','機能を重視する人にはサービスA')}]}))])
         with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_content_audit,'get_job',return_value={}),patch.object(step_content_audit,'upsert_artifact',side_effect=save),patch.object(step_content_audit.anthropic,'Anthropic'),patch.object(step_content_audit,'audit',side_effect=audit),patch.object(step_content_audit,'create_with_retry',return_value=response):
             step_content_audit.run('j','比較')
         with patch.object(step_final_validate,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_final_validate,'get_job',return_value={}),patch.object(step_final_validate,'upsert_artifact',side_effect=save):
