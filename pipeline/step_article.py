@@ -356,7 +356,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
 
 
 def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
-                         sections: list, part_number: int) -> tuple[str, int, int]:
+                         sections: list, part_number: int, contract: dict | None = None) -> tuple[str, int, int]:
     """Retry a defective part once, before allowing the next part to start."""
     required_outline = select_outline(outline, [title for title, _, _ in sections])
     target = sum(chars for _, _, chars in sections)
@@ -373,7 +373,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_input += ti
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
-        issues = validate_delivery(cleaned, required_outline, f'{target}字')
+        issues = validate_delivery(cleaned, required_outline, f'{target}字', contract=contract)
         if not issues:
             return cleaned, total_input, total_output
         if attempt == 0:
@@ -766,7 +766,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1)
+    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract)
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -781,7 +781,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {"role": "assistant", "content": part1_text},
             {"role": "user", "content": part2_inst},
         ]
-    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2) if p2_secs else ('', 0, 0)
+    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract) if p2_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -795,7 +795,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text if p2_secs else part1_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3) if p3_secs else ('', 0, 0)
+    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract) if p3_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")
@@ -854,7 +854,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             raise ContentQualityError("Structure repair introduced [hypothesis] content")
 
-    delivery_issues = validate_delivery(article_text, outline_text, word_count_setting)
+    delivery_issues = validate_delivery(article_text, outline_text, word_count_setting, contract=contract)
     if delivery_issues:
         raise ContentQualityError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 

@@ -76,16 +76,31 @@ def article_sections(text: str) -> list[dict]:
     return result
 
 
-def validate_delivery(text: str, outline: str, setting: str | None = None) -> list[dict]:
+def validate_delivery(text: str, outline: str, setting: str | None = None, contract: dict | None = None) -> list[dict]:
     issues = validate_promised_comparison_count(text)
     if not outline_sections(outline):
         issues.append({'key': 'missing_outline', 'reason': '完成確認に必要な構成がありません'})
     actual = article_sections(text)
+    names = {normalize_heading(n) for section in (contract or {}).get('required_sections', [])
+             for n in section.get('candidate_services', [])}
+
+    def matches_title(item, expected):
+        if heading_matches(item['title'], expected['title']):
+            return True
+        # A named-service H3 keeps its identity when a misleading descriptor is corrected.
+        # Both headings must explicitly identify the same contracted service before ｜.
+        if item['level'] == 3:
+            left = re.split(r'[|｜]', item['title'], maxsplit=1)
+            right = re.split(r'[|｜]', expected['title'], maxsplit=1)
+            return (len(left) == len(right) == 2 and normalize_heading(left[0]) in names
+                    and normalize_heading(left[0]) == normalize_heading(right[0]))
+        return False
+
     used = set()
     for expected in outline_sections(outline):
         found = next((i for i, item in enumerate(actual) if i not in used
                       and item['level'] == expected['level']
-                      and heading_matches(item['title'], expected['title'])
+                      and matches_title(item, expected)
                       and (expected['level'] == 2 or heading_matches(item['parent'] or '', expected['parent'] or ''))), None)
         if found is None:
             issues.append({'key': 'missing_heading', 'level': expected['level'], 'title': expected['title']})

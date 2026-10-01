@@ -262,7 +262,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         )
 
     structure_violations = validate_structure(corrected_article, contract, outline=False)
-    structure_violations += validate_delivery(corrected_article, outline_text, job.get('word_count_setting'))
+    structure_violations += validate_delivery(corrected_article, outline_text, job.get('word_count_setting'), contract=contract)
     if structure_violations:
         print(f"[review] WARNING: review broke protected structure: {structure_violations}. Keeping pre-review article.")
         corrected_article = article_text

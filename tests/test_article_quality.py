@@ -221,3 +221,14 @@ class ArticleQualityTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CorrectedServiceHeadingTests(unittest.TestCase):
+    def test_corrected_descriptor_preserves_contracted_identity(self):
+        from pipeline.article_quality import validate_delivery
+        outline='### H2：比較\n#### H3：既婚者クラブ｜会員規模が大きく基本機能が無料で試せる'
+        article='## 比較\n比較します。\n### 既婚者クラブ｜累計マッチング数が大きく基本機能が無料で試せる\n'+'確認済みの説明です。'*10
+        contract={'required_sections':[{'candidate_services':['既婚者クラブ','ヒールメイト']}]}
+        self.assertEqual(validate_delivery(article,outline,contract=contract),[])
+        self.assertTrue(validate_delivery(article.replace('### 既婚者クラブ','### ヒールメイト'),outline,contract=contract))
+        self.assertTrue(validate_delivery(article,outline))

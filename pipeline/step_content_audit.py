@@ -37,7 +37,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
             raise
-        issues = validate_delivery(text, outline, job.get('word_count_setting'))
+        issues = validate_delivery(text, outline, job.get('word_count_setting'), contract=contract)
         issues += validate_structure(text, contract, outline=False)
         report.update(attempt=attempt + 1, structural_issues=issues)
         report['valid'] = report['valid'] and not issues
