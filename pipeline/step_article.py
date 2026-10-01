@@ -1,6 +1,7 @@
 from .section_identity import bind_sections
+from .claim_scope import scope_issues
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, writing_evidence
+from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, writing_evidence, explicit_risk_guarantees
 import json
 import re as _re
 import time
@@ -357,7 +358,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
 
 
 def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
-                         sections: list, part_number: int, contract: dict | None = None, job_id: str | None = None) -> tuple[str, int, int]:
+                         sections: list, part_number: int, contract: dict | None = None, job_id: str | None = None, facts: str = "") -> tuple[str, int, int]:
     """Retry a defective part once, before allowing the next part to start."""
     required_outline = select_outline(outline, [title for title, _, _ in sections])
     target = sum(chars for _, _, chars in sections)
@@ -375,6 +376,8 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
         issues = validate_delivery(cleaned, required_outline, f'{target}字', contract=contract)
+        issues += scope_issues(cleaned, facts)
+        issues += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(cleaned)]
         if job_id:
             upsert_artifact(job_id=job_id, step=f'article_part_{part_number}_attempt_{attempt + 1}',
                             content_type='text/markdown', content_text=cleaned,
@@ -774,7 +777,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract, job_id=job_id)
+    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract, job_id=job_id, facts=fact["content_text"])
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -789,7 +792,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {"role": "assistant", "content": part1_text},
             {"role": "user", "content": part2_inst},
         ]
-    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract, job_id=job_id) if p2_secs else ('', 0, 0)
+    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract, job_id=job_id, facts=fact["content_text"]) if p2_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -803,7 +806,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text if p2_secs else part1_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract, job_id=job_id) if p3_secs else ('', 0, 0)
+    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract, job_id=job_id, facts=fact["content_text"]) if p3_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")

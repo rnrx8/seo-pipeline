@@ -38,3 +38,14 @@ class OutlineNormalizationTests(unittest.TestCase):
         self.assertEqual([c.kwargs['step'] for c in save.call_args_list],['article_part_3_attempt_1','article_part_3_attempt_2'])
         self.assertTrue(all(not c.kwargs['meta']['valid'] for c in save.call_args_list))
         self.assertEqual(save.call_args.kwargs['content_text'],'## FAQ\n不完全な本文。')
+
+    def test_scope_error_is_repaired_in_the_writing_part(self):
+        bad='## 無料範囲\n無料会員でできるのは「登録・検索」までです。'
+        fixed='## 無料範囲\n男性が無料会員でできるのは「登録・検索」までです。女性は基本機能が無料です。'
+        with patch.object(step_article,'_call',side_effect=[(bad,1,1),(fixed,1,1)]) as call, \
+             patch.object(step_article,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            result=step_article._write_complete_part(None,[{'role':'user','content':'執筆'}],2000,'### H2：無料範囲',[('無料範囲',4,30)],1,job_id='j',facts='> 女性は基本機能が無料。男性はメッセージが有料。 [confirmed]')
+        self.assertEqual(result[0],fixed)
+        self.assertEqual(call.call_count,2)
+        self.assertFalse(save.call_args_list[0].kwargs['meta']['valid'])
+        self.assertTrue(save.call_args_list[1].kwargs['meta']['valid'])

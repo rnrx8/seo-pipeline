@@ -59,3 +59,6 @@ class ClaimScopeTests(unittest.TestCase):
         self.assertEqual(len(scope_issues('無料でできるのは、登録からいいねを送るところまでです。',FACTS)),1)
         self.assertEqual(scope_issues('男性が無料でできるのは、登録からいいねを送るところまでです。',FACTS),[])
         self.assertEqual(scope_issues('「無料でできるのは検索までですか」と思う方もいます。',FACTS),[])
+
+    def test_free_member_limit_requires_audience(self):
+        self.assertEqual(len(scope_issues('無料会員でできるのは「登録・検索」までです。',FACTS)),1)
