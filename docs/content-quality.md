@@ -7,10 +7,19 @@ phrase/style policy; factual claims inside those phrases must match evidence.
 
 ## Evidence and recovery
 
-Only confirmed paragraphs are passed to outline, contract, writing, and review.
-Mixed confirmed/hypothesis paragraphs and untagged summaries are excluded.
+Only confirmed summary paragraphs cross into planning and writing; mixed
+confirmed/hypothesis paragraphs and untagged summaries are excluded. Outline,
+service placement, writing and editing also receive the same fetched source
+bodies as readiness/content audit. A missing summary entry does not mean the
+source is non-public. Same-scope official source text takes priority over an
+incorrect summary. Contract candidate extraction uses summary identities, not
+property labels such as membership counts or security measures.
 Research artifacts still retain all findings for diagnosis. Source retrieval now
-returns bounded same-site navigation links, including actual pricing/FAQ URLs.
+returns bounded same-site navigation links, including actual pricing/FAQ URLs,
+and preserves row/column spans in HTML tables before flattening page text.
+Research correction retains the original source reliability policy and receives
+specific evidence/date mismatch feedback. A current fetch date can stand in for
+a check date only when a quote matches a directly fetched body.
 
 Readiness evaluates coverage, evidence, comparison conditions, conclusions,
 metric definitions, unfinished content, and unsupported guarantees. A failed
@@ -25,8 +34,12 @@ article but stops the job. Quality failures are operational/non-retryable so the
 API does not restart the entire generation or create a code-bug issue.
 
 Passed audit reports are bound to a hash of policy version, text, evidence,
-outline, contract and requirements. Final completion requires a matching audit.
-The readiness hash is also checked before writing. Starting an audit invalidates
+outline, contract, requirements and the exact fetched-source context. Final completion requires a matching audit.
+The readiness hash is also checked before writing. Unresolved structural gaps
+are recorded as invalid and passed to bounded research recovery; readiness
+rechecks the mechanical contract and cannot approve those gaps based only on a
+model verdict. High-accuracy fact-review corrections carry source/quote evidence
+and lineage hashes into the later audits. Starting an audit invalidates
 any previous pass, including when an API request subsequently fails.
 
 ## Deterministic checks and limits
@@ -60,3 +73,16 @@ add one research rebuild and two article corrections. All retries are bounded.
   the live audit. This control is not a regenerated production article.
 - The two production article bodies were not replaced by this change. A full
   end-to-end regeneration under the new gates has not yet been measured.
+
+
+## Integration verification (2026-10-01)
+
+131 unit/regression tests pass. Additional tests cover evidence handoff,
+source-bound audit snapshots, row/column spans, erroneous service identities,
+and invalid structure recovery. A live audit rejects a female pricing column
+mix-up and accepts its correct counterpart with table-preserving source text.
+The 2026-09-29 two-article replay stopped at research readiness and Part 1;
+neither was published. It exposed a missing evidence handoff to authors and
+property labels being counted as extra services. Those paths and conflicting
+confirmed-only writing instructions are now corrected. A fresh two-article
+replay is underway; unit tests are not evidence of completed article quality.
