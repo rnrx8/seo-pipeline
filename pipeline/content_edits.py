@@ -29,8 +29,10 @@ def apply_block_edits(text: str, raw: str) -> str:
             block_id, new = edit['id'], edit['new']
             if not isinstance(block_id, str) or block_id not in blocks or block_id in replacements:
                 raise ValueError('unknown or duplicate block id')
-            if not isinstance(new, str) or not new.strip() or new == blocks[block_id]:
-                raise ValueError('empty or unchanged replacement')
+            if not isinstance(new, str) or new == blocks[block_id]:
+                raise ValueError('invalid or unchanged replacement')
+            if not new.strip() and (new != '' or re.search(r'^\s*(?:#{1,6}\s|\|)', blocks[block_id], re.M)):
+                raise ValueError('cannot remove headings or tables')
             replacements[block_id] = new
         parts = re.split(r'(\n[ \t]*\n)', text)
         result = ''.join(replacements.get(f'block-{index:04d}', part) for index, part in enumerate(parts))

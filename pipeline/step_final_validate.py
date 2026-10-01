@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from .step_cta_inject import cta_placement_issues
 
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
@@ -15,6 +16,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article = get_artifact(job_id, "article")
     contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
     violations = validate_structure(article["content_text"], contract, outline=False)
+    violations += cta_placement_issues(article['content_text'], (article.get('meta') or {}).get('cta_placement'), (article.get('meta') or {}).get('section_map'))
     outline = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
@@ -28,7 +30,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         sources = source_evidence(*source_artifacts)
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         require_audit(audit_report, snapshot(article['content_text'], facts, outline, contract,
-                                             requirements_for(job, keyword), sources))
+                                             requirements_for(job, keyword), sources), stage="article")
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {

@@ -46,14 +46,14 @@ class SectionPipelineIntegrationTests(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import patch
         from pipeline import step_content_audit,step_final_validate
-        from pipeline.content_quality import CHECKS,POLICY_VERSION,snapshot
+        from pipeline.content_quality import EDITORIAL_CHECKS,CHECKS,POLICY_VERSION,snapshot
         artifacts={'article':{'content_text':TEXT,'meta':{'section_map':bind_sections(TEXT,OUTLINE)}},
                    'outline':{'content_text':OUTLINE},'content_contract':{'content_text':'{"required_sections":[]}'},
                    'fact_sheet':{'content_text':''},'fresh_sources':{'content_text':'[{"url":"https://example.com","status":"success","text":"原文"}]'}}
         calls=[]
         def audit(_,**kw):
             calls.append(kw['text'])
-            return {'valid':len(calls)>1,'policy_version':POLICY_VERSION,
+            return {'valid':len(calls)>1,'policy_version':POLICY_VERSION, 'stage':'article', 'editorial_audit':{'checks':[{'key':k,'status':'pass'} for k in EDITORIAL_CHECKS]},
                     'snapshot':snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources']),
                     'checks':[{'key':k,'status':'fail' if len(calls)==1 and k=='conclusion_consistency' else 'pass','reason':'確認済み'} for k in CHECKS]}
         def save(**kw):artifacts[kw['step']]=kw;return kw

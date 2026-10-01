@@ -208,7 +208,7 @@ class FocusedEditorialTests(unittest.TestCase):
             result=quality.audit(None,stage='article',text='無料なのでノーリスクです。',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
         self.assertEqual(calls.call_count,2)
-        self.assertEqual(json.loads(calls.call_args.kwargs['messages'][0]['content']),{'article_blocks':[{'id':'block-0000','text':'無料なのでノーリスクです。'}]})
+        self.assertEqual(json.loads(calls.call_args.kwargs['messages'][0]['content'])['article_blocks'],[{'id':'block-0000','text':'無料なのでノーリスクです。'}])
         self.assertEqual(next(c for c in result['checks'] if c['key']=='unsupported_guarantees')['affected_blocks'][0]['id'],'block-0000')
         self.assertIn('editorial_audit',result)
         self.assertEqual(calls.call_args.kwargs['output_config']['format']['type'],'json_schema')

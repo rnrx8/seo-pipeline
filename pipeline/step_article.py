@@ -116,8 +116,9 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - 根拠のない数値・推測を断言しない
 
 ▼ 潜在ニーズの反映
-- リード文・各H2末尾の補完文には、検索意図チェーンの concrete_phrase（具体化ワード）を
-  最低1つ、原文の言葉のまま使うこと。
+- 検索意図チェーンの concrete_phrase（具体化ワード）は、関連する箇所で原文を活かす。
+  各H2末尾への一律挿入や同じ文の反復は必須ではない。その章の説明に必要な表現を選ぶ。
+  分析用ラベルは読者に意味の伝わる文へ整え、原文の引用や感情表現そのものは禁止しない。
 - 抽象ラベル（「安全欲求に訴求」「閉塞感を解消」等）ではなく、
   具体化された言葉そのもの（数字・比較・情景を含む表現）を本文に入れること。
 
@@ -258,7 +259,6 @@ def _build_part_instructions(
             lines = []
             primary_h2 = service_map.get("primary_h2", "")
             per_instructions = service_map.get("per_section_instructions", {})
-            cta_h2s = service_map.get("cta_after_h2", [])
 
             sec_titles = [t for t, _, _ in secs]
             for title in sec_titles:
@@ -269,11 +269,6 @@ def _build_part_instructions(
                         lines.append(f"\n【重要・サービス指示】「{title}」セクション：{inst}")
                     elif service_name:
                         lines.append(f"\n【重要・サービス指示】「{title}」セクションでは{service_name}を重点的に紹介してください。")
-                # CTA insertion reminder
-                for cta_h2 in cta_h2s:
-                    if _h2_title_matches(title, cta_h2) and cta_content:
-                        lines.append(f"\n【CTA必須】「{title}」セクションの末尾に以下のCTAブロックを必ず挿入すること：\n{cta_content}")
-                        break
             return "\n".join(lines)
 
         p1_total = sum(wc for _, _, wc in part1_secs)
@@ -542,16 +537,8 @@ def _build_service_prompt(service: dict) -> str:
 
 
 def _build_cta_prompt(cta: dict) -> str:
-    lines = ["\n【CTA設定】"]
-    lines.append(f"CTA名称：{cta.get('name', '')}")
-    if cta.get("body"):
-        lines.append(f"CTAの本文（原則そのまま使用すること）：\n{cta['body']}")
-    if cta.get("button_text"):
-        lines.append(f"ボタンテキスト：{cta['button_text']}")
-    if cta.get("url"):
-        lines.append(f"ボタンURL：{cta['url']}")
-    lines.append("上記のCTAを記事の適切な箇所（H2末尾・まとめ直前など）に自然に組み込んでください。")
-    return "\n".join(lines)
+    # A single deterministic stage owns placement; the writer must not duplicate it.
+    return "\n【CTA設定】CTAは執筆後の専用工程で指定位置へ挿入します。本文にCTAブロック・登録ボタン・同じ誘導文を追加しないでください。"
 
 
 def _build_chains_prompt(chains: list) -> str:
@@ -717,22 +704,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception:
         pass
 
-    # CTA content for inline injection reminders
-    _cta_content = ""
-    if service_map and cta_prompt:
-        # Extract a concise CTA block from cta_prompt for inline reminders
-        try:
-            job_cta_id = job.get("cta_id") if job else None
-            if job_cta_id:
-                _cta_obj = get_cta_by_id(job_cta_id)
-                if _cta_obj:
-                    body = _cta_obj.get("body", "")
-                    btn = _cta_obj.get("button_text", "")
-                    url = _cta_obj.get("url", "")
-                    _cta_content = f"> {body}\n>\n> **[{btn}]({url})**" if btn and url else body
-        except Exception:
-            pass
-
     _service_name = ""
     if service_map:
         try:
@@ -748,7 +719,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         volume_sections=volume_sections or None,
         service_map=service_map,
         service_name=_service_name,
-        cta_content=_cta_content,
     )
 
     # Per-part max tokens from volume design splits
