@@ -115,6 +115,7 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
                 issues.append({'key': 'empty_section', 'title': expected['title']})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'
+        r'(?:以下|次|上記|この|本)(?:の)?H[234](?:で|では|に)(?:各|紹介|説明|解説|扱)|'
         r'(?:前の?パート|次のパート|前パート|次パート).{0,160}(?:想定|執筆|指定に従|未完|省略)|'
         r'(?:指定に従い|続きは次|以下省略|ここに.{0,20}(?:記載|挿入))', text, re.I)
     if internal:

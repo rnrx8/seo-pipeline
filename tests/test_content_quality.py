@@ -336,3 +336,12 @@ class RequiredRepairLocationsTests(unittest.TestCase):
         self.assertIn('対象を明示した段落。',audit.call_args.kwargs['text'])
         written=[c.kwargs['content_text'] for c in save.call_args_list if c.kwargs['step']=='article']
         self.assertTrue(all('対象漏れ。' not in t for t in written))
+
+
+class InternalHeadingReferenceTests(unittest.TestCase):
+    def test_production_heading_instruction_is_rejected(self):
+        from pipeline.article_quality import validate_delivery
+        text='## 比較\n以下のH3で各サービスの特徴を解説します。'
+        issues=validate_delivery(text,'### H2：比較')
+        self.assertIn('internal_note',[i['key'] for i in issues])
+        self.assertEqual(validate_delivery(text.replace('以下のH3で各サービス','次の章で各サービス'),'### H2：比較'),[])

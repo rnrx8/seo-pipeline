@@ -54,3 +54,8 @@ class ClaimScopeTests(unittest.TestCase):
     def test_outline_instruction_is_not_allowed_to_remove_audience(self):
         text='### H2：無料の正体\n- セクション内容：完全無料で出会い切れるアプリは基本的に存在せず、無料は確認までと説明する。'
         self.assertEqual(len(scope_issues(text,FACTS)),1)
+
+    def test_free_feature_limit_also_requires_audience(self):
+        self.assertEqual(len(scope_issues('無料でできるのは、登録からいいねを送るところまでです。',FACTS)),1)
+        self.assertEqual(scope_issues('男性が無料でできるのは、登録からいいねを送るところまでです。',FACTS),[])
+        self.assertEqual(scope_issues('「無料でできるのは検索までですか」と思う方もいます。',FACTS),[])

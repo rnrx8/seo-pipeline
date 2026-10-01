@@ -43,6 +43,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             raise
         issues = validate_delivery(text, outline, job.get('word_count_setting'), contract=contract, section_map=section_map)
         issues += validate_structure(text, contract, outline=False)
+        for issue in issues:
+            excerpt = issue.get('excerpt')
+            if excerpt:
+                issue['affected_blocks'] = [{'id':b['id'],'reason':issue['key']}
+                                            for b in content_blocks(text) if excerpt in b['text']]
         report.update(attempt=attempt + 1, structural_issues=issues)
         report['valid'] = report['valid'] and not issues
         saved = upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
@@ -91,6 +96,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 candidate = apply_block_edits(text, raw)
                 required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
                                 for loc in check.get('affected_blocks', [])}
+                required_ids.update(loc['id'] for issue in issues for loc in issue.get('affected_blocks', []))
                 edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
                 missed = required_ids - {edit['id'] for edit in edits}
                 if missed:

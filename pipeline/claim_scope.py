@@ -75,7 +75,7 @@ def scope_issues(text: str, facts: str) -> list[dict]:
             continue
         for sentence in re.split(r'(?<=[。！？])', line):
             prose = re.sub(r'「[^」]*」|『[^』]*』', '', sentence)
-            if not re.search(r'完全無料.{0,65}(?:存在(?:し(?:ない|ません)|せず)|ありません)', prose):
+            if not re.search(r'完全無料.{0,65}(?:存在(?:し(?:ない|ません)|せず)|ありません)|無料で(?:できる|使える|利用できる)(?:のは|範囲は).{0,65}まで(?:です|だ|と|で|$)', prose):
                 continue
             if re.search(r'とは(?:限|言え|いえ)|わけでは|という(?:誤解|主張)', prose):
                 continue
@@ -91,5 +91,5 @@ def scope_issues(text: str, facts: str) -> list[dict]:
                 continue
             issues.append({'key':'missing_audience_condition','claim':sentence.strip(),
                            'evidence_ids':[r['id'] for r in evidence],
-                           'reason':'女性無料の根拠があるため、完全無料の不存在を男女共通の結論にしない。対象・機能を明記する。'})
+                           'reason':'女性無料の根拠があるため、無料利用の不存在・上限を男女共通の結論にしない。対象・機能を明記する。'})
     return issues
