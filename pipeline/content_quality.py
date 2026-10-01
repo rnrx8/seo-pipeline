@@ -207,6 +207,18 @@ unfinished_content: 「次のH3」「このH2」のような制作上の構造�
 """
 
 
+def explicit_risk_guarantees(text: str) -> list[str]:
+    """Reject affirmative zero-risk prose; preserve quoted wishes and negations."""
+    found = []
+    for sentence in re.split(r'(?<=[。！？\n])', text):
+        if re.search(r'ノーリスク|リスク(?:が|は)?(?:ゼロ|0)', sentence):
+            prose = re.sub(r'「[^」]*」|『[^』]*』|“[^”]*”', '', sentence)
+            if re.search(r'(?:ノーリスク|リスク(?:が|は)?(?:ゼロ|0))(?:で(?:す|[、\s]|[^は])|です|になります|にでき)', prose) \
+                    and not re.search(r'では(?:あり|なく|ない)|わけでは|とは(?:いえ|言え)|保証(?:し|でき)|限りません', prose):
+                found.append(sentence.strip())
+    return found
+
+
 def editorial_audit(client, text: str, model: str) -> dict:
     message = create_with_retry(client, model=model, max_tokens=3500, system=EDITORIAL_SYSTEM,
         messages=[{'role': 'user', 'content': text}])
@@ -240,6 +252,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     if stage == 'article':
         focused = editorial_audit(client, text, model)
         report['editorial_audit'] = focused
+        guarantees = explicit_risk_guarantees(text)
+        if guarantees:
+            check = next(c for c in focused['checks'] if c['key'] == 'unsupported_guarantees')
+            check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
         for result in focused['checks']:
             if result['status'] == 'fail':
                 check = next(c for c in report['checks'] if c['key'] == result['key'])

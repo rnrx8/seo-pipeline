@@ -221,3 +221,11 @@ class FocusedEditorialTests(unittest.TestCase):
         with patch.object(quality,'create_with_retry',side_effect=[self.response(report('evidence_support')['checks']),self.response(focused)]):
             result=quality.audit(None,stage='article',text='本文',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
+
+class RiskGuaranteeRegressionTests(unittest.TestCase):
+    def test_actual_false_pass_is_rejected(self):
+        self.assertTrue(quality.explicit_risk_guarantees('登録からいいねまでは費用がかからないため、ノーリスクで相手を探せます。'))
+
+    def test_negations_and_reader_wishes_are_preserved(self):
+        for text in ['無料でもノーリスクではありません。', '「ノーリスクで使いたい」と感じますよね。', 'リスクゼロですとは保証できません。', '金銭負担を抑えて試せます。']:
+            self.assertEqual(quality.explicit_risk_guarantees(text), [], text)
