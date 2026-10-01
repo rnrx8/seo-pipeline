@@ -25,6 +25,18 @@ FACTS = """\
 
 
 class ContentContractTests(unittest.TestCase):
+    def test_live_research_labels_exclude_context_and_closed_services(self):
+        facts = '''## 重要な事実・データ
+### 主要アプリ共通の特徴（業界構造）
+## 主要な企業・サービス情報
+### 既婚者クラブ（公式：kikonclub.com）
+### Healmate（ヒールメイト）（公式：healmate.jp）
+### 既婚マッチ（公式：kikon-match.co.jp）
+### Layer（レイヤー）— サービス終了
+'''
+        self.assertEqual(extract_service_candidates(facts, '既婚者クラブ'),
+                         ['既婚者クラブ', 'Healmate', '既婚マッチ'])
+
     def test_named_pair_definitions_outside_service_section_do_not_add_third_item(self):
         facts = '''## 定義・基本情報
 > **既婚者クラブ**：サービスの説明。

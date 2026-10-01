@@ -82,6 +82,10 @@ def _service_name_from_label(raw_name: str) -> str:
 def _is_service_candidate(raw_name: str, name: str, *, from_service_fact: bool = False) -> bool:
     if not name or name in _GENERIC_HEADINGS or len(name) > 45:
         return False
+    # Section-level descriptions and discontinued products are context, not
+    # selectable services. Inspect the original label before decoration is lost.
+    if re.search(r"サービス終了|提供終了|運営終了|終了済み|共通|業界構造", raw_name):
+        return False
     if name.endswith(("とは", "利用実態", "既婚率", "男女比", "料金", "キャンペーン",
                       "会員数", "数", "率", "対策", "取得", "違い", "独自", "方法", "所在地", "機能", "年齢層", "調査", "運営", "掲載実績", "メディア掲載")):
         return False
@@ -128,7 +132,12 @@ def extract_service_candidates(fact_text: str, featured_service: str = "") -> li
             continue
         raw_name = match.group(1).strip()
         name = _service_name_from_label(raw_name)
-        if _is_service_candidate(raw_name, name, from_service_fact=bool(in_service_section and (fact_item_match or service_label_match))):
+        # An explicit official-site label identifies a product even when its
+        # Japanese name contains none of the old heuristic suffixes (e.g. マッチ).
+        official_product_heading = bool(heading_match and in_service_section and
+                                        re.search(r"[（(]公式[：:]", raw_name))
+        if _is_service_candidate(raw_name, name, from_service_fact=bool(
+                official_product_heading or (in_service_section and (fact_item_match or service_label_match)))):
             candidates.append(name)
     if featured_service:
         candidates.insert(0, featured_service)
