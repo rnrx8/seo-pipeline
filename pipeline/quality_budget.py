@@ -43,6 +43,23 @@ def ledger():
   finally:
    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2));temp.replace(path)
 
+def completion_evaluation(value):
+ """Explicit local evaluation: monitor observed total instead of worst-case holds.
+
+ This is a spending checkpoint, not a guaranteed bill cap for an in-flight call.
+ The default production-style reservation guard stays unchanged.
+ """
+ if os.getenv('QUALITY_COMPLETION_EVAL')!='1':return False
+ from .content_quality import ContentQualityError
+ policy=value.get('completion_evaluation') or {}
+ if policy.get('stop_after_usd')!=10.0 or not policy.get('authorization'):
+  raise ContentQualityError('完了検証用の費用設定・承認記録がありません。')
+ used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
+ if used>=policy['stop_after_usd']:
+  raise ContentQualityError('完了検証の累積費用が見直し額に達しました。次の要求は送信しません。')
+ return True
+
+
 def reserve(payload):
  from .content_quality import ContentQualityError
  model=payload['model']
@@ -52,7 +69,7 @@ def reserve(payload):
  amount=(size*RATES[model][0]*(2 if size>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if size>272000 else 1))/1e6
  with ledger() as value:
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
-  if used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
+  if not completion_evaluation(value) and used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
   index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get()})
  return index
 
@@ -90,7 +107,8 @@ def reserve_claude(payload):
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
-  if category=='quality' and used+amount>LIMIT:
+  evaluation=completion_evaluation(value)
+  if not evaluation and category=='quality' and used+amount>LIMIT:
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),

@@ -68,6 +68,18 @@ class TieredReviewTests(unittest.TestCase):
         client.with_options.assert_called_once_with(max_retries=0)
         self.assertEqual(self.ledger()['calls'][0]['status'],'unknown_cost_reserved')
 
+    def test_completion_evaluation_requires_recorded_authorization_and_keeps_total(self):
+        with patch.dict(os.environ,{'QUALITY_COMPLETION_EVAL':'1'}):
+            with self.assertRaises(ContentQualityError):budget.reserve({'model':'gpt-6-luna','max_output_tokens':100})
+            with budget.ledger() as value:
+                value['completion_evaluation']={'stop_after_usd':10.0,'authorization':'user approved completion test'}
+            i=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':150000})
+            budget.settle(i,{'input_tokens':1000,'output_tokens':1000})
+            self.assertEqual(self.ledger()['limit_usd'],1.25)
+            with budget.ledger() as value:
+                value['calls'].append({'reserved_usd':10,'cost_usd':10,'category':'generation'})
+            with self.assertRaises(ContentQualityError):budget.reserve({'model':'gpt-6-luna','max_output_tokens':100})
+
     def test_actual_usage_includes_reasoning_and_long_context(self):
         i=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000})
         budget.settle(i,{'input_tokens':280000,'output_tokens':2000,'output_tokens_details':{'reasoning_tokens':1000}})
