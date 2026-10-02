@@ -41,6 +41,33 @@ class TieredReviewTests(unittest.TestCase):
         with patch.dict(os.environ,{'QUALITY_BUDGET_DIR':''}):
             with self.assertRaises(ContentQualityError):validate_model_credentials({})
 
+    def test_generation_costs_do_not_consume_quality_budget_but_corrections_do(self):
+        payload={'model':'claude-opus-5-5','max_tokens':24000,'messages':[]}
+        with budget.scope('test-job','article'):
+            i=budget.reserve_claude(payload)
+            budget.settle(i,{'input_tokens':1000,'cache_creation_input_tokens':100,'cache_read_input_tokens':200,'output_tokens':500})
+        row=self.ledger()['calls'][0]
+        self.assertEqual(row['category'],'generation')
+        self.assertAlmostEqual(row['cost_usd'],.0204)
+        with budget.scope('test-job','research_validation'):
+            i=budget.reserve_claude(payload);budget.settle(i)
+        self.assertEqual(self.ledger()['calls'][1]['category'],'quality')
+        self.assertEqual(self.ledger()['calls'][1]['status'],'unknown_cost_reserved')
+
+    def test_corrective_search_worst_case_cannot_exceed_cap_silently(self):
+        with budget.scope('test-job','research_completeness'):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve_claude({'model':'claude-sonnet-4-6','max_tokens':9000,
+                    'tools':[{'type':'web_search_20250305','max_uses':8}]})
+        self.assertEqual(self.ledger()['calls'],[])
+
+    def test_claude_failure_is_recorded_without_sdk_retry(self):
+        client=Mock();client.with_options.return_value.messages.stream.side_effect=RuntimeError('failure')
+        with budget.scope('test-job','article'):
+            with self.assertRaises(RuntimeError):create_with_retry(client,model='claude-opus-5-5',max_tokens=100,messages=[])
+        client.with_options.assert_called_once_with(max_retries=0)
+        self.assertEqual(self.ledger()['calls'][0]['status'],'unknown_cost_reserved')
+
     def test_actual_usage_includes_reasoning_and_long_context(self):
         i=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000})
         budget.settle(i,{'input_tokens':280000,'output_tokens':2000,'output_tokens_details':{'reasoning_tokens':1000}})

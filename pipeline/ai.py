@@ -75,6 +75,17 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwarg
         kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
         # Existing budgets were for visible text only; reserve room for thinking.
         kwargs["max_tokens"] = min(128000, kwargs["max_tokens"] + 8000)
+    if tiered_review_enabled():
+        from .quality_budget import reserve_claude, settle
+        reservation=reserve_claude(kwargs)
+        accounted=False
+        try:
+            with client.with_options(max_retries=0).messages.stream(**kwargs) as stream:
+                result=stream.get_final_message()
+            settle(reservation,result.usage.model_dump());accounted=True
+            return result
+        finally:
+            if not accounted:settle(reservation)
     wait = 30
     for attempt in range(max_retries):
         try:

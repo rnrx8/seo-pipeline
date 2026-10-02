@@ -80,4 +80,4 @@ def build_step_plan(job: dict) -> list[Step]:
 def budgeted_steps(steps):
     if not tiered_review_enabled():return steps
     from .quality_budget import scoped
-    return [(key,scoped(fn)) for key,fn in steps]
+    return [(key,scoped(fn,stage=key)) for key,fn in steps]
