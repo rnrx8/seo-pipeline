@@ -64,7 +64,7 @@ def reserve(payload):
  from .content_quality import ContentQualityError
  model=payload['model']
  if model not in RATES:raise ContentQualityError('予算対象外のモデルへ自動変更しません。')
- size=len(json.dumps(payload,ensure_ascii=False).encode())+4096
+ size=len(json.dumps(payload,ensure_ascii=False,default=lambda v:v.model_dump(mode='json')).encode())+4096
  if size>1000000:raise ContentQualityError('確認資料が大きすぎます。資料範囲を見直してください。')
  amount=(size*RATES[model][0]*(2 if size>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if size>272000 else 1))/1e6
  with ledger() as value:
@@ -95,7 +95,7 @@ def reserve_claude(payload):
  model=payload['model']
  if model not in CLAUDE_RATES:raise ContentQualityError('費用未定義のモデルは実行しません。')
  category='generation' if STAGE.get() in GENERATION_STAGES else 'quality'
- size=len(json.dumps(payload,ensure_ascii=False).encode())+4096
+ size=len(json.dumps(payload,ensure_ascii=False,default=lambda v:v.model_dump(mode='json')).encode())+4096
  searches=0
  for tool in payload.get('tools',[]):
   if tool.get('type','').startswith('web_search'):

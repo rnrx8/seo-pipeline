@@ -334,13 +334,38 @@ def refresh_dynamic_sources(job_id):
         fresh.save(job_id)
 
 
+def resume_research_gaps(artifact,plan):
+    """A failed check can resume retrieval only; it cannot authorize writing."""
+    if not artifact:return None
+    try:
+        value=json.loads(artifact['content_text'])
+        if (value.get('valid') is not False or type(value.get('attempt')) is not int
+            or not 1<=value['attempt']<=3 or not value.get('gaps')
+            or value.get('policy_sha256')!=matrix_policy()
+            or value.get('plan_sha256')!=digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))):return None
+        ids={q['id'] for q in plan['items']}|{'overall'}
+        if any(g.get('id') not in ids for g in value['gaps']):return None
+        return value['attempt'],value['gaps']
+    except (ValueError,TypeError,KeyError,AttributeError):return None
+
+
 def verify(job_id, keyword, api_key=None):
     """At most two targeted retrieval retries; never drop planned questions."""
     from . import step_fact_sheet
     plan_value=load_plan(job_id)
-    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
+    previous=get_optional_artifact(job_id,'research_matrix')
+    pending=resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
-    for attempt in range(3):
+    first_attempt=0
+    if pending:
+        first_attempt,pending_gaps=pending
+        if first_attempt>=3:raise ContentQualityError('追加調査の上限まで確認済みです。同じ不合格を自動再試行しません。')
+        # Reuse failures only as retrieval instructions, never as a passing
+        # verdict. Always run the complete current-source audit after retrieval.
+        print('[research] Resume pending retrieval; do not repeat the completed audit',flush=True)
+        step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(pending_gaps,ensure_ascii=False))
+    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
+    for attempt in range(first_attempt,3):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
         model,budget=get_step_config('content_audit')

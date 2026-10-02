@@ -26,6 +26,14 @@ class TieredReviewTests(unittest.TestCase):
         return json.loads(next(Path(self.tmp.name).glob('*.json')).read_text())
     def request(self,model='gpt-6-luna'):
         return dict(model=model,max_tokens=1000,system='audit',messages=[{'role':'user','content':'test'}],output_config={'format':{'schema':{'type':'object'}}})
+    def test_claude_tool_round_sdk_blocks_are_serializable_for_budget(self):
+        from anthropic.types import TextBlock
+        payload=dict(model='claude-opus-5-5',max_tokens=100,
+            messages=[{'role':'assistant','content':[TextBlock(type='text',text='確認済み')]}])
+        index=budget.reserve_claude(payload)
+        self.assertEqual(self.ledger()['calls'][index]['status'],'pending')
+        self.assertIsInstance(payload['messages'][0]['content'][0],TextBlock)
+
     def test_routing_and_default_isolation(self):
         self.assertEqual(get_step_config('content_audit')[0],'gpt-6.1-sol')
         self.assertEqual(get_step_config('article')[0],'claude-opus-5-5')

@@ -29,14 +29,21 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
     # reuse every batch or crash when those existing callers request research.
     gap_rows = [g if g.get('id') in known_ids else {**g, 'id':'overall'} for g in gap_rows]
     ids = {i['id'] for i in gap_rows}
+    prior_records=[get_optional_artifact(job_id,f'research_collection_{n}') for n in range(1,25)] if gaps else []
     notes, queries, observed = [], [], []
     inputs = outputs = 0
     for index, task in enumerate(tasks, 1):
         step = f'research_collection_{index}'
-        old = get_optional_artifact(job_id, step) if gaps else None
         task_ids = {i['id'] for i in task['items']}
-        if old and old.get('meta',{}).get('plan_sha256') == plan_hash and not (task_ids & ids) and 'overall' not in ids:
-            notes.append(old['content_text']); continue
+        prior_subject=[r for r in prior_records if r and r.get('meta',{}).get('subject')==task['subject']]
+        if gaps and 'overall' not in ids and not (task_ids & ids) and prior_subject:
+            # These are raw notes, not a passed check. A plan edit need not
+            # recollect questions the current full audit did not flag.
+            notes.extend(r['content_text'] for r in prior_subject); continue
+        if gaps and 'overall' not in ids:
+            task={**task,'items':[i for i in task['items'] if i['id'] in ids]}
+            if not task['items']:continue
+            task_ids={i['id'] for i in task['items']}
         print(f'[research] Collecting {index}/{len(tasks)}: {task["subject"]}', flush=True)
         # List known URLs, but do not drown this subject in other subjects' bodies.
         index_context = '\n取得済み資料索引（必要な本文はfetch_current_pageで読む）\n' + json.dumps([
@@ -57,19 +64,17 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         finally:
             fresh.save(job_id)
         used_urls = set(extract_urls(note)) | (set(fresh.pages)-prior_urls)
-        if old and old.get('meta',{}).get('subject') == task['subject']:
+        for old_subject in prior_subject:
             # A focused retry may omit previously answered questions from its note.
             # Keep their original source lineage, not their acceptance verdict.
-            used_urls.update(old.get('meta',{}).get('source_urls',[]))
-            used_urls.update(extract_urls(old.get('content_text','')))
+            used_urls.update(old_subject.get('meta',{}).get('source_urls',[]))
+            used_urls.update(extract_urls(old_subject.get('content_text','')))
         used_urls.update(normalize_url((getattr(b,'input',None) or {}).get('url','')) for b in blocks if getattr(b,'name','')=='fetch_current_page')
-        previous_searches=(old.get('meta',{}).get('search_queries',[]) if old
-            and old.get('meta',{}).get('subject')==task['subject']
-            and old.get('meta',{}).get('plan_sha256')==plan_hash else [])
+        previous_searches=[query for r in prior_subject for query in r.get('meta',{}).get('search_queries',[])]
         search_history=list(dict.fromkeys([*previous_searches,*searches]))
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
-            meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
+            meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'targeted_retry':bool(gaps),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
                   'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':search_history})
         notes.append(note); queries.extend(searches); observed.extend(blocks)
         inputs += resp.usage.input_tokens; outputs += resp.usage.output_tokens
-    return SimpleNamespace(usage=SimpleNamespace(input_tokens=inputs,output_tokens=outputs)), '\n\n'.join(notes), queries, observed
+    return SimpleNamespace(usage=SimpleNamespace(input_tokens=inputs,output_tokens=outputs)), '\n\n'.join(dict.fromkeys(notes)), queries, observed

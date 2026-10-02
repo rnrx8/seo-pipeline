@@ -14,6 +14,29 @@ def message(value):
 
 
 class ResearchResumeTests(unittest.TestCase):
+    def test_failed_matrix_resumes_retrieval_then_requires_new_full_audit(self):
+        from pipeline import research_requirements as req
+        plan,pages,result=fixture()
+        failed={'valid':False,'attempt':1,'gaps':[{'id':'q1','reason':'不足'}],
+            'policy_sha256':req.matrix_policy(),
+            'plan_sha256':req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))}
+        artifact={'content_text':json.dumps(failed)}
+        self.assertEqual(req.resume_research_gaps(artifact,plan)[0],1)
+        for change in ({'valid':True},{'policy_sha256':'old'},{'plan_sha256':'old'}):
+            self.assertIsNone(req.resume_research_gaps({'content_text':json.dumps({**failed,**change})},plan))
+        events=[]
+        artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
+        def audit(*a,**kw):
+            events.append('audit');return result,SimpleNamespace(input_tokens=1,output_tokens=1)
+        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_optional_artifact',return_value=artifact), \
+             patch.object(req,'matrix_policy',return_value=failed['policy_sha256']),patch.object(req,'refresh_dynamic_sources'),patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
+             patch('pipeline.step_fact_sheet.run',side_effect=lambda *a,**kw:events.append('retrieve')),patch.object(r,'audit_matrix',side_effect=audit):
+            saved=req.verify('j','query')
+        self.assertEqual(events,['retrieve','audit'])
+        self.assertTrue(saved['meta']['valid'])
+        self.assertEqual(json.loads(saved['content_text'])['attempt'],2)
+
     def run_case(self, change=None, unresolved=False):
         plan,pages,result=fixture()
         if unresolved:result['items'][0].update(status='unresearched',basis='unresolved')

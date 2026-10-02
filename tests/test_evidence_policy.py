@@ -118,6 +118,22 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertIn('A original',text);self.assertIn('B updated',text);self.assertNotIn('B original',text)
         self.assertEqual(saved['research_collection_2']['meta']['question_ids'],['q2'])
 
+    def test_changed_plan_retrieves_only_flagged_question_and_keeps_search_history(self):
+        plan,_,_=fixture();plan['items'] += [{**plan['items'][0],'id':'q2'},{**plan['items'][0],'id':'q3','subject':'B'}]
+        fresh=FreshSources({},[])
+        records={'research_collection_1':{'content_text':'A notes','meta':{'subject':'A','plan_sha256':'old','search_queries':['old query']}},
+            'research_collection_2':{'content_text':'B notes','meta':{'subject':'B','plan_sha256':'old'}}}
+        response=SimpleNamespace(usage=SimpleNamespace(input_tokens=1,output_tokens=2))
+        with patch('pipeline.research_collection.upsert_artifact') as save,patch.object(fresh,'save'), \
+             patch('pipeline.research_collection.get_optional_artifact',side_effect=lambda j,s:records.get(s)), \
+             patch('pipeline.research_collection.run_with_fetch',return_value=(response,'A new',['new query'],[])) as run:
+            _,text,_,_=collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},gaps=json.dumps([{'id':'q2'}]))
+        self.assertEqual(run.call_count,1)
+        self.assertIn('"id": "q2"',run.call_args.kwargs['prompt'])
+        self.assertNotIn('"id": "q1"',run.call_args.kwargs['prompt'])
+        self.assertIn('B notes',text)
+        self.assertEqual(save.call_args.kwargs['meta']['search_queries'],['old query','new query'])
+
     def test_outline_audit_keys_trigger_research_instead_of_missing_id_error(self):
         plan,_,_=fixture();fresh=FreshSources({},[])
         response=SimpleNamespace(usage=SimpleNamespace(input_tokens=1,output_tokens=2))
