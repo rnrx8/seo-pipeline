@@ -1,4 +1,5 @@
 import unittest
+import os
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -94,6 +95,21 @@ class FreshSourcesTests(unittest.TestCase):
         self.assertEqual(result['tool_use_id'], 'fetch1')
         self.assertIn('月額2,000円', result['content'])
         self.assertFalse(result['is_error'])
+
+    def test_tiered_retrieval_caches_input_without_changing_source_or_prompt(self):
+        requests=[]
+        for mode in ('astra','tiered'):
+            fresh=fs.FreshSources({},[])
+            response=SimpleNamespace(content=[SimpleNamespace(type='text',text='done')],
+                usage=SimpleNamespace(input_tokens=1,output_tokens=1),stop_reason='end_turn')
+            create=Mock(return_value=response)
+            with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':mode}):
+                fs.run_with_fetch(None,create=create,model='claude-sonnet-4-6',max_tokens=100,
+                    system='policy',prompt='question',search_tool={},fresh=fresh)
+            requests.append(create.call_args.kwargs)
+        self.assertNotIn('cache_control',requests[0])
+        self.assertEqual(requests[1].pop('cache_control'),{'type':'ephemeral'})
+        self.assertEqual(requests[0],requests[1])
 
     def test_model_claimed_confirmation_is_fetched_without_tool_choice(self):
         fresh = fs.FreshSources({}, [])

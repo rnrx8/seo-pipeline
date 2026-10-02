@@ -296,6 +296,10 @@ class FreshSources:
 
 
 def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12):
+    from .ai import tiered_review_enabled
+    # Reuse only the identical model-input prefix, never a stale source verdict.
+    # Public pages still follow the existing fresh-fetch policy.
+    caching = {'cache_control': {'type': 'ephemeral'}} if tiered_review_enabled() else {}
     context = fresh.context() if context_override is None else context_override
     messages = [{'role': 'user', 'content': prompt + context}]
     remaining_chars = max(0, 100000 - len(context))
@@ -303,7 +307,7 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
     for _ in range(max_rounds):
         resp = create(client, model=model, max_tokens=max_tokens, system=system + DIRECT_POLICY,
                       tools=[search_tool, FETCH_TOOL], messages=messages,
-                      extra_headers={'anthropic-beta': 'web-search-2025-03-05'})
+                      extra_headers={'anthropic-beta': 'web-search-2025-03-05'}, **caching)
         input_tokens += resp.usage.input_tokens
         output_tokens += resp.usage.output_tokens
         observed.extend(resp.content)
