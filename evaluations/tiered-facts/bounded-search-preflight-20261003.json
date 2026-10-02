@@ -1,0 +1,19 @@
+{
+  "legacy_server_search": {
+    "allowed": false,
+    "reason": "追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。",
+    "quality_limit_usd": 1.25,
+    "conservative_request_reservation_usd": 24.165000000000003,
+    "external_api_calls": 0,
+    "note": "Worst-case reservation, not expected cost or a bill. Live test remains blocked by this preflight."
+  },
+  "bounded_client_search": {
+    "allowed": true,
+    "reservation_usd": 0.479394,
+    "payload_bytes": 60803,
+    "separate_search_allowance_usd": 0.001,
+    "note": "Representative request only, not a complete article forecast."
+  },
+  "external_api_calls": 0,
+  "article_cost_verified": false
+}

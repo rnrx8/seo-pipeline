@@ -61,6 +61,10 @@ def validate_model_credentials(job: dict) -> None:
         from .content_quality import ContentQualityError
         raise ContentQualityError('品質確認に必要なOPENAI_API_KEYが未設定です。生成開始前に停止しました。')
 
+    if tiered_review_enabled():
+        from .research_search import require_search_config
+        require_search_config()
+
 
 def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwargs):
     """Call client.messages.create (streaming) with exponential backoff on rate limit errors.

@@ -1,7 +1,7 @@
 """Bounded, separately persisted subject research; no full-sheet retry rewrite."""
 import json
 from types import SimpleNamespace
-from .ai import create_with_retry
+from .ai import create_with_retry, tiered_review_enabled
 from .db import get_optional_artifact, upsert_artifact
 from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL
 from .content_quality import digest, ContentQualityError
@@ -37,6 +37,13 @@ def collection_records(job_id, loader=None):
 
 def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, gaps=''):
     tasks = batches(plan)
+    bounded_search=tiered_review_enabled()
+    if bounded_search:
+        from .research_search import SourceSearch, SEARCH_TOOL, require_search_config
+        require_search_config()
+    tool=SEARCH_TOOL if bounded_search else {**search_tool,'max_uses':3}
+    rounds=4 if bounded_search else 3
+    tokens=6000 if bounded_search else 9000
     plan_hash = digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))
     gap_rows = json.loads(gaps) if gaps else []
     known_ids = {i['id'] for i in plan['items']}
@@ -63,9 +70,9 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             task={**task,'items':[i for i in task['items'] if i['id'] in ids]}
             if not task['items']:continue
             task_ids={i['id'] for i in task['items']}
-        request_key=digest(json.dumps({'version':'subject-once-v1','plan':plan_hash,'task':task,
+        request_key=digest(json.dumps({'version':'subject-bounded-search-v2','plan':plan_hash,'task':task,
             'gaps':gap_rows,'system':system+DIRECT_POLICY,'prompt':prompt,'model':model,
-            'search_tool':search_tool,'fetch_tool':FETCH_TOOL,'max_rounds':3,'max_tokens':9000},ensure_ascii=False,sort_keys=True))
+            'search_tool':tool,'fetch_tool':FETCH_TOOL,'max_rounds':rounds,'max_tokens':tokens},ensure_ascii=False,sort_keys=True))
         receipt=get_optional_artifact(job_id,'collection_receipt_'+request_key)
         if receipt and receipt.get('meta',{}).get('result_sha256')==digest(receipt.get('content_text','')):
             if receipt['meta'].get('sources_sha256')==source_fingerprint(fresh.pages,receipt['meta'].get('source_urls',[])):
@@ -77,17 +84,19 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         index_context = '\n取得済み資料索引（必要な本文はfetch_current_pageで読む）\n' + json.dumps([
             {k:p.get(k) for k in ('url','title','status')} for p in fresh.pages.values()],ensure_ascii=False)
         focused = (prompt + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
+            + '\n必須の回答と主要な比較条件から確認する。同じ対象の関連資料をまとめて読み、補助質問ごとに個別検索を義務にしない。補助情報が関連資料にもなければ、探索済み範囲と記事から省く候補を記録し、判定は後段へ渡す。未探索・取得失敗を探索済みとしない。'
             + '\n全ファクトシートを書き直さない。担当質問ごとに回答と出典を残す。まず関連する公式資料の本文を取得する。'
               'リンク先に料金・FAQ・規約があれば必要な本文まで読む。未取得の質問は検索の要約で済ませない。'
               '公式で確認できない場合は独立した第三者本文を照合する。expert_allowedの補足説明は適切な専門家解説と資格・執筆/監修の関与を確認し、個別サービスの適法性や判決原文まで調査を拡大しない。探索した資料と不足を記録する。'
               '各事実は短い独立段落。数表全体を一つの引用にせず、事実ごとにURL・確認日・連続8〜240文字の正確な引用・判定タグを付ける。'
               '原文の引用内にさらに「」がある場合も原文を改変しない。省略記号を挿入しない。'
             + ('\n今回の不足指摘\n'+json.dumps([g for g in gap_rows if g['id'] in task_ids or g['id']=='overall'],ensure_ascii=False) if gaps else ''))
+        search_args={'search_handler':SourceSearch(job_id,request_key,fresh),'max_context_chars':60000} if bounded_search else {}
         prior_urls = set(fresh.pages)
         try:
-            resp, note, searches, blocks = run_with_fetch(client, create=create_with_retry, model=model,max_tokens=9000,
-                system=system, prompt=focused, search_tool={**search_tool,'max_uses':3},fresh=fresh,
-                context_override=index_context,max_rounds=3)
+            resp, note, searches, blocks = run_with_fetch(client, create=create_with_retry, model=model,max_tokens=tokens,
+                system=system, prompt=focused, search_tool=tool,fresh=fresh,
+                context_override=index_context,max_rounds=rounds,**search_args)
             fresh.fetch_confirmed_citations(note)
         finally:
             fresh.save(job_id)

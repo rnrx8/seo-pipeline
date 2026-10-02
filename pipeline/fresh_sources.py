@@ -295,14 +295,14 @@ class FreshSources:
         return all(any(squash(q) in squash(p.get('text', '')) for p in pages) for q in quotes)
 
 
-def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12):
+def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12, search_handler=None, max_context_chars=100000):
     from .ai import tiered_review_enabled
     # Reuse only the identical model-input prefix, never a stale source verdict.
     # Public pages still follow the existing fresh-fetch policy.
     caching = {'cache_control': {'type': 'ephemeral'}} if tiered_review_enabled() else {}
     context = fresh.context() if context_override is None else context_override
     messages = [{'role': 'user', 'content': prompt + context}]
-    remaining_chars = max(0, 100000 - len(context))
+    remaining_chars = max(0, max_context_chars - len(context))
     queries, observed, input_tokens, output_tokens = [], [], 0, 0
     delivered_pages=set()
     for turn in range(max_rounds):
@@ -310,7 +310,7 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
         final_turn={'tool_choice':{'type':'none'}} if turn==max_rounds-1 else {}
         resp = create(client, model=model, max_tokens=max_tokens, system=system + DIRECT_POLICY,
                       tools=[search_tool, FETCH_TOOL], messages=messages,
-                      extra_headers={'anthropic-beta': 'web-search-2025-03-05'}, **caching, **final_turn)
+                      **({'extra_headers':{'anthropic-beta': 'web-search-2025-03-05'}} if search_handler is None else {}), **caching, **final_turn)
         input_tokens += resp.usage.input_tokens
         output_tokens += resp.usage.output_tokens
         observed.extend(resp.content)
@@ -319,6 +319,13 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
             if getattr(block, 'name', '') == 'web_search':
                 queries.append((block.input or {}).get('query', ''))
             if getattr(block, 'type', '') == 'tool_use':
+                if search_handler is not None and block.name == 'search_sources':
+                    query=(block.input or {}).get('query','')
+                    result=search_handler(query)
+                    if result.get('status')=='success':queries.append(query)
+                    results.append({'type':'tool_result','tool_use_id':block.id,
+                        'content':json.dumps(result,ensure_ascii=False),'is_error':result.get('status')!='success'})
+                    continue
                 if block.name != 'fetch_current_page':
                     raise ValueError('未対応の確認ツールが要求されました')
                 page = dict(fresh.fetch((block.input or {}).get('url', '')))

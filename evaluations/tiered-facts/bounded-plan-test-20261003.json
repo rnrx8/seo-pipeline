@@ -1,0 +1,29 @@
+{
+  "test": "plan_revalidation_and_one_search_smoke",
+  "keyword": "既婚者 マッチングアプリ おすすめ",
+  "preset": "meetingtechnology",
+  "llm_calls": 6,
+  "search_calls": 1,
+  "conservative_usd": 0.632535,
+  "yen_at_budget_assumption_200": 126.50699999999999,
+  "before_questions": 109,
+  "intermediate_questions": 106,
+  "after_questions": 102,
+  "required_questions": 30,
+  "latest_removed_ids": [
+    "q100",
+    "q103",
+    "q106",
+    "q109"
+  ],
+  "plan_review_passed": true,
+  "article_generated": false,
+  "production_writes": false,
+  "search_smoke": {
+    "status": "success",
+    "results": 5,
+    "snippet_used_as_evidence": false,
+    "article_generated": false
+  },
+  "interpretation": "Shared browser operations merged and regional-statistics obligations retired. Required answers preserved. Not proof of complete article quality or 300 JPY quality cost."
+}

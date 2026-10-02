@@ -11,6 +11,8 @@ JOB=contextvars.ContextVar('quality_budget_job',default=None)
 STAGE=contextvars.ContextVar('quality_budget_stage',default='quality')
 GENERATION_STAGES={'serp','search_intent','research_plan','fact_sheet','reference_structure','content_contract','outline','service_map','article','cta_inject'}
 CLAUDE_RATES={'claude-opus-5-5':(8.,20.),'claude-opus-4-8':(10.,25.),'claude-sonnet-4-6':(6.,15.)}
+# Standard API prices checked 2026-10-03 at platform.claude.com/docs/en/about-claude/pricing.
+CLAUDE_USAGE_RATES={'claude-opus-5-5':(4.,5.,8.,.2,20.),'claude-opus-4-8':(5.,6.25,10.,.5,25.),'claude-sonnet-4-6':(3.,3.75,6.,.3,15.)}
 RATES={'gpt-6-luna':(.125,.5),'gpt-6.1-sol':(2.5,10.)} # cache-write input ceiling
 LIMIT=1.25 # <=250 JPY at conservative 200 JPY/USD allowance, 50 JPY headroom
 
@@ -78,9 +80,15 @@ def settle(index,usage=None):
   call=value['calls'][index]
   if usage:
    if call.get('provider')=='anthropic':
-    ir,orr=CLAUDE_RATES[call['model']]
-    inputs=sum(usage.get(k,0) or 0 for k in ('input_tokens','cache_creation_input_tokens','cache_read_input_tokens'))
-    cost=(inputs*ir+usage['output_tokens']*orr)/1e6 + (usage.get('server_tool_use') or {}).get('web_search_requests',0)*.01
+    ir,w5,w60,read,orr=CLAUDE_USAGE_RATES[call['model']]
+    cache=usage.get('cache_creation') or {}
+    five=cache.get('ephemeral_5m_input_tokens',0) or 0
+    hour=cache.get('ephemeral_1h_input_tokens',0) or 0
+    unknown=max(0,(usage.get('cache_creation_input_tokens',0) or 0)-five-hour)
+    cost=((usage.get('input_tokens',0) or 0)*ir+five*w5+(hour+unknown)*w60
+          +(usage.get('cache_read_input_tokens',0) or 0)*read+usage['output_tokens']*orr)/1e6
+    cost+=(usage.get('server_tool_use') or {}).get('web_search_requests',0)*.01
+    call.update(cost_basis='usage_standard_rates_20261003',unknown_cache_write_tokens=unknown)
    else:
     ir,orr=RATES[call['model']]
     long_context=usage['input_tokens']>272000
@@ -114,3 +122,27 @@ def reserve_claude(payload):
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),
     'reserved_usd':amount,'status':'pending','started_at':time.time()})
  return index
+
+
+def reserve_search(query):
+ """Serper standard search: one credit; Starter published allowance $1/1000.
+
+ Separate provider expenditure from inference. No free-credit assumption.
+ """
+ from .content_quality import ContentQualityError
+ amount=.001
+ with ledger() as value:
+  used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
+  category='generation' if STAGE.get() in GENERATION_STAGES else 'quality'
+  if not completion_evaluation(value) and category=='quality' and used+amount>LIMIT:
+   raise ContentQualityError('追加検索の予算上限に達しました。')
+  index=len(value['calls'])
+  value['calls'].append({'provider':'serper','model':'search','category':category,'stage':STAGE.get(),
+    'reserved_usd':amount,'status':'pending','started_at':time.time(),
+    'query_sha256':hashlib.sha256(query.encode()).hexdigest()})
+  return index
+
+
+def settle_search(index,status):
+ with ledger() as value:
+  value['calls'][index].update(status='search_'+status,estimated_cost_usd=.001)

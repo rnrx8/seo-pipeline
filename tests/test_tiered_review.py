@@ -56,7 +56,7 @@ class TieredReviewTests(unittest.TestCase):
             budget.settle(i,{'input_tokens':1000,'cache_creation_input_tokens':100,'cache_read_input_tokens':200,'output_tokens':500})
         row=self.ledger()['calls'][0]
         self.assertEqual(row['category'],'generation')
-        self.assertAlmostEqual(row['cost_usd'],.0204)
+        self.assertAlmostEqual(row['cost_usd'],.01484)
         with budget.scope('test-job','research_validation'):
             i=budget.reserve_claude(payload);budget.settle(i)
         self.assertEqual(self.ledger()['calls'][1]['category'],'quality')
