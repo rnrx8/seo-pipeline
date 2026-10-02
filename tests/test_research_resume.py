@@ -115,6 +115,24 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertEqual(generate.call_count,1);self.assertEqual(review.call_count,2)
 
 class SourceLineageTests(unittest.TestCase):
+    def test_supplemental_retrieval_has_bounded_new_capacity(self):
+        from pipeline.step_fact_sheet import restore_research_sources
+        from pipeline.fresh_sources import FreshSources
+        pages=[{'url':f'https://example.org/{n}','status':'success','text':'body','browser_attempted':n<20} for n in range(120)]
+        fresh=FreshSources({},[],max_urls=120,max_browser_attempts=20)
+        restore_research_sources(fresh,pages)
+        self.assertEqual(fresh.max_urls,160)
+        self.assertEqual(fresh.browser_attempts,20)
+        with patch.object(fresh,'_retrieve',side_effect=lambda u:{'url':u,'status':'success','text':'new'}):
+            for n in range(120,160):self.assertEqual(fresh.fetch(f'https://example.org/{n}')['status'],'success')
+            self.assertEqual(fresh.fetch('https://example.org/160')['status'],'failed')
+            restore_research_sources(fresh,list(fresh.pages.values()))
+            self.assertEqual(fresh.max_urls,200)
+            for n in range(160,200):fresh.fetch(f'https://example.org/{n}')
+            restore_research_sources(fresh,list(fresh.pages.values()))
+            self.assertEqual(fresh.max_urls,200)
+            self.assertEqual(fresh.fetch('https://example.org/200')['status'],'failed')
+
     def test_cross_service_review_receives_evidence_but_not_other_verdicts(self):
         plan,pages,result=fixture()
         common={**plan['items'][0],'id':'q2','subject':'共通','question':'Aの料金を比較できるか'}
@@ -169,12 +187,13 @@ class SourceLineageTests(unittest.TestCase):
         plan,pages,_=fixture();fresh=FreshSources({},[])
         fresh.pages={p['url']:p for p in pages}
         old={'content_text':'old note','meta':{'subject':'A','plan_sha256':digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
-             'source_urls':[pages[0]['url']]}}
+             'source_urls':[pages[0]['url']],'search_queries':['earlier search']}}
         saved={}
         with patch.object(c,'get_optional_artifact',return_value=old),patch.object(c,'upsert_artifact',side_effect=lambda **kw:saved.update(kw)), \
-             patch.object(fresh,'save'),patch.object(c,'run_with_fetch',return_value=(message({}),'new note',[],[])):
+             patch.object(fresh,'save'),patch.object(c,'run_with_fetch',return_value=(message({}),'new note',['new search'],[])):
             c.collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},gaps=json.dumps([{'id':'q1'}]))
         self.assertIn(pages[0]['url'],saved['meta']['source_urls'])
+        self.assertEqual(saved['meta']['search_queries'],['earlier search','new search'])
 
     def test_markdown_code_delimiters_are_not_part_of_urls(self):
         from pipeline.fresh_sources import extract_urls

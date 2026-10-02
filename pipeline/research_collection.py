@@ -63,9 +63,13 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             used_urls.update(old.get('meta',{}).get('source_urls',[]))
             used_urls.update(extract_urls(old.get('content_text','')))
         used_urls.update(normalize_url((getattr(b,'input',None) or {}).get('url','')) for b in blocks if getattr(b,'name','')=='fetch_current_page')
+        previous_searches=(old.get('meta',{}).get('search_queries',[]) if old
+            and old.get('meta',{}).get('subject')==task['subject']
+            and old.get('meta',{}).get('plan_sha256')==plan_hash else [])
+        search_history=list(dict.fromkeys([*previous_searches,*searches]))
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
             meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
-                  'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':searches})
+                  'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':search_history})
         notes.append(note); queries.extend(searches); observed.extend(blocks)
         inputs += resp.usage.input_tokens; outputs += resp.usage.output_tokens
     return SimpleNamespace(usage=SimpleNamespace(input_tokens=inputs,output_tokens=outputs)), '\n\n'.join(notes), queries, observed

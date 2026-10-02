@@ -23,6 +23,18 @@ def fixture(priority='essential'):
 
 
 class EvidencePolicyTests(unittest.TestCase):
+    def test_overall_contradictions_are_routed_even_with_other_local_gaps(self):
+        plan,pages,value=fixture()
+        plan['items'].append({**plan['items'][0],'id':'q2'})
+        value['items'].append({**copy.deepcopy(value['items'][0]),'id':'q2','status':'unresearched','basis':'unresolved'})
+        value.update(coverage_sufficient=False,coverage_issues=[{'id':'q1','reason':'比較条件が他社と不一致'}])
+        gaps=validate_matrix(value,plan,pages)
+        self.assertEqual({g['id'] for g in gaps},{'q1','q2'})
+        self.assertIn('比較条件',next(g['reason'] for g in gaps if g['id']=='q1'))
+        for issue in ({'id':'unknown','reason':'unknown'}, {'id':'q1','reason':''}):
+            value['coverage_issues']=[issue]
+            with self.assertRaises(ValueError):validate_matrix(value,plan,pages)
+
     def test_commercial_secondary_sources_can_support_dated_claim(self):
         plan,pages,value=fixture()
         self.assertFalse(validate_matrix(value,plan,pages))

@@ -262,6 +262,14 @@ def validate_matrix(value, plan_value, pages):
         item['verified']=accepted
         if (required[item['id']]['required'] or 'priority' in required[item['id']]) and not accepted:
             gaps.append({**required[item['id']], 'status':item['status'],'reason':item.get('reason','根拠不足')})
+    for issue in value.get('coverage_issues',[]):
+        if issue.get('id') not in required or not issue.get('reason','').strip() or value.get('coverage_sufficient') is True:
+            raise ContentQualityError('調査全体の指摘項目が不正です。')
+        existing=next((g for g in gaps if g['id']==issue['id']),None)
+        if existing is not None:
+            existing['reason'] += '\n全体確認：' + issue['reason']
+        else:
+            gaps.append({**required[issue['id']], 'status':'unresearched','reason':'全体確認：'+issue['reason']})
     if not gaps and any('priority' in i for i in required.values()) and (value.get('coverage_sufficient') is not True or not value.get('coverage_reason','').strip()):
         gaps.append({'id':'overall','question':'省略を含めた記事全体の重要論点の網羅','required':True,'reason':value.get('coverage_reason','網羅性未確認')})
     return gaps

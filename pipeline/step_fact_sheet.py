@@ -13,6 +13,14 @@ MODEL, MAX_TOKENS = get_step_config("fact_sheet")
 
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 15}
 
+
+def restore_research_sources(fresh, pages):
+    """Reserve up to 40 new pages per retry, with a 200-page lifetime cap."""
+    for page in pages:
+        fresh.pages[page['url']] = page
+    fresh.max_urls = min(200, max(120, len(fresh.pages) + 40))
+    fresh.browser_attempts = sum(bool(p.get('browser_attempted')) for p in pages)
+
 SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたは記事の根拠を収集する調査担当です。
 与えられた対象と質問に必要な資料だけを検索・直接取得する。無関係な求人・統計・トレンドを機械的に調べない。
@@ -225,8 +233,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     primary_sources_prompt = _build_primary_sources_prompt(sources)
     fresh = FreshSources(job, load_settings(job, sources), max_urls=120, render_dynamic=True, max_browser_attempts=20, retry_failed=bool(research_gaps))
     if research_gaps:
-        for page in json.loads(get_artifact(job_id, 'fresh_sources')['content_text']):
-            fresh.pages[page['url']] = page
+        restore_research_sources(fresh, json.loads(get_artifact(job_id, 'fresh_sources')['content_text']))
     fresh.prefetch()
     fresh.save(job_id)
 
