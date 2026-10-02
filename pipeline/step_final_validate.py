@@ -6,6 +6,7 @@ from .step_cta_inject import cta_placement_issues
 
 from .db import get_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
+from .readability import readability_issues
 from .claim_scope import scope_issues
 from .content_quality import ContentQualityError, audit_facts, require_audit, final_review_requirements, snapshot, source_evidence
 from .step_structure_guard import extract_h2_titles, validate_structure
@@ -15,7 +16,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     del api_key
     article = get_artifact(job_id, "article")
     contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
-    violations = validate_structure(article["content_text"], contract, outline=False)
+    violations = readability_issues(article["content_text"])
+    violations += validate_structure(article["content_text"], contract, outline=False)
     violations += cta_placement_issues(article['content_text'], (article.get('meta') or {}).get('cta_placement'), (article.get('meta') or {}).get('section_map'))
     outline = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)

@@ -44,7 +44,7 @@ def valid_binding(text, outline, binding):
                for e, a in zip(entries, actual))
 
 
-def carry_sections(before, after, outline, binding):
+def carry_sections(before, after, outline, binding, *, allow_h4=False):
     """Only for exact local edits: no heading insertion, deletion or level changes.
 
     These edits act on existing sections; their IDs survive title corrections.
@@ -53,6 +53,30 @@ def carry_sections(before, after, outline, binding):
     if not valid_binding(before, outline, binding):
         raise ValueError('section identity is stale')
     old, new = article_sections(before), article_sections(after)
+    if allow_h4 and [s["level"] for s in old] != [s["level"] for s in new]:
+        entries, cursor, parent_level = [], 0, None
+        used_ids = {e['id'] for e in binding['entries']}
+        for index, section in enumerate(new):
+            expected = old[cursor] if cursor < len(old) else None
+            is_existing = expected is not None and section['level'] == expected['level'] and (
+                section['level'] != 4 or section['title'] == expected['title'])
+            if is_existing:
+                entry = binding['entries'][cursor]
+                entries.append({**entry, **{k:section[k] for k in ('title','level','parent')}})
+                cursor += 1
+                if section['level'] in (2,3): parent_level = section['level']
+            elif section['level'] == 4 and parent_level == 3:
+                new_id = 'layout-' + _hash(str(index) + section['title'])[:16]
+                if new_id in used_ids: raise ValueError('duplicate layout identity')
+                used_ids.add(new_id)
+                entries.append({'id':new_id, 'outline_index':None,
+                                **{k:section[k] for k in ('title','level','parent')}})
+            else:
+                raise ValueError('content repair changed protected section topology')
+        if cursor != len(old): raise ValueError('content repair removed an existing section')
+        result = {**binding, 'entries':entries}
+        if not valid_binding(after, outline, result): raise ValueError('invalid repaired binding')
+        return result
     if [s['level'] for s in old] != [s['level'] for s in new]:
         raise ValueError('content repair changed section topology')
     return {**binding, 'entries': [{**e, **{k: a[k] for k in ('title','level','parent')}}

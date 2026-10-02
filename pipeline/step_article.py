@@ -91,7 +91,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - リスト・表の直前には、それが何を示すかの導入文を1文必ず添える。
 
 ▼ プレーンテキストの制限
-- H3内でプレーンテキストが連続する場合、300字を超えたら必ず以下のいずれかで分割：
+- H2直下・H3・H4内でプレーンテキストが連続する場合、300字を超えたら必ず以下のいずれかで分割：
   - 箇条書きリスト
   - 比較表・データ表
   - H4見出しで分割
@@ -661,6 +661,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     service_prompt = ""
     cta_prompt = ""
     job = get_job(job_id)
+    from .research_requirements import require_matrix
+    require_matrix(job_id)
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
                                      contract, requirements_for(job, keyword), sources))

@@ -11,7 +11,7 @@ from .price_comparison import comparison_evidence
 from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
 
-POLICY_VERSION = 'content-quality-v8-astra'
+POLICY_VERSION = 'content-quality-v9-focused'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -53,7 +53,9 @@ def response_text(message) -> str:
 
 
 def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: dict, sources: str = "") -> str:
-    value = json.dumps([POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .focused_quality import ROLE_INSTRUCTIONS
+    from .readability import READABILITY_POLICY
+    value = json.dumps([ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -95,10 +97,14 @@ def writing_evidence(fact_sheet: str, sources: str) -> str:
 
 
 def requirements_for(job: dict, keyword: str) -> dict:
-    return {'keyword': keyword, **{k: job.get(k) for k in
+    result = {'keyword': keyword, **{k: job.get(k) for k in
             ('custom_prompt', 'must_include', 'must_reference_urls', 'never_reference_urls',
              'company_restriction', 'word_count_setting', 'article_purpose', 'target_audience',
              'tone_style', 'citation_style', 'service_id', 'cta_id')}}
+    if job.get('id'):
+        from .research_requirements import load_plan
+        result['research_plan'] = load_plan(job['id'])
+    return result
 
 
 def final_review_requirements(job: dict, keyword: str) -> dict:
@@ -188,7 +194,7 @@ stage=articleでは定義が本文に残っているかを確認し、reasonに�
 「と考えられる」等の留保だけでは、元データにない定義・数値の推測を許可しない。
 unfinished_content: 料金は公式サイト参照、未調査なので読者が確認等の説明で
 必要な情報を置き換えていないか。公式が非公表である事実や、価格の確認日時・
-変動への正当な注記は許可する。収集側の未調査と公式の非公表を区別する。
+変動への正当な注記は許可する。収集側の未調査と公式の非公表を区別する。未調査を正直に書いたという理由でpassにしてはならない。必須質問で一社でも未調査ならfail。
 unsupported_guarantees: リスクゼロ・必ず出会える等、根拠のない安全性/成果保証を残さない。
 感情表現や検索意図の例文自体を禁止しない。数値・事実として扱う部分を検証する。
 
@@ -321,7 +327,10 @@ def editorial_audit(client, text: str, model: str, requirements: dict | None = N
 
 
 def audit(client, *, stage: str, text: str, facts: str, outline: str,
-          contract: dict, requirements: dict, sources: str = "") -> dict:
+          contract: dict, requirements: dict, sources: str = "", checkpoint=None) -> dict:
+    if stage == "article":
+        from .focused_quality import audit_article
+        return audit_article(client, text=text, facts=facts, outline=outline, contract=contract, requirements=requirements, sources=sources, checkpoint=checkpoint)
     model, configured_budget = get_step_config('content_audit' if stage == 'article' else 'review')
     prices, price_issues = comparison_evidence(text, contract)
     message = create_with_retry(client, model=model, max_tokens=configured_budget if model == 'gpt-6-astra' else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
@@ -377,9 +386,17 @@ def require_audit(report: dict, expected: str, *, stage: str | None = None) -> N
     if stage == 'article':
         if any(c['status'] == 'not_applicable' and c['key'] in ('prose_quality', 'redundancy') for c in checked['checks']):
             raise ContentQualityError('文章の必須検査が省略されています。')
-        focused = report.get('editorial_audit', {}).get('checks', [])
-        if len(focused) != len(EDITORIAL_CHECKS) or {c.get('key') for c in focused} != set(EDITORIAL_CHECKS) or any(c.get('status') != 'pass' for c in focused):
-            raise ContentQualityError('本文単独の必須検査が未合格です。')
+        from .focused_quality import ROLES
+        phases = report.get('phases', {})
+        if set(phases) != set(ROLES):
+            raise ContentQualityError('分割品質検査が不足しています。')
+        for role, keys in ROLES.items():
+            phase = phases[role]
+            checks = phase.get('checks', [])
+            if phase.get('snapshot') != expected or len(checks) != len(keys) or {c.get('key') for c in checks} != set(keys) or any(c.get('status') != 'pass' for c in checks):
+                raise ContentQualityError('分割品質検査が未合格、または古い本文を参照しています。')
+        if report.get('readability_issues'):
+            raise ContentQualityError('読みやすさの機械検査が未合格です。')
     if not checked['valid'] or report.get('valid') is not True or report.get('snapshot') != expected \
             or report.get('policy_version') != POLICY_VERSION:
         raise ContentQualityError('内容監査が未合格、または監査後に本文・根拠が変更されています。')

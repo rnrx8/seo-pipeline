@@ -1,3 +1,4 @@
+from quality_fixtures import responses, phases
 import json
 import unittest
 from types import SimpleNamespace
@@ -26,7 +27,7 @@ class ProseRegressionTests(unittest.TestCase):
         def response(value):
             return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(value))],
                                    usage=SimpleNamespace(input_tokens=1,output_tokens=1))
-        with patch.object(q,'create_with_retry',side_effect=[response(source),response(focused)]):
+        with patch.object(q,'create_with_retry',side_effect=responses('prose_quality','block-0002')):
             result=q.audit(None,stage='article',text='# 記事\n\n見えない課金に敏感な方でも納得できます。',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
         self.assertEqual(next(c for c in result['checks'] if c['key']=='prose_quality')['affected_blocks'][0]['id'],'block-0002')
@@ -35,11 +36,11 @@ class ProseRegressionTests(unittest.TestCase):
     def test_final_rejects_skipped_prose_or_missing_focused_audit(self):
         report={'checks':[{'key':k,'status':'pass','reason':'確認済み'} for k in q.CHECKS],
                 'stage':'article','valid':True,'snapshot':'hash','policy_version':q.POLICY_VERSION,
-                'editorial_audit':{'checks':[{'key':k,'status':'pass'} for k in q.EDITORIAL_CHECKS]}}
+                'phases':phases('hash')}
         q.require_audit(report,'hash',stage='article')
         report['checks'][-1]['status']='not_applicable'
         with self.assertRaises(q.ContentQualityError):q.require_audit(report,'hash',stage='article')
-        report['checks'][-1]['status']='pass';report.pop('editorial_audit')
+        report['checks'][-1]['status']='pass';report.pop('phases')
         with self.assertRaises(q.ContentQualityError):q.require_audit(report,'hash',stage='article')
 
     def test_duplicate_body_can_be_removed_without_deleting_heading(self):

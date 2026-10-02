@@ -132,9 +132,13 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
             issues.append({'key': 'missing_heading', 'level': expected['level'], 'title': expected['title']})
         else:
             used.add(found)
-            body = re.sub(r'https?://\S+|[\s*#>|_\-]', '', actual[found]['body'])
+            section_body = actual[found]['body']
+            for child in actual[found + 1:]:
+                if child['level'] <= actual[found]['level']: break
+                section_body += '\n' + child['body']
+            body = re.sub(r'https?://\S+|[\s*#>|_\-]', '', section_body)
             minimum = 1 if expected['level'] == 2 else 40
-            if len(body) < minimum:
+            if len(body) < minimum or not actual[found]['body'].strip():
                 issues.append({'key': 'empty_section', 'title': expected['title']})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'

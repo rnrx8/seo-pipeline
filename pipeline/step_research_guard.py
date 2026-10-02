@@ -9,6 +9,8 @@ from .db import get_artifact, get_job, upsert_artifact
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from . import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
+    from .research_requirements import require_matrix, verify
+    require_matrix(job_id)
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
@@ -44,11 +46,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             return artifact
         if attempt < 2:
             gaps = json.dumps([c for c in report['checks'] if c['status'] == 'fail'], ensure_ascii=False)
-            if attempt == 0:
+            evidence_gap = any(c['status']=='fail' and c['key'] in ('coverage','evidence_support','unfinished_content') for c in report['checks'])
+            if attempt == 0 and not evidence_gap:
                 print('[research_guard] Correcting outline with existing source evidence before new retrieval')
             else:
                 print('[research_guard] Evidence gaps persist; researching and rebuilding once')
                 step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
+                verify(job_id, keyword, api_key=api_key)
                 step_content_contract.run(job_id, keyword, api_key=api_key)
             # Re-audit both semantics and the mechanical contract. Merely removing
             # missing required topics cannot turn an evidence gap into approval.

@@ -1,3 +1,4 @@
+from quality_fixtures import responses
 import json
 import os
 import unittest
@@ -106,7 +107,8 @@ class ModelRoutingTests(unittest.TestCase):
     @patch.dict(os.environ, {'OPENAI_API_KEY':'', 'ARTICLE_REVIEW_PROVIDER':'astra'})
     def test_missing_key_stops_before_paid_generation(self):
         with self.assertRaises(ContentQualityError):validate_model_credentials({})
-        validate_model_credentials({'delivery_type':'outline_only'})
+        for kind in ('outline_only','research_only'):
+            with self.assertRaises(ContentQualityError):validate_model_credentials({'delivery_type':kind})
         with patch('pipeline.openai_review.requests.post') as post, self.assertRaises(ContentQualityError):
             create_review_response(**self.request())
         post.assert_not_called()
@@ -148,7 +150,7 @@ class ModelRoutingTests(unittest.TestCase):
     def test_research_stays_sonnet_and_article_uses_astra(self):
         def reply(*args,**kwargs):
             editorial=kwargs['output_config']['format']['schema']['properties']['checks']['items']['properties'].get('affected_blocks')
-            keys=EDITORIAL_CHECKS if editorial else CHECKS
+            keys=kwargs['output_config']['format']['schema']['properties']['checks']['items']['properties']['key']['enum']
             checks=[{'key':k,'reason':'checked','status':'pass',**({'affected_blocks':[]} if editorial else {})} for k in keys]
             return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps({'checks':checks}))],usage=NS(input_tokens=1,output_tokens=1))
         with patch('pipeline.content_quality.create_with_retry',side_effect=reply) as call:

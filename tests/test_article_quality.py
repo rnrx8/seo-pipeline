@@ -1,3 +1,4 @@
+from quality_fixtures import phases
 import json
 
 SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
@@ -34,6 +35,11 @@ def complete_article():
 
 
 class ArticleQualityTests(unittest.TestCase):
+    def setUp(self):
+        for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
+            patcher=patch('pipeline.research_requirements.'+target, return_value=value)
+            patcher.start(); self.addCleanup(patcher.stop)
+
     def test_budget_distinguishes_target_cap_range_and_relative(self):
         self.assertEqual(parse_length_budget('15,123字（上限16,383字）').target, 15123)
         self.assertEqual(parse_length_budget('5,000〜7,000字').target, 6000)
@@ -138,6 +144,8 @@ class ArticleQualityTests(unittest.TestCase):
         artifacts = {'article': {'content_text': '## 比較\nサービスA、B、C'},
                      'content_contract': {'content_text': json.dumps(CONTRACT)},
                      'outline': {'content_text': OUTLINE}}
+        if 'content_audit' in artifacts:
+            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '15,123字'}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
@@ -212,6 +220,8 @@ class ArticleQualityTests(unittest.TestCase):
         artifacts = {'article': {'content_text': complete_article()}, 'outline': {'content_text': OUTLINE},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
                      'content_contract': {'content_text': json.dumps(CONTRACT)}}
+        if 'content_audit' in artifacts:
+            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '1,000字'}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw):

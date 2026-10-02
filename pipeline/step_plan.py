@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from .ai import astra_review_enabled
+from . import research_requirements
 
 from . import (
     step_article,
@@ -25,7 +26,7 @@ from . import (
 Step = tuple[str, Callable]
 RATE_LIMITED_STEPS = {
     "search_intent", "fact_sheet", "outline", "service_map", "article", "review", "fact_review",
-    "research_validation", "content_audit"
+    "research_validation", "content_audit", "research_plan", "research_completeness"
 }
 
 
@@ -43,7 +44,9 @@ def build_step_plan(job: dict) -> list[Step]:
     steps: list[Step] = [
         ("serp", step_serp.run),
         ("search_intent", step_intent.run),
+        ("research_plan", research_requirements.plan),
         ("fact_sheet", step_fact_sheet.run),
+        ("research_completeness", research_requirements.verify),
     ]
     if delivery_type == "research_only":
         return steps

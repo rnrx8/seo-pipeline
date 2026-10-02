@@ -1,3 +1,4 @@
+from quality_fixtures import responses, phases
 import json
 
 SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
@@ -18,6 +19,11 @@ def report(failed=None):
 
 
 class QualityTests(unittest.TestCase):
+    def setUp(self):
+        for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
+            patcher=patch('pipeline.research_requirements.'+target, return_value=value)
+            patcher.start(); self.addCleanup(patcher.stop)
+
     def test_only_confirmed_paragraphs_reach_writer(self):
         source = '''# 調査
 未確認の要約は9,999円です。
@@ -146,7 +152,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_structure_guard, 'run'):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j', '比較')
         self.assertEqual(audit.call_count, 3)
-        self.assertEqual(research.call_count, 1)
+        self.assertEqual(research.call_count, 2)
         self.assertIn('research_gaps', research.call_args.kwargs)
 
 
@@ -190,7 +196,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_structure_guard,'run_before_research'), \
              patch.object(step_structure_guard,'validate_structure',return_value=[{'key':'named_service_comparison','reason':'不足'}]):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j','比較')
-        self.assertEqual(research.call_count,1)
+        self.assertEqual(research.call_count,2)
         self.assertFalse(save.call_args.kwargs['meta']['valid'])
         checks=json.loads(save.call_args.kwargs['content_text'])['checks']
         self.assertEqual(next(c for c in checks if c['key']=='coverage')['status'],'fail')
@@ -204,13 +210,13 @@ class FocusedEditorialTests(unittest.TestCase):
     def test_focused_failure_overrides_source_audit_pass(self):
         source=report()['checks']
         focused=[{'key':k,'reason':'無料は金銭範囲のみ。ノーリスクは無限定。','status':'fail' if k=='unsupported_guarantees' else 'pass','affected_blocks':[{'id':'block-0000','reason':'無限定な保証'}] if k=='unsupported_guarantees' else []} for k in quality.EDITORIAL_CHECKS]
-        with patch.object(quality,'create_with_retry',side_effect=[self.response(source),self.response(focused)]) as calls:
+        with patch.object(quality,'create_with_retry',side_effect=responses("unsupported_guarantees")) as calls:
             result=quality.audit(None,stage='article',text='無料なのでノーリスクです。',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
-        self.assertEqual(calls.call_count,2)
+        self.assertEqual(calls.call_count,5)
         self.assertEqual(json.loads(calls.call_args.kwargs['messages'][0]['content'])['article_blocks'],[{'id':'block-0000','text':'無料なのでノーリスクです。'}])
         self.assertEqual(next(c for c in result['checks'] if c['key']=='unsupported_guarantees')['affected_blocks'][0]['id'],'block-0000')
-        self.assertIn('editorial_audit',result)
+        self.assertIn('phases',result)
         self.assertEqual(calls.call_args.kwargs['output_config']['format']['type'],'json_schema')
 
     def test_invented_editorial_location_is_rejected(self):
@@ -226,7 +232,7 @@ class FocusedEditorialTests(unittest.TestCase):
 
     def test_focused_pass_does_not_erase_source_failure(self):
         focused=[{'key':k,'reason':'条件に一致','status':'pass'} for k in quality.EDITORIAL_CHECKS]
-        with patch.object(quality,'create_with_retry',side_effect=[self.response(report('evidence_support')['checks']),self.response(focused)]):
+        with patch.object(quality,'create_with_retry',side_effect=responses('evidence_support')):
             result=quality.audit(None,stage='article',text='本文',facts='',outline='',contract={},requirements={})
         self.assertFalse(result['valid'])
 

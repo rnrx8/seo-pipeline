@@ -7,6 +7,7 @@ import anthropic
 
 from .ai import create_with_retry, get_step_config, astra_review_enabled
 from .article_quality import validate_delivery
+from .readability import readability_issues
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import WRITING_POLICY
 from .claim_scope import conditional_facts, scope_issues
@@ -63,12 +64,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 report, checkpoint = checkpoint, None
             else:
                 report = audit(client, stage='article', text=text, facts=facts, outline=outline,
-                               contract=contract, requirements=requirements, sources=sources)
+                               contract=contract, requirements=requirements, sources=sources,
+                               checkpoint=lambda role, phase: upsert_artifact(job_id=job_id,
+                                   step=f'quality_{role}_{attempt + 1}', content_type='application/json',
+                                   content_text=json.dumps(phase, ensure_ascii=False), meta={'snapshot':phase['snapshot']}))
         except ContentQualityError as exc:
             upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
             raise
         issues = validate_delivery(text, outline, job.get('word_count_setting'), contract=contract, section_map=section_map)
+        issues += readability_issues(text)
         issues += validate_structure(text, contract, outline=False)
         issues += cta_placement_issues(text, (artifact.get('meta') or {}).get('cta_placement'), section_map)
         for issue in issues:
@@ -120,7 +125,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
 根拠のない断定を弱めるだけで残さず、未確認の値を使わない。
 ユーザー指定の件数・必須内容を減らさず、説明の不足を注釈で済ませない。
 見出し階層・必要項目は維持するが、誤った比較結論を含む見出しは正しい根拠に沿って改題する。元の構成の誤りを温存しない。
-局所修正では見出しの追加・削除・階層変更は禁止する。長い段落の分割は既存見出しの中で表・箇条書きを使い、H4等の追加で対応しない。監査が小見出しの追加を例示していても、この保存上の制約に沿う別の整理方法で同じ問題を解消する。
+既存見出しの削除・移動・階層変更は禁止する。既存H3内の話題整理に限りH4を追加してよい。表・リスト・H4は内容に合う形式を選び、空行だけで長文を分割したことにしない。
 指摘箇所だけでなく、同じ結論を含むリード・箇条書き・比較表・見出し・まとめをすべて照合し、一度の修正で揃える。関係のない内容や反復で文字数を水増ししない。'''
         messages=[{'role': 'user', 'content': json.dumps({
                 'confirmed_facts': facts, 'source_documents': sources,
@@ -142,21 +147,21 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 candidate = apply_block_edits(text, raw)
                 required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
                                 for loc in check.get('affected_blocks', [])}
-                required_ids.update(loc['id'] for issue in issues for loc in issue.get('affected_blocks', []))
+                required_ids.update(loc['id'] for issue in issues if issue['key'] != 'continuous_prose' for loc in issue.get('affected_blocks', []))
                 edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
                 missed = required_ids - {edit['id'] for edit in edits}
                 if missed:
                     raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
-                unresolved = scope_issues(candidate, facts)
+                unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
                 unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
                 unresolved += [v for v in validate_delivery(candidate, outline, job.get('word_count_setting'), contract=contract)
                                if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
                 if unresolved:
                     raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
                 try:
-                    candidate_sections = carry_sections(text, candidate, outline, section_map)
+                    candidate_sections = carry_sections(text, candidate, outline, section_map, allow_h4=True)
                 except ValueError as exc:
-                    raise ContentQualityError(str(exc) + '。見出しの追加・削除・階層変更をせず、既存見出し内で表・箇条書きを使って修正してください。') from exc
+                    raise ContentQualityError(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。') from exc
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:

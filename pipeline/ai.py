@@ -44,7 +44,7 @@ def message_text(message) -> str:
 
 
 def validate_model_credentials(job: dict) -> None:
-    if (job.get('delivery_type') or 'full') == 'full' and astra_review_enabled() and not os.getenv('OPENAI_API_KEY', '').strip():
+    if astra_review_enabled() and not os.getenv('OPENAI_API_KEY', '').strip():
         from .content_quality import ContentQualityError
         raise ContentQualityError('Astra確認に必要なOPENAI_API_KEYが未設定です。生成開始前に停止しました。')
 

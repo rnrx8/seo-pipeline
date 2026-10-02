@@ -24,7 +24,7 @@ class StepPlanTests(unittest.TestCase):
 
     def test_research_only_stops_before_contract(self):
         keys = [key for key, _ in build_step_plan({"delivery_type": "research_only"})]
-        self.assertEqual(keys, ["serp", "search_intent", "fact_sheet"])
+        self.assertEqual(keys, ["serp", "search_intent", "research_plan", "fact_sheet", "research_completeness"])
 
 
 if __name__ == "__main__":

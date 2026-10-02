@@ -393,8 +393,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
 
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
-    fact = get_artifact(job_id, "fact_sheet")
+    from .research_requirements import require_matrix, load_plan
+    matrix = require_matrix(job_id)
+    fact = dict(get_artifact(job_id, "fact_sheet"))
     fact = {**fact, 'content_text': writing_evidence(fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')))}
+    fact['content_text'] += '\n## 必須質問と照合済み回答\n' + json.dumps({'plan':load_plan(job_id),'matrix':matrix},ensure_ascii=False)
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""

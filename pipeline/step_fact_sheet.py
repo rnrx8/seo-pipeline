@@ -231,6 +231,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
     primary_sources_prompt = _build_primary_sources_prompt(sources)
     fresh = FreshSources(job, load_settings(job, sources))
+    prior_facts = ''
+    if research_gaps:
+        prior_facts = get_artifact(job_id, 'fact_sheet')['content_text']
+        for page in json.loads(get_artifact(job_id, 'fresh_sources')['content_text']):
+            if page.get('status') == 'success': fresh.pages[page['url']] = page
     fresh.prefetch()
     fresh.save(job_id)
 
@@ -239,7 +244,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     prompt = freshness_context(checked_on) + USER_TEMPLATE.format(
         keyword=keyword, serp_text=serp["content_text"], intent_text=intent["content_text"],
     ) + primary_sources_prompt
+    from .research_requirements import load_plan
+    prompt += '\n## 調査計画：全ての必須質問に回答できる証拠を収集する\n' + json.dumps(load_plan(job_id), ensure_ascii=False)
+    prompt += '\n未調査・取得失敗・関連ページを調べたが見つからない・公式に非公開と明記、を区別する。トップページだけで済ませず各質問に適した公式規約・FAQ・料金・プライバシー資料を取得する。仮説を事実にせず、各社に同じ比較項目を揃える。'
     if research_gaps:
+        prompt += '\n## 同じ実行の調査済み情報（根拠が正しい他の回答は保持し、完全な更新版を返す）\n' + prior_facts
         prompt += ('\n## 前回の構成で不足した根拠・比較条件\n' + research_gaps
                    + '\n不足したサービスと比較項目を優先し、公式の料金・機能・FAQ・規約へのリンクを探索して直接取得する。'
                    '取得できないURLを推測で埋めず、別の公式ページを探す。必要情報を注釈で済ませない。'

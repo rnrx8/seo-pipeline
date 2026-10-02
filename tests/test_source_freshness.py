@@ -22,6 +22,11 @@ class Block(SimpleNamespace):
 
 
 class SourceFreshnessTests(unittest.TestCase):
+    def setUp(self):
+        for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
+            patcher=patch('pipeline.research_requirements.'+target, return_value=value)
+            patcher.start(); self.addCleanup(patcher.stop)
+
     def check_fact(self, text, urls=None):
         return sheet._downgrade_incomplete_confirmations(
             text, searched_urls={OFFICIAL} if urls is None else urls, checked_on=TODAY,
