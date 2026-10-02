@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 from .ai import create_with_retry
 from .db import get_optional_artifact, upsert_artifact
-from .fresh_sources import run_with_fetch
+from .fresh_sources import run_with_fetch, extract_urls, normalize_url
 from .content_quality import digest, ContentQualityError
 
 
@@ -48,6 +48,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
               '各事実は短い独立段落。数表全体を一つの引用にせず、事実ごとにURL・確認日・連続8〜240文字の正確な引用・判定タグを付ける。'
               '原文の引用内にさらに「」がある場合も原文を改変しない。省略記号を挿入しない。'
             + ('\n今回の不足指摘\n'+json.dumps([g for g in gap_rows if g['id'] in task_ids or g['id']=='overall'],ensure_ascii=False) if gaps else ''))
+        prior_urls = set(fresh.pages)
         try:
             resp, note, searches, blocks = run_with_fetch(client, create=create_with_retry, model=model,max_tokens=9000,
                 system=system, prompt=focused, search_tool={**search_tool,'max_uses':8},fresh=fresh,
@@ -55,8 +56,10 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             fresh.fetch_confirmed_citations(note)
         finally:
             fresh.save(job_id)
+        used_urls = set(extract_urls(note)) | (set(fresh.pages)-prior_urls)
+        used_urls.update(normalize_url((getattr(b,'input',None) or {}).get('url','')) for b in blocks if getattr(b,'name','')=='fetch_current_page')
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
-            meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),
+            meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
                   'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':searches})
         notes.append(note); queries.extend(searches); observed.extend(blocks)
         inputs += resp.usage.input_tokens; outputs += resp.usage.output_tokens
