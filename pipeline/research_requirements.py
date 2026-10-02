@@ -85,7 +85,8 @@ MATRIX_SCHEMA['format']['schema']['required'] += ['coverage_sufficient','coverag
 
 
 def plan_policy():
-    return digest(json.dumps([EVIDENCE_POLICY_VERSION, PLAN_SYSTEM, PLAN_SCHEMA],ensure_ascii=False,sort_keys=True))
+    from .research_plan_review import PLAN_REVIEW_SYSTEM, PLAN_REVIEW_SCHEMA
+    return digest(json.dumps([EVIDENCE_POLICY_VERSION, PLAN_SYSTEM, PLAN_SCHEMA, PLAN_REVIEW_SYSTEM, PLAN_REVIEW_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def validate_plan(value):
@@ -122,19 +123,30 @@ def plan(job_id, keyword, api_key=None):
     payload['featured_service'] = {k:service.get(k) for k in ('name','url','selling_points','must_include','must_exclude')} if service else None
     payload['registered_companies'] = [{k:c.get(k) for k in ('name','recommend_level','notes')} for c in
         get_company_settings(job['tenant_id'],job['category'])] if job.get('tenant_id') and job.get('category') else []
-    msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=max(budget,16000),system=PLAN_SYSTEM,
-        output_config=PLAN_SCHEMA,messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
-    value=json.loads(response_text(msg));items=value.get('items')
-    if not isinstance(items,list) or not 1<=len(items)<=120: raise ContentQualityError('調査計画の項目が不正です。')
-    if len({i['id'] for i in items})!=len(items) or any(not i['id'] or not i['question'].strip() or type(i['required']) is not bool for i in items):
-        raise ContentQualityError('調査計画の質問・IDが不正です。')
-    if any('自社サービス' in i['question'] for i in items):
-        raise ContentQualityError('調査対象が実名・範囲で特定されていません。')
-    if not any(i['required'] for i in items): raise ContentQualityError('調査計画に必須質問がありません。')
-    validate_plan(value)
-    value['policy_sha256'] = plan_policy()
-    return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
-        meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+    from .research_plan_review import review
+    for step in ('research_plan','research_matrix'):
+        upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps({'valid':False,'status':'planning','items':[]}))
+    inputs=outputs=0
+    for attempt in range(1,3):
+        msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=max(budget,16000),system=PLAN_SYSTEM,
+            output_config=PLAN_SCHEMA,messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
+        value=json.loads(response_text(msg));items=value.get('items')
+        if not isinstance(items,list) or not 1<=len(items)<=120: raise ContentQualityError('調査計画の項目が不正です。')
+        if any(not i.get('id') or not i.get('question','').strip() or type(i.get('required')) is not bool for i in items):
+            raise ContentQualityError('調査計画の質問・IDが不正です。')
+        if any('自社サービス' in i['question'] for i in items):
+            raise ContentQualityError('調査対象が実名・範囲で特定されていません。')
+        validate_plan(value)
+        upsert_artifact(job_id=job_id,step=f'research_plan_candidate_{attempt}',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
+        verdict,usage=review(job_id,value,payload,attempt,api_key)
+        inputs+=msg.usage.input_tokens+usage.input_tokens;outputs+=msg.usage.output_tokens+usage.output_tokens
+        if verdict['valid']:
+            value['policy_sha256'] = plan_policy()
+            return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
+                meta={'model':model,'input_tokens':inputs,'output_tokens':outputs,'planning_review_passed':True})
+        payload['previous_plan']=value
+        payload['planning_issues']=verdict['issues']
+    raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
 
 
 def validate_matrix(value, plan_value, pages):

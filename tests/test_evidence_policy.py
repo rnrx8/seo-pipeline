@@ -145,3 +145,31 @@ class EvidencePolicyTests(unittest.TestCase):
         value['items'][0].update(status='unresearched',basis='unresolved')
         value['coverage_sufficient']=False;value['coverage_reason']='q1の必須料金が不足'
         self.assertEqual([g['id'] for g in validate_matrix(value,plan,pages)],['q1'])
+
+    def test_invalid_plan_is_bounded_and_cannot_leave_an_old_ready_plan(self):
+        from pipeline import research_requirements as r
+        plan,_,_=fixture()
+        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(plan))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
+        saved={}
+        def save(**kw):saved[kw['step']]=kw;return kw
+        with patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
+             patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',return_value=response) as generate, \
+             patch.object(r,'upsert_artifact',side_effect=save), \
+             patch('pipeline.research_plan_review.review',return_value=({'valid':False,'issues':[{'id':'q1','reason':'補助条件を必須へ抱き合わせている'}]},response.usage)):
+            with self.assertRaises(ValueError):r.plan('j','おすすめ')
+        self.assertEqual(generate.call_count,2)
+        self.assertIn('planning_issues',json.loads(generate.call_args.kwargs['messages'][0]['content']))
+        self.assertFalse(json.loads(saved['research_plan']['content_text'])['valid'])
+        self.assertFalse(json.loads(saved['research_matrix']['content_text'])['valid'])
+
+    def test_plan_is_published_only_after_independent_review_passes(self):
+        from pipeline import research_requirements as r
+        plan,_,_=fixture()
+        response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(plan))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
+        with patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
+             patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',return_value=response), \
+             patch.object(r,'upsert_artifact',side_effect=lambda **kw:kw), \
+             patch('pipeline.research_plan_review.review',return_value=({'valid':True,'issues':[]},response.usage)):
+            saved=r.plan('j','おすすめ')
+        self.assertTrue(saved['meta']['planning_review_passed'])
+        self.assertEqual(json.loads(saved['content_text'])['policy_sha256'],r.plan_policy())
