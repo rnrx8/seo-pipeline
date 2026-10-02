@@ -113,3 +113,42 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertTrue(value['items'][0]['required']);self.assertFalse(value['items'][1]['required'])
         self.assertNotIn('research_collection_1',saved)
         self.assertEqual(generate.call_count,1);self.assertEqual(review.call_count,2)
+
+class SourceLineageTests(unittest.TestCase):
+    def test_fetched_linked_price_is_kept_even_if_latest_note_omits_it(self):
+        pages=[{'url':'https://official.example','text':'home','links':[{'url':'https://official.example/price'}, {'url':'https://official.example/unfetched'}, {'url':'https://other.example/ad'}]},
+               {'url':'https://official.example/price','text':'price','links':[]},
+               {'url':'https://other.example/ad','text':'unrelated','links':[]}]
+        selected=r.subject_sources(pages,{'https://official.example'})
+        self.assertEqual([p['url'] for p in selected],['https://official.example','https://official.example/price'])
+
+    def test_prior_matrix_supplies_source_urls_not_prior_pass(self):
+        plan,pages,result=fixture()
+        record={'content_text':'new note','meta':{'subject':'A','source_urls':[pages[0]['url']]}}
+        prior={'content_text':json.dumps({'items':[{'id':'q1','verified':True,'evidence':[{'url':pages[1]['url']}]}]})}
+        outputs=[message(result),message({'coverage_sufficient':False,'coverage_reason':'still missing'})]
+        with patch.object(r,'get_optional_artifact',side_effect=lambda j,s:record if s=='research_collection_1' else prior if s=='research_matrix_1' else None), \
+             patch.object(r,'upsert_artifact'),patch.object(r,'create_with_retry',side_effect=outputs) as call:
+            value,_=r.audit_matrix('j',None,plan,pages,'facts','model',100)
+        payload=json.loads(call.call_args_list[0].kwargs['messages'][0]['content'])
+        self.assertIn(pages[1]['url'],[p['url'] for p in payload['sources']])
+        self.assertFalse(value['coverage_sufficient'])
+        self.assertEqual(call.call_count,2)
+
+    def test_retry_keeps_previous_batch_source_lineage(self):
+        from pipeline import research_collection as c
+        from pipeline.fresh_sources import FreshSources
+        from pipeline.content_quality import digest
+        plan,pages,_=fixture();fresh=FreshSources({},[])
+        fresh.pages={p['url']:p for p in pages}
+        old={'content_text':'old note','meta':{'subject':'A','plan_sha256':digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
+             'source_urls':[pages[0]['url']]}}
+        saved={}
+        with patch.object(c,'get_optional_artifact',return_value=old),patch.object(c,'upsert_artifact',side_effect=lambda **kw:saved.update(kw)), \
+             patch.object(fresh,'save'),patch.object(c,'run_with_fetch',return_value=(message({}),'new note',[],[])):
+            c.collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},gaps=json.dumps([{'id':'q1'}]))
+        self.assertIn(pages[0]['url'],saved['meta']['source_urls'])
+
+    def test_markdown_code_delimiters_are_not_part_of_urls(self):
+        from pipeline.fresh_sources import extract_urls
+        self.assertEqual(extract_urls('出典：`https://official.example/price`'),['https://official.example/price'])

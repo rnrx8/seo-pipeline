@@ -54,7 +54,7 @@ DIRECT_POLICY += EVIDENCE_POLICY
 
 def normalize_url(url):
     try:
-        p = urlsplit(url.rstrip('.,。、;；'))
+        p = urlsplit(url.rstrip('.,。、;；`'))
         if p.scheme not in ('http', 'https') or not p.hostname or p.username or p.password:
             return ''
         return urlunsplit((p.scheme, p.netloc.lower(), p.path.rstrip('/'), p.query, ''))
@@ -69,7 +69,7 @@ def extract_urls(value):
         return [u for v in value for u in extract_urls(v)]
     if not isinstance(value, str):
         return []
-    return list(dict.fromkeys(u for raw in re.findall(r'https?://[^\s<>"\[\]{}()（）「」『』、，｜|]+', value)
+    return list(dict.fromkeys(u for raw in re.findall(r'https?://[^\s<>"`\[\]{}()（）「」『』、，｜|]+', value)
                               if (u := normalize_url(raw))))
 
 

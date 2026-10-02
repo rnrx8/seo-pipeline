@@ -57,6 +57,11 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         finally:
             fresh.save(job_id)
         used_urls = set(extract_urls(note)) | (set(fresh.pages)-prior_urls)
+        if old and old.get('meta',{}).get('subject') == task['subject']:
+            # A focused retry may omit previously answered questions from its note.
+            # Keep their original source lineage, not their acceptance verdict.
+            used_urls.update(old.get('meta',{}).get('source_urls',[]))
+            used_urls.update(extract_urls(old.get('content_text','')))
         used_urls.update(normalize_url((getattr(b,'input',None) or {}).get('url','')) for b in blocks if getattr(b,'name','')=='fetch_current_page')
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
             meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
