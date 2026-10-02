@@ -17,13 +17,23 @@ STEP_CONFIG: dict[str, dict] = {
 
 def astra_review_enabled() -> bool:
     mode = os.getenv("ARTICLE_REVIEW_PROVIDER", "astra")
-    if mode not in ("astra", "sonnet"):
-        raise ValueError("ARTICLE_REVIEW_PROVIDER must be astra or sonnet")
-    return mode == "astra"
+    if mode not in ("astra", "sonnet", "tiered"):
+        raise ValueError("ARTICLE_REVIEW_PROVIDER must be astra, sonnet or tiered")
+    return mode in ("astra", "tiered")
+
+
+def tiered_review_enabled():
+    return os.getenv("ARTICLE_REVIEW_PROVIDER", "astra") == "tiered"
+
+
+def is_openai_model(model):
+    return model in ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna")
 
 
 def get_step_config(step: str) -> tuple[str, int]:
     """Return (model, max_tokens) for the given step name."""
+    if tiered_review_enabled() and step in ("content_audit", "content_repair", "review"):
+        return ("gpt-6.1-sol", 6000 if step != "content_repair" else 10000)
     if step in ("content_audit", "content_repair"):
         return ("gpt-6-astra", 24000) if astra_review_enabled() else ("claude-sonnet-4-6", 50000)
     cfg = STEP_CONFIG.get(step)
@@ -55,7 +65,7 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwarg
     Uses streaming to support large max_tokens values (>10min threshold).
     Returns a standard Message object identical to non-streaming create().
     """
-    if kwargs.get("model") == "gpt-6-astra":
+    if is_openai_model(kwargs.get("model")):
         from .openai_review import create_review_response
         return create_review_response(**kwargs)
     if kwargs.get("model") == "claude-opus-5-5":

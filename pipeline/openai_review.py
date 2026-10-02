@@ -53,17 +53,24 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         raise ContentQualityError("Astra確認に必要なOPENAI_API_KEYが未設定です。")
+    tiered = model in ("gpt-6-luna", "gpt-6.1-sol")
     schema = output_config["format"]["schema"]
     payload = {"model": model, "instructions": system, "input": messages,
-               "max_output_tokens": max(16000, max_tokens),
-               "reasoning": {"effort": "high"}, "store": False, "stream": True,
+               "max_output_tokens": max_tokens if tiered else max(16000, max_tokens),
+               "reasoning": {"effort": ("low" if model=="gpt-6-luna" else "medium") if tiered else "high"}, "store": False, "stream": True,
                "text": {"format": {"type": "json_schema", "name": "article_quality",
                                     "strict": True, "schema": schema}}}
-    for attempt in range(3):
+    if tiered: payload["service_tier"] = "default"
+    for attempt in range(1 if tiered else 3):
         response = None
+        reservation = None
+        accounted = False
         started = time.monotonic()
         try:
-            print('[astra] Starting streamed review/repair request', flush=True)
+            if tiered:
+                from .quality_budget import reserve, settle
+                reservation = reserve(payload)
+            print('[review '+model+'] Starting streamed review/repair request', flush=True)
             response = requests.post("https://api.openai.com/v1/responses",
                 headers={"Authorization": "Bearer " + key}, json=payload,
                 stream=True, timeout=(15, 600))
@@ -76,13 +83,15 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
                     code = None
                 if code in ("insufficient_quota", "credit_balance_exhausted"):
                     raise ContentQualityError("OpenAI APIの利用枠が不足しています。")
-                if attempt < 2:
+                if not tiered and attempt < 2:
                     response.close()
                     time.sleep(10 * (attempt + 1))
                     continue
             if response.status_code != 200:
                 raise ContentQualityError(f"Astra確認に失敗しました（HTTP {response.status_code}）。")
             data = _completed_response(response, started)
+            if tiered and data.get("usage"):
+                settle(reservation,data["usage"]);accounted=True
             if data.get("status") != "completed":
                 raise ContentQualityError("Astra確認の応答が未完了です。")
             parts = [part for item in data.get("output", []) if item.get("type") == "message"
@@ -105,5 +114,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
         except (ValueError, KeyError, TypeError):
             raise ContentQualityError("Astra確認の応答形式が不正です。") from None
         finally:
+            if reservation is not None and not accounted:
+                settle(reservation)
             if response is not None:
                 response.close()

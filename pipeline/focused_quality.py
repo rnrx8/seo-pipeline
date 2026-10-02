@@ -56,12 +56,21 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                    'failは問題箇所のidとreasonを全て記す。欠落の指摘は補うべき既存段落を指定。passは空配列。'
                    '指摘は修正可能な具体的欠陥に限り、全文を書き直さずJSONだけ返す。')
         print('[quality] Checking ' + role, flush=True)
-        msg = create_with_retry(client, model=model, max_tokens=budget, system=system,
-                                output_config=audit_output_config(keys, locations=True),
-                                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
-        checks = parse_focus(response_text(msg), keys, text)
+        request = dict(model=model, max_tokens=budget, system=system,
+                       output_config=audit_output_config(keys, locations=True),
+                       messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
+        from .ai import tiered_review_enabled
+        if tiered_review_enabled():
+            from .quality_budget import JOB
+            from .tiered_research import checked_request
+            value, usage = checked_request(JOB.get(), 'tiered_article_'+role, request)
+            raw = json.dumps(value,ensure_ascii=False)
+        else:
+            msg = create_with_retry(client, **request)
+            raw, usage = response_text(msg), msg.usage
+        checks = parse_focus(raw, keys, text)
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':model,
-                 'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens}
+                 'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)
     combined=[]

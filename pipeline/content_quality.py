@@ -6,7 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from .ai import create_with_retry, get_step_config, astra_review_enabled
+from .ai import create_with_retry, get_step_config, astra_review_enabled, is_openai_model
 from .price_comparison import comparison_evidence
 from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
@@ -61,7 +61,7 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def source_evidence(*artifacts: dict) -> str:
+def source_evidence(*artifacts: dict, max_chars: int = 180000) -> str:
     """Keep current fetched bodies available to auditors, not just AI summaries.
 
     Bound the shared body budget, mark excerpts explicitly, and hash this exact
@@ -74,7 +74,7 @@ def source_evidence(*artifacts: dict) -> str:
                 pages[page['url']] = page
     if not pages:
         raise ContentQualityError('内容検査に必要な直接取得本文がありません。')
-    limit = max(1, 180000 // len(pages))
+    limit = max(1, max_chars // len(pages))
     result = []
     for url, page in sorted(pages.items()):
         text = page['text']
@@ -324,7 +324,7 @@ def audit_output_config(keys, *, locations=False):
 
 
 def editorial_audit(client, text: str, model: str, requirements: dict | None = None) -> dict:
-    message = create_with_retry(client, model=model, max_tokens=get_step_config('content_audit')[1] if model == 'gpt-6-astra' else 7000, system=EDITORIAL_SYSTEM, output_config=audit_output_config(EDITORIAL_CHECKS, locations=True),
+    message = create_with_retry(client, model=model, max_tokens=get_step_config('content_audit')[1] if is_openai_model(model) else 7000, system=EDITORIAL_SYSTEM, output_config=audit_output_config(EDITORIAL_CHECKS, locations=True),
         messages=[{'role': 'user', 'content': json.dumps({'current_date': datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements': requirements or {}}, ensure_ascii=False)}])
     raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', response_text(message).strip())
     try:
@@ -352,7 +352,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         return audit_article(client, text=text, facts=facts, outline=outline, contract=contract, requirements=requirements, sources=sources, checkpoint=checkpoint)
     model, configured_budget = get_step_config('content_audit' if stage == 'article' else 'review')
     prices, price_issues = comparison_evidence(text, contract)
-    message = create_with_retry(client, model=model, max_tokens=configured_budget if model == 'gpt-6-astra' else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
+    message = create_with_retry(client, model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
         messages=[{'role': 'user', 'content': json.dumps({
             'current_date': datetime.now(timezone.utc).date().isoformat(), 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources, 'outline': outline,
             'contract': contract, 'requirements': requirements,

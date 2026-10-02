@@ -97,7 +97,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 upsert_artifact(job_id=job_id, step='article_reviewed', content_type='text/markdown',
                     content_text=text, meta={**review_meta, 'content_audit_snapshot': report['snapshot']})
                 upsert_artifact(job_id=job_id, step='review', content_type='text/markdown',
-                    content_text='Astra最終確認：全項目合格。\n' + '\n'.join(
+                    content_text=get_step_config('content_audit')[0]+' 最終確認：全項目合格。\n' + '\n'.join(
                         f"- {c['key']}: {c['reason']}" for c in report['checks']),
                     meta={'model': get_step_config('content_audit')[0], 'valid': True,
                           'content_audit_snapshot': report['snapshot'], 'integrated_final_review': True})

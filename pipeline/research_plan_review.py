@@ -1,7 +1,7 @@
 """Review research obligations before paying for evidence collection."""
 import json
 import anthropic
-from .ai import create_with_retry, get_step_config
+from .ai import create_with_retry, get_step_config, is_openai_model
 from .content_quality import response_text, ContentQualityError
 from .evidence_policy import EVIDENCE_POLICY
 from .db import upsert_artifact
@@ -26,7 +26,7 @@ PLAN_REVIEW_SCHEMA={'format':{'type':'json_schema','schema':{'type':'object','pr
 
 def review(job_id, plan, context, attempt, api_key=None):
     model,budget=get_step_config('content_audit')
-    response=create_with_retry(None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),
+    response=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
         model=model,max_tokens=budget,system=PLAN_REVIEW_SYSTEM,output_config=PLAN_REVIEW_SCHEMA,
         messages=[{'role':'user','content':json.dumps({'plan':plan,'context':context},ensure_ascii=False)}])
     value=json.loads(response_text(response))

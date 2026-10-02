@@ -32,6 +32,10 @@ def subject_sources(pages, urls):
 
 
 def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent_context=None):
+    from .ai import tiered_review_enabled
+    if tiered_review_enabled():
+        from .tiered_research import audit_matrix as tiered_audit
+        return tiered_audit(job_id,plan_value,pages,facts,intent_context or {})
     from .research_requirements import MATRIX_SYSTEM, MATRIX_SCHEMA, validate_matrix
     if not all('subject' in i for i in plan_value['items']):
         msg=create_with_retry(client,model=model,max_tokens=budget,system=MATRIX_SYSTEM,output_config=MATRIX_SCHEMA,

@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -69,7 +70,7 @@ class PlanPolicyResumeTests(unittest.TestCase):
         with patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(records[s])), \
              patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(records.get(s))), \
              patch.object(req,'upsert_artifact',side_effect=save),patch.object(req,'_plan_context',return_value={}), \
-             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[],'additions':[]})), \
+             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[],'additions':[],'candidate_services':['A'],'scope_reason':'対象A'})), \
              patch('pipeline.research_plan_review.review',return_value=({'valid':valid,'issues':[]},usage)):
             if valid:req.revalidate_plan('j','keyword')
             else:
@@ -93,6 +94,25 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertNotIn('policy_revalidated',records['research_collection_1']['meta'])
         self.assertFalse(json.loads(records['research_matrix']['content_text'])['valid'])
 
+    def test_tiered_policy_repair_uses_budgeted_sol_not_hidden_opus(self):
+        from pipeline import research_requirements as req
+        from pipeline.ai import get_step_config
+        calls=[]
+        def record(*args,**kwargs):
+            calls.append(kwargs)
+            return message({'updates':[],'additions':[],'candidate_services':['A'],'scope_reason':'対象A'})
+        plan,_,_=fixture()
+        usage=SimpleNamespace(input_tokens=1,output_tokens=1)
+        verdicts=[({'valid':False,'issues':[{'id':'q1','reason':'修正'}]},usage),({'valid':True,'issues':[]},usage)]
+        with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered'}), \
+             patch.object(req,'get_artifact',return_value={'content_text':json.dumps(plan),'meta':{}}), \
+             patch.object(req,'get_optional_artifact',return_value=None),patch.object(req,'_plan_context',return_value={}), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(req,'create_with_retry',side_effect=record), \
+             patch('pipeline.research_plan_review.review',side_effect=verdicts):
+            req.revalidate_plan('j','keyword')
+        self.assertEqual(calls[0]['model'],'gpt-6.1-sol')
+        self.assertIn('scope_reason',calls[0]['output_config']['format']['schema']['required'])
+
     def test_targeted_plan_repair_preserves_ids_and_does_not_relabel_old_collection(self):
         from pipeline import research_requirements as req
         plan,_,_=fixture();plan['policy_sha256']='old'
@@ -105,7 +125,7 @@ class PlanPolicyResumeTests(unittest.TestCase):
         with patch.object(req,'get_artifact',return_value={'content_text':json.dumps(plan),'meta':{}}), \
              patch.object(req,'get_optional_artifact',return_value=note),patch.object(req,'_plan_context',return_value={}), \
              patch.object(req,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:kw}) or kw), \
-             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[update],'additions':[addition]})) as generate, \
+             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[update],'additions':[addition],'candidate_services':['A'],'scope_reason':'対象A'})) as generate, \
              patch('pipeline.research_plan_review.review',side_effect=verdicts) as review:
             req.revalidate_plan('j','keyword')
         value=json.loads(saved['research_plan']['content_text'])
@@ -113,6 +133,38 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertTrue(value['items'][0]['required']);self.assertFalse(value['items'][1]['required'])
         self.assertNotIn('research_collection_1',saved)
         self.assertEqual(generate.call_count,1);self.assertEqual(review.call_count,2)
+
+class PlanScopeRepairTests(unittest.TestCase):
+    def test_candidate_and_scope_change_with_questions_without_mutating_original(self):
+        from pipeline.research_requirements import apply_plan_repair
+        plan,_,_=fixture();plan.update(candidate_services=['A'],scope_reason='対象A')
+        before=copy.deepcopy(plan)
+        addition={**plan['items'][0],'id':'q2','subject':'B'}
+        result=apply_plan_repair(plan,{'updates':[],'additions':[addition],
+            'candidate_services':['A','B'],'scope_reason':'上位複数記事の重要対象としてAとBを比較'})
+        self.assertEqual(result['candidate_services'],['A','B'])
+        self.assertIn('AとB',result['scope_reason'])
+        self.assertEqual(result['items'][-1]['subject'],'B')
+        self.assertEqual(plan,before)
+
+    def test_non_comparison_article_can_keep_empty_candidate_list(self):
+        from pipeline.research_requirements import apply_plan_repair
+        plan,_,_=fixture();plan.update(candidate_services=[],scope_reason='一般的な解説')
+        result=apply_plan_repair(plan,{'updates':[],'additions':[],
+            'candidate_services':[],'scope_reason':'一般的な解説'})
+        self.assertEqual(result['candidate_services'],[])
+
+    def test_missing_scope_or_duplicate_added_ids_cannot_partially_apply(self):
+        from pipeline.research_requirements import apply_plan_repair
+        plan,_,_=fixture();before=copy.deepcopy(plan)
+        addition={**plan['items'][0],'id':'q2','subject':'B'}
+        for changes in [
+            {'updates':[],'additions':[addition]},
+            {'updates':[],'additions':[addition,addition],'candidate_services':['A','B'],'scope_reason':'理由'},
+            {'updates':[],'additions':[addition],'candidate_services':['A','A'],'scope_reason':'理由'}]:
+            with self.assertRaises(ValueError):apply_plan_repair(plan,changes)
+            self.assertEqual(plan,before)
+
 
 class SourceLineageTests(unittest.TestCase):
     def test_supplemental_retrieval_has_bounded_new_capacity(self):

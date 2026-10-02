@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from .ai import astra_review_enabled
+from .ai import astra_review_enabled, tiered_review_enabled
 from . import research_requirements
 
 from . import (
@@ -49,7 +49,7 @@ def build_step_plan(job: dict) -> list[Step]:
         ("research_completeness", research_requirements.verify),
     ]
     if delivery_type == "research_only":
-        return steps
+        return budgeted_steps(steps)
 
     steps.extend([
         ("reference_structure", step_reference.run),
@@ -63,7 +63,7 @@ def build_step_plan(job: dict) -> list[Step]:
     if job.get("service_id") or job.get("cta_id"):
         steps.append(("service_map", step_service_map.run))
     if delivery_type == "outline_only":
-        return steps
+        return budgeted_steps(steps)
 
     steps.append(("article", step_article.run))
     if job.get("cta_id"):
@@ -74,4 +74,10 @@ def build_step_plan(job: dict) -> list[Step]:
         steps.append(("fact_review", step_fact_review.run))
     steps.append(("content_audit", step_content_audit.run))
     steps.append(("final_structure_validation", step_final_validate.run))
-    return steps
+    return budgeted_steps(steps)
+
+
+def budgeted_steps(steps):
+    if not tiered_review_enabled():return steps
+    from .quality_budget import scoped
+    return [(key,scoped(fn)) for key,fn in steps]

@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlsplit
 from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION
 import anthropic
-from .ai import create_with_retry, get_step_config
+from .ai import create_with_retry, get_step_config, is_openai_model
 from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact, get_service_by_id, get_company_settings
 from .content_quality import ContentQualityError, response_text, requirements_for, source_evidence, digest
 
@@ -105,7 +105,10 @@ def validate_plan(value):
 
 def matrix_policy():
     from .research_verification import COVERAGE_SYSTEM, VERIFICATION_VERSION
-    return digest(json.dumps(['research-matrix-v2', COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+    from .ai import tiered_review_enabled
+    from .tiered_research import VERSION, POLICY
+    extra = [VERSION, POLICY] if tiered_review_enabled() else []
+    return digest(json.dumps(['research-matrix-v2', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def load_plan(job_id):
@@ -156,6 +159,26 @@ def plan(job_id, keyword, api_key=None):
     raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
 
 
+def apply_plan_repair(value, changes):
+    """Apply questions and their enclosing scope atomically; never publish a partial patch."""
+    original_items={i['id']:i for i in value['items']}
+    updates=changes['updates'];additions=changes['additions']
+    services=changes.get('candidate_services');reason=changes.get('scope_reason')
+    if (not isinstance(services,list)
+        or any(not isinstance(name,str) or not name.strip() for name in services)
+        or len(set(services))!=len(services) or not isinstance(reason,str) or not reason.strip()):
+        raise ContentQualityError('計画の部分修正に比較対象・選定理由がありません。')
+    if (len({i['id'] for i in updates})!=len(updates)
+        or any(i['id'] not in original_items or i['subject']!=original_items[i['id']]['subject'] for i in updates)
+        or any(i['id'] in original_items for i in additions)):
+        raise ContentQualityError('計画の部分修正でID・対象が変更されています。')
+    by_id={i['id']:i for i in updates}
+    result={**value,'items':[by_id.get(i['id'],i) for i in value['items']]+additions,
+            'candidate_services':services,'scope_reason':reason}
+    validate_plan(result)
+    return result
+
+
 def revalidate_plan(job_id, keyword, api_key=None):
     """Explicit policy-update resume: preserve questions only after fresh plan review."""
     from .research_plan_review import review
@@ -170,23 +193,20 @@ def revalidate_plan(job_id, keyword, api_key=None):
     inputs=usage.input_tokens;outputs=usage.output_tokens
     if not verdict['valid']:
         # A bounded targeted correction preserves IDs and unaffected questions.
-        model,budget=get_step_config('search_intent')
-        msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=4000,
-            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。質問の削除は禁止。補助条件を分離する場合は既存質問からその条件を外し、別の新IDの質問を追加する。',
+        from .ai import tiered_review_enabled
+        model,budget=get_step_config('content_repair' if tiered_review_enabled() else 'search_intent')
+        msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
+            model=model,max_tokens=budget if tiered_review_enabled() else 4000,
+            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。質問の削除は禁止。補助条件を分離する場合は既存質問からその条件を外し、別の新IDの質問を追加する。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
             output_config={'format':{'type':'json_schema','schema':{'type':'object','properties':{
-                k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
-                'required':['updates','additions'],'additionalProperties':False}}},
+                **{k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
+                'candidate_services':{'type':'array','items':{'type':'string'}}, 'scope_reason':{'type':'string'}},
+                'required':['updates','additions','candidate_services','scope_reason'],'additionalProperties':False}}},
             messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
-        changes=json.loads(response_text(msg))
-        original_items={i['id']:i for i in value['items']}
-        updates=changes['updates'];additions=changes['additions']
-        if (len({i['id'] for i in updates})!=len(updates)
-            or any(i['id'] not in original_items or i['subject']!=original_items[i['id']]['subject'] for i in updates)
-            or any(i['id'] in original_items for i in additions)):
-            raise ContentQualityError('計画の部分修正でID・対象が変更されています。')
-        by_id={i['id']:i for i in updates}
-        value={**value,'items':[by_id.get(i['id'],i) for i in value['items']]+additions}
-        validate_plan(value)
+        raw=response_text(msg)
+        upsert_artifact(job_id=job_id,step='research_plan_policy_repair_response',content_type='application/json',content_text=raw,
+            meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+        value=apply_plan_repair(value,json.loads(raw))
         upsert_artifact(job_id=job_id,step='research_plan_policy_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
         inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
         verdict,usage=review(job_id,value,context,'policy_repaired',api_key)
@@ -326,7 +346,7 @@ def verify(job_id, keyword, api_key=None):
         from .research_verification import audit_matrix
         pages=json.loads(get_artifact(job_id,'fresh_sources')['content_text'])
         context = {k:get_artifact(job_id,k)['content_text'] for k in ('serp','search_intent')} if plan_value.get('policy_sha256') else {}
-        value,usage=audit_matrix(job_id,None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget,intent_context=context)
+        value,usage=audit_matrix(job_id,None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget,intent_context=context)
         gaps=validate_matrix(value,plan_value,pages)
         if not gaps and plan_value.get('policy_sha256'):
             for page in pages:
