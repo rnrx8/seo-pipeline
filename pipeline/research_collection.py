@@ -24,6 +24,10 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
     tasks = batches(plan)
     plan_hash = digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))
     gap_rows = json.loads(gaps) if gaps else []
+    known_ids = {i['id'] for i in plan['items']}
+    # Post-outline audits report check keys, not question IDs. Never silently
+    # reuse every batch or crash when those existing callers request research.
+    gap_rows = [g if g.get('id') in known_ids else {**g, 'id':'overall'} for g in gap_rows]
     ids = {i['id'] for i in gap_rows}
     notes, queries, observed = [], [], []
     inputs = outputs = 0

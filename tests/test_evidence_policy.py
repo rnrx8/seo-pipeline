@@ -105,3 +105,13 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertEqual(run.call_count,3)
         self.assertIn('A original',text);self.assertIn('B updated',text);self.assertNotIn('B original',text)
         self.assertEqual(saved['research_collection_2']['meta']['question_ids'],['q2'])
+
+    def test_outline_audit_keys_trigger_research_instead_of_missing_id_error(self):
+        plan,_,_=fixture();fresh=FreshSources({},[])
+        response=SimpleNamespace(usage=SimpleNamespace(input_tokens=1,output_tokens=2))
+        with patch('pipeline.research_collection.upsert_artifact'),patch.object(fresh,'save'), \
+             patch('pipeline.research_collection.get_optional_artifact',return_value=None), \
+             patch('pipeline.research_collection.run_with_fetch',return_value=(response,'new',[],[])) as run:
+            collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},
+                gaps=json.dumps([{'key':'evidence_support','reason':'料金の根拠が不足'}]))
+        self.assertIn('料金の根拠が不足',run.call_args.kwargs['prompt'])
