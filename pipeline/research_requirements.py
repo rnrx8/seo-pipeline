@@ -101,7 +101,8 @@ def validate_plan(value):
 
 
 def matrix_policy():
-    return digest(json.dumps(['research-matrix-v2', MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+    from .research_verification import COVERAGE_SYSTEM, VERIFICATION_VERSION
+    return digest(json.dumps(['research-matrix-v2', COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def load_plan(job_id):
@@ -211,10 +212,10 @@ def verify(job_id, keyword, api_key=None):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
         model,budget=get_step_config('content_audit')
-        msg=create_with_retry(None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key), model=model,max_tokens=budget,
-            system=MATRIX_SYSTEM,output_config=MATRIX_SCHEMA,messages=[{'role':'user','content':json.dumps({
-                'plan':plan_value,'sources':json.loads(sources),'attempted_sources':[{k:p.get(k) for k in ('url','status','reason')} for p in json.loads(get_artifact(job_id,'fresh_sources')['content_text'])],'facts':facts},ensure_ascii=False)}])
-        value=json.loads(response_text(msg));gaps=validate_matrix(value,plan_value,json.loads(sources) + [p for p in json.loads(get_artifact(job_id,'fresh_sources')['content_text']) if p.get('status')!='success'])
+        from .research_verification import audit_matrix
+        pages=json.loads(get_artifact(job_id,'fresh_sources')['content_text'])
+        value,usage=audit_matrix(job_id,None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget)
+        gaps=validate_matrix(value,plan_value,pages)
         if not gaps and plan_value.get('policy_sha256'):
             original=get_artifact(job_id,'fact_sheet')
             upsert_artifact(job_id=job_id,step='research_draft',content_type='text/markdown',content_text=facts,meta=original.get('meta',{}))
@@ -225,7 +226,7 @@ def verify(job_id, keyword, api_key=None):
                      sources_sha256=digest(sources), attempts_sha256=digest(get_artifact(job_id,'fresh_sources')['content_text']), facts_sha256=digest(facts))
         for step in (f'research_matrix_{attempt+1}','research_matrix'):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
-                meta={'valid':not gaps,'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+                meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
         if not gaps:return saved
         if attempt<2: step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(gaps,ensure_ascii=False))
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
@@ -238,5 +239,5 @@ def require_matrix(job_id):
     if matrix.get('valid') is not True or matrix.get('policy_sha256')!=matrix_policy() or matrix.get('plan_sha256')!=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)) or matrix.get('sources_sha256')!=digest(sources) or matrix.get('facts_sha256')!=digest(get_artifact(job_id,'fact_sheet')['content_text']):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
     if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
-    if validate_matrix(matrix,plan_value,json.loads(sources) + [p for p in json.loads(get_artifact(job_id,'fresh_sources')['content_text']) if p.get('status')!='success']): raise ContentQualityError('調査の必須回答が不足しています。')
+    if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
     return matrix

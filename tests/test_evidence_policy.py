@@ -115,3 +115,14 @@ class EvidencePolicyTests(unittest.TestCase):
             collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},
                 gaps=json.dumps([{'key':'evidence_support','reason':'料金の根拠が不足'}]))
         self.assertIn('料金の根拠が不足',run.call_args.kwargs['prompt'])
+
+    def test_separate_source_checks_cannot_override_global_coverage_failure(self):
+        from pipeline.research_verification import audit_matrix
+        from pipeline import research_verification as verify
+        plan,pages,value=fixture()
+        def msg(v):return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(v))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
+        with patch.object(verify,'get_optional_artifact',return_value=None),patch.object(verify,'upsert_artifact'), \
+             patch.object(verify,'create_with_retry',side_effect=[msg(value),msg({'coverage_sufficient':False,'coverage_reason':'重要な選択材料が不足'})]):
+            result,usage=audit_matrix('j',None,plan,pages,'facts','test',100)
+        self.assertTrue(validate_matrix(result,plan,pages))
+        self.assertEqual(usage.input_tokens,2)

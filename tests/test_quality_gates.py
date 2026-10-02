@@ -76,7 +76,7 @@ class QualityGateTests(unittest.TestCase):
         msg=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'items':[
             {'id':'q1','status':'unresearched','answer':'','evidence':[],'reason':'規約未取得'}]}))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
         with patch.object(research,'load_plan',return_value=plan),patch.object(research,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
-             patch.object(research,'create_with_retry',return_value=msg),patch.object(research,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
+             patch('pipeline.research_verification.create_with_retry',return_value=msg),patch.object(research,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
              patch('pipeline.step_fact_sheet.run') as fetch:
             with self.assertRaises(q.ContentQualityError):research.verify('job','比較')
         self.assertEqual(fetch.call_count,2)
