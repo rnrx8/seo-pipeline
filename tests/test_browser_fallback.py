@@ -87,3 +87,27 @@ class BrowserFallbackTests(unittest.TestCase):
         self.assertNotIn('ANTHROPIC_API_KEY',env)
 
 if __name__=='__main__': unittest.main()
+
+class ResearchDynamicFallbackTests(unittest.TestCase):
+    def test_standard_research_recovers_dynamic_page_with_bounded_budget(self):
+        from pipeline import fresh_sources as fs
+        with patch.object(fs,'get_public_page',return_value=response()),patch.object(fs,'fetch_rendered_page',return_value=RENDERED) as browser:
+            sources=fs.FreshSources({},[],render_dynamic=True,max_browser_attempts=1)
+            self.assertEqual(sources.fetch('https://example.com/one')['status'],'success')
+            self.assertEqual(sources.fetch('https://example.com/two')['status'],'failed')
+        self.assertEqual(browser.call_count,1)
+
+    def test_http_error_does_not_trigger_standard_dynamic_fallback(self):
+        from pipeline import fresh_sources as fs
+        with patch.object(fs,'get_public_page',side_effect=requests.HTTPError()),patch.object(fs,'fetch_rendered_page') as browser:
+            self.assertEqual(fs.FreshSources({},[],render_dynamic=True).fetch('https://example.com/missing')['status'],'failed')
+        browser.assert_not_called()
+
+    def test_failed_evidence_is_retained_and_retried_once(self):
+        from pipeline import fresh_sources as fs
+        sources=fs.FreshSources({},[],retry_failed=True)
+        url='https://example.com/terms';sources.pages[url]={'url':url,'status':'failed','reason':'prior failure'}
+        with patch.object(sources,'_retrieve',return_value={'url':url,'status':'failed','reason':'new failure'}) as fetch:
+            sources.fetch(url);sources.fetch(url)
+        self.assertEqual(fetch.call_count,1)
+        self.assertEqual(sources.pages[url]['reason'],'new failure')

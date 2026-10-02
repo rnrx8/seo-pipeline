@@ -203,11 +203,33 @@ def accepted_facts(value, plan_value):
     return '\n\n'.join(blocks)
 
 
+
+def refresh_dynamic_sources(job_id):
+    """Bring plain-fetch failures through the current bounded research reader."""
+    from .fresh_sources import FreshSources
+    artifact=get_artifact(job_id,'fresh_sources')
+    pages=json.loads(artifact['content_text'])
+    pending=[p for p in pages if p.get('status')!='success' and not p.get('browser_attempted')
+             and p.get('reason','').startswith('取得できた本文が短すぎます')]
+    if not pending:return
+    fresh=FreshSources(get_job(job_id),[],max_urls=120,render_dynamic=True,retry_failed=True,max_browser_attempts=20)
+    fresh.pages={p['url']:p for p in pages}
+    fresh.browser_attempts=sum(bool(p.get('browser_attempted')) for p in pages)
+    try:
+        for page in pending:
+            if fresh.browser_attempts>=fresh.max_browser_attempts:break
+            print('[research] Retrying dynamic official/source page',flush=True)
+            fresh.fetch(page['url'])
+    finally:
+        fresh.save(job_id)
+
+
 def verify(job_id, keyword, api_key=None):
     """At most two targeted retrieval retries; never drop planned questions."""
     from . import step_fact_sheet
     plan_value=load_plan(job_id)
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
+    refresh_dynamic_sources(job_id)
     for attempt in range(3):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']

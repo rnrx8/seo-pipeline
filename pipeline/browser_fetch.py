@@ -1,4 +1,4 @@
-"""Isolated, bounded browser fallback, invoked only for high-accuracy jobs."""
+"""Isolated, bounded browser fallback, for high-accuracy jobs and research of dynamic public pages."""
 import json
 import os
 from pathlib import Path

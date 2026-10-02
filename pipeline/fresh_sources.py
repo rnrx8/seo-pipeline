@@ -138,7 +138,11 @@ def preserve_table_grid(soup):
 
 
 class FreshSources:
-    def __init__(self, job, settings, *, max_urls=MAX_URLS):
+    def __init__(self, job, settings, *, max_urls=MAX_URLS, render_dynamic=False, max_browser_attempts=5, retry_failed=False):
+        self.max_browser_attempts = max_browser_attempts
+        self.retry_failed = retry_failed
+        self.retried_urls = set()
+        self.render_dynamic = render_dynamic
         self.max_urls = max_urls
         self.high_accuracy = job.get("high_accuracy_mode") is True
         self.browser_attempts = 0
@@ -157,10 +161,12 @@ class FreshSources:
     def fetch(self, url):
         key = normalize_url(url)
         if key in self.pages:
-            return self.pages[key]
+            if self.pages[key]['status']=='success' or not self.retry_failed or key in self.retried_urls:
+                return self.pages[key]
+            self.retried_urls.add(key)
         if not key:
             return {'url': str(url), 'status': 'failed', 'reason': '有効な公開URLではありません'}
-        if len(self.pages) >= self.max_urls:
+        if key not in self.pages and len(self.pages) >= self.max_urls:
             return {'url': key, 'status': 'failed', 'reason': '今回の取得件数が上限に達しました'}
         result = self._retrieve(key)
         self.pages[key] = result
@@ -225,11 +231,12 @@ class FreshSources:
         except Exception as exc:
             # Do not expose request URLs/credentials from exception messages.
             record['reason'] = str(exc) if isinstance(exc, ValueError) else f'本文取得失敗（{type(exc).__name__}）'
-        if record['status'] != 'success' and self.high_accuracy:
+        dynamic_shell = record.get('reason','').startswith('取得できた本文が短すぎます')
+        if record['status'] != 'success' and (self.high_accuracy or (self.render_dynamic and dynamic_shell)):
             try:
                 self.check_allowed(url)
                 with self.browser_lock:
-                    allowed = self.browser_attempts < 5
+                    allowed = self.browser_attempts < self.max_browser_attempts
                     if allowed:
                         self.browser_attempts += 1
                 if allowed:
@@ -241,7 +248,7 @@ class FreshSources:
                     else:
                         record['browser_failure_reason'] = rendered.get('reason')
                 else:
-                    record['browser_failure_reason'] = '今回のブラウザ再取得の上限（5件）に達しました'
+                    record['browser_failure_reason'] = f'今回のブラウザ再取得の上限（{self.max_browser_attempts}件）に達しました'
             except ValueError:
                 pass
         return record

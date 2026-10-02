@@ -223,10 +223,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         if sources:
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
     primary_sources_prompt = _build_primary_sources_prompt(sources)
-    fresh = FreshSources(job, load_settings(job, sources), max_urls=120)
+    fresh = FreshSources(job, load_settings(job, sources), max_urls=120, render_dynamic=True, max_browser_attempts=20, retry_failed=bool(research_gaps))
     if research_gaps:
         for page in json.loads(get_artifact(job_id, 'fresh_sources')['content_text']):
-            if page.get('status') == 'success': fresh.pages[page['url']] = page
+            fresh.pages[page['url']] = page
     fresh.prefetch()
     fresh.save(job_id)
 
