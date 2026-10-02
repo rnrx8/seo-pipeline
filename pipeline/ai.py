@@ -54,9 +54,12 @@ def message_text(message) -> str:
 
 
 def validate_model_credentials(job: dict) -> None:
+    if tiered_review_enabled() and not os.getenv('QUALITY_BUDGET_DIR', '').strip():
+        from .content_quality import ContentQualityError
+        raise ContentQualityError('段階式確認の予算保存先が未設定です。生成開始前に停止しました。')
     if astra_review_enabled() and not os.getenv('OPENAI_API_KEY', '').strip():
         from .content_quality import ContentQualityError
-        raise ContentQualityError('Astra確認に必要なOPENAI_API_KEYが未設定です。生成開始前に停止しました。')
+        raise ContentQualityError('品質確認に必要なOPENAI_API_KEYが未設定です。生成開始前に停止しました。')
 
 
 def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwargs):

@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 from pipeline import quality_budget as budget
-from pipeline.ai import create_with_retry, get_step_config
+from pipeline.ai import create_with_retry, get_step_config, validate_model_credentials
 from pipeline.content_quality import ContentQualityError
 from pipeline.openai_review import create_review_response
 from pipeline.research_requirements import validate_matrix, matrix_policy
@@ -37,6 +37,10 @@ class TieredReviewTests(unittest.TestCase):
             with patch('pipeline.openai_review.create_review_response',return_value='ok') as call:
                 self.assertEqual(create_with_retry(None,**self.request(model)),'ok')
                 self.assertEqual(call.call_args.kwargs['model'],model)
+    def test_missing_budget_setting_stops_before_generation(self):
+        with patch.dict(os.environ,{'QUALITY_BUDGET_DIR':''}):
+            with self.assertRaises(ContentQualityError):validate_model_credentials({})
+
     def test_actual_usage_includes_reasoning_and_long_context(self):
         i=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000})
         budget.settle(i,{'input_tokens':280000,'output_tokens':2000,'output_tokens_details':{'reasoning_tokens':1000}})

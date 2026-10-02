@@ -13,12 +13,12 @@ def _completed_response(response, started):
     event_lines, received = [], 0
     for line in response.iter_lines():
         if time.monotonic() - started > 1200:
-            raise ContentQualityError('Astra確認の処理時間上限を超えました。')
+            raise ContentQualityError('品質確認の処理時間上限を超えました。')
         if isinstance(line, bytes):
             line = line.decode('utf-8')
         received += len(line)
         if received > 8_000_000:
-            raise ContentQualityError('Astra確認の応答サイズ上限を超えました。')
+            raise ContentQualityError('品質確認の応答サイズ上限を超えました。')
         if line.startswith('data:'):
             event_lines.append(line[5:].lstrip())
         elif not line and event_lines:
@@ -43,8 +43,8 @@ def _completed_response(response, started):
                               'context_length_exceeded', 'invalid_prompt', 'invalid_request_error',
                               'model_not_found', 'invalid_json_schema', 'unsupported_parameter'}
                 if reason is None: reason = code if code in safe_codes else '原因未特定'
-                raise ContentQualityError(f'Astra確認の応答が未完了です（{event["type"]}: {reason}）。')
-    raise ContentQualityError('Astra確認の通信が完了通知前に終了しました。')
+                raise ContentQualityError(f'品質確認の応答が未完了です（{event["type"]}: {reason}）。')
+    raise ContentQualityError('品質確認の通信が完了通知前に終了しました。')
 
 
 def create_review_response(*, model, max_tokens, system, messages, output_config):
@@ -52,7 +52,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
     from .content_quality import ContentQualityError
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
-        raise ContentQualityError("Astra確認に必要なOPENAI_API_KEYが未設定です。")
+        raise ContentQualityError("品質確認に必要なOPENAI_API_KEYが未設定です。")
     tiered = model in ("gpt-6-luna", "gpt-6.1-sol")
     schema = output_config["format"]["schema"]
     payload = {"model": model, "instructions": system, "input": messages,
@@ -88,21 +88,21 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
                     time.sleep(10 * (attempt + 1))
                     continue
             if response.status_code != 200:
-                raise ContentQualityError(f"Astra確認に失敗しました（HTTP {response.status_code}）。")
+                raise ContentQualityError(f"品質確認に失敗しました（HTTP {response.status_code}）。")
             data = _completed_response(response, started)
             if tiered and data.get("usage"):
                 settle(reservation,data["usage"]);accounted=True
             if data.get("status") != "completed":
-                raise ContentQualityError("Astra確認の応答が未完了です。")
+                raise ContentQualityError("品質確認の応答が未完了です。")
             parts = [part for item in data.get("output", []) if item.get("type") == "message"
                      for part in item.get("content", [])]
             if any(p.get("type") == "refusal" for p in parts):
-                raise ContentQualityError("Astraが確認を完了できませんでした。")
+                raise ContentQualityError("確認モデルが確認を完了できませんでした。")
             text = "\n".join(p["text"] for p in parts if p.get("type") == "output_text")
             if not text.strip():
-                raise ContentQualityError("Astra確認の本文が空です。")
+                raise ContentQualityError("品質確認の本文が空です。")
             usage = data["usage"]
-            print(f'[astra] Completed in {time.monotonic() - started:.1f}s', flush=True)
+            print(f'[review {model}] Completed in {time.monotonic() - started:.1f}s', flush=True)
             return SimpleNamespace(stop_reason="end_turn", model=data.get("model", model),
                 id=data.get("id"), content=[SimpleNamespace(type="text", text=text)],
                 usage=SimpleNamespace(input_tokens=usage["input_tokens"], output_tokens=usage["output_tokens"]))
@@ -110,9 +110,9 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
             raise
         except requests.RequestException as exc:
             # Preserve only the exception type, never URLs/headers or raw errors.
-            raise ContentQualityError(f"Astra確認の通信に失敗しました（{type(exc).__name__}）。未確認の本文は完了にしません。") from None
+            raise ContentQualityError(f"品質確認の通信に失敗しました（{type(exc).__name__}）。未確認の本文は完了にしません。") from None
         except (ValueError, KeyError, TypeError):
-            raise ContentQualityError("Astra確認の応答形式が不正です。") from None
+            raise ContentQualityError("品質確認の応答形式が不正です。") from None
         finally:
             if reservation is not None and not accounted:
                 settle(reservation)
