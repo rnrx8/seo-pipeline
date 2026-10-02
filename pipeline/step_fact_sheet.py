@@ -50,16 +50,14 @@ SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 Tier 2のソース1件のみで確認できた情報は [hypothesis] とすること。
 同じ一次情報の転載・引用元が同じ記事は、何サイトあっても1ソースとして扱うこと。
 
-【公式ソース必須の情報】
-以下は一般サイトが複数一致しても [confirmed] にせず、公式・行政・原典で確認できた場合のみ [confirmed] とする：
-- 料金、プラン、機能、キャンペーン、企業の提供条件
-- 法律、制度、税金、補助金、申請期限
-- 求人数、募集状況、営業時間、所在地
-- 医療・健康・安全・金融に関する判断へ影響する情報
+【商業情報の代替根拠】
+料金・無料範囲・機能・提供条件は共通基準に従い、公式探索後の独立した第三者本文2件以上でも確認可。
+各根拠の同一条件・適用時点・独立性・公式探索結果を記録する。
+法律・制度・税・医療・金融・安全性の判断は公式・行政・原典・適切な専門資料を要求する。
 
 【鮮度表示】
 - 更新性の高い情報は本文候補にも「YYYY年MM月時点」を含めること
-- 公開日・更新日が不明、または古く現状を確認できない場合は [hypothesis] とすること
+- 適用時点を確認できる過去情報はその時点に限定して採用可。適用時点不明や現在の結論に使えない情報を現在の事実にしない
 """
 
 USER_TEMPLATE = """\
@@ -211,9 +209,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     """Generate a fact sheet with real-time web search verification via Claude."""
     print("[fact_sheet] Generating fact sheet with web search...")
 
-    serp = get_artifact(job_id, "serp")
-    intent = get_artifact(job_id, "search_intent")
-
     # 一次情報を取得（preset_id優先、なければcategoryで照合）
     primary_sources_prompt = ""
     sources = []
@@ -230,10 +225,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         if sources:
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
     primary_sources_prompt = _build_primary_sources_prompt(sources)
-    fresh = FreshSources(job, load_settings(job, sources))
-    prior_facts = ''
+    fresh = FreshSources(job, load_settings(job, sources), max_urls=120)
     if research_gaps:
-        prior_facts = get_artifact(job_id, 'fact_sheet')['content_text']
         for page in json.loads(get_artifact(job_id, 'fresh_sources')['content_text']):
             if page.get('status') == 'success': fresh.pages[page['url']] = page
     fresh.prefetch()
@@ -241,59 +234,18 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
 
     client = anthropic.Anthropic(api_key=api_key)
     checked_on = current_check_date()
-    prompt = freshness_context(checked_on) + USER_TEMPLATE.format(
-        keyword=keyword, serp_text=serp["content_text"], intent_text=intent["content_text"],
-    ) + primary_sources_prompt
     from .research_requirements import load_plan
-    prompt += '\n## 調査計画：全ての必須質問に回答できる証拠を収集する\n' + json.dumps(load_plan(job_id), ensure_ascii=False)
-    prompt += '\n未調査・取得失敗・関連ページを調べたが見つからない・公式に非公開と明記、を区別する。トップページだけで済ませず各質問に適した公式規約・FAQ・料金・プライバシー資料を取得する。仮説を事実にせず、各社に同じ比較項目を揃える。'
-    if research_gaps:
-        prompt += '\n## 同じ実行の調査済み情報（根拠が正しい他の回答は保持し、完全な更新版を返す）\n' + prior_facts
-        prompt += ('\n## 前回の構成で不足した根拠・比較条件\n' + research_gaps
-                   + '\n不足したサービスと比較項目を優先し、公式の料金・機能・FAQ・規約へのリンクを探索して直接取得する。'
-                   '取得できないURLを推測で埋めず、別の公式ページを探す。必要情報を注釈で済ませない。'
-                   '数値は対象・契約期間・プラン・必要機能・単位・総額を区別する。'
-                   '1主張ごとに根拠を分離し、無関係な話題へ調査量を使わない。')
+    from .research_collection import collect
+    # Collection owns the bounded question list and targeted retry, not a full-sheet rewrite.
+    collection_prompt = freshness_context(checked_on) + 'キーワード: ' + keyword + primary_sources_prompt
     try:
-        resp, fact_text, search_queries, observed = run_with_fetch(
-            client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT, prompt=prompt, search_tool=WEB_SEARCH_TOOL, fresh=fresh,
-        )
+        resp, fact_text, search_queries, observed = collect(job_id, client, plan=load_plan(job_id),fresh=fresh,
+            system=SYSTEM_PROMPT,prompt=collection_prompt,model=MODEL,search_tool=WEB_SEARCH_TOOL,gaps=research_gaps)
     finally:
         fresh.save(job_id)
     searched_urls = _search_result_urls(observed)
     total_input, total_output = resp.usage.input_tokens, resp.usage.output_tokens
     fresh.fetch_confirmed_citations(fact_text)
-    checked_draft, needs_repair = _downgrade_incomplete_confirmations(
-        fact_text, searched_urls=searched_urls, checked_on=checked_on, fresh=fresh,
-    )
-    if needs_repair:
-        # One bounded repair pass gives the writer actual bodies, not merely a
-        # downgraded draft which could leave the central service claim unusable.
-        try:
-            repair_resp, fact_text, repair_queries, repair_observed = run_with_fetch(
-                client, create=create_with_retry, model=MODEL, max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT + "\nあなたはファクトシートの出典照合担当です。",
-                prompt=freshness_context(checked_on) +
-                    "以下の下書きを今回取得した本文と照合し、修正したファクトシート全体だけを返してください。"
-                    "新しい話題・主張を増やさない。設定と矛盾する古い情報は、今回の公式本文の適用条件を確認して更新する。"
-                    "根拠URLは実際に取得したページに合わせる。引用はそのページ本文から短い連続した原文を正確に抜き出す。"
-                    "各事実とURL・確認日・確認箇所・判定を一つの段落にまとめ、段落間を空行で区切る。"
-                    "自動判定で示された不一致を直す。表全体を省略記号で引用せず、プラン・期間ごとに事実を分け、取得本文の連続した原文を引用する。"
-                    "下書きの[hypothesis]は修正根拠を実際に確認できた場合だけ[confirmed]へ変更する。"
-                    "根拠がない事実は[hypothesis]へ移し、冒頭の説明・要約・表・注意点にも未確認の断定を残さない。"
-                    "検索要約と公式本文が矛盾する場合は、同じ対象・条件の公式本文を優先する。\n\n" + checked_draft,
-                search_tool={**WEB_SEARCH_TOOL, "max_uses": 3}, fresh=fresh,
-            )
-            total_input += repair_resp.usage.input_tokens
-            total_output += repair_resp.usage.output_tokens
-            search_queries.extend(repair_queries)
-            searched_urls.update(_search_result_urls(repair_observed))
-            fresh.fetch_confirmed_citations(fact_text)
-        finally:
-            fresh.save(job_id)
-    else:
-        fresh.save(job_id)
     fact_text, downgraded_count = _downgrade_incomplete_confirmations(
         fact_text, searched_urls=searched_urls, checked_on=checked_on, fresh=fresh,
     )

@@ -14,6 +14,7 @@ from pypdf import PdfReader
 
 from .browser_fetch import fetch_rendered_page
 from . import db
+from .evidence_policy import EVIDENCE_POLICY
 from .public_fetch import get_public_page
 
 MAX_URLS = 40
@@ -48,6 +49,8 @@ WRITING_POLICY = """
 「次のH3」「このH2」など制作上の説明を読者向け本文に混ぜず、具体的な章の主題で案内する。
 """
 
+WRITING_POLICY += EVIDENCE_POLICY
+DIRECT_POLICY += EVIDENCE_POLICY
 
 def normalize_url(url):
     try:
@@ -135,7 +138,8 @@ def preserve_table_grid(soup):
 
 
 class FreshSources:
-    def __init__(self, job, settings):
+    def __init__(self, job, settings, *, max_urls=MAX_URLS):
+        self.max_urls = max_urls
         self.high_accuracy = job.get("high_accuracy_mode") is True
         self.browser_attempts = 0
         self.browser_lock = threading.Lock()
@@ -156,7 +160,7 @@ class FreshSources:
             return self.pages[key]
         if not key:
             return {'url': str(url), 'status': 'failed', 'reason': '有効な公開URLではありません'}
-        if len(self.pages) >= MAX_URLS:
+        if len(self.pages) >= self.max_urls:
             return {'url': key, 'status': 'failed', 'reason': '今回の取得件数が上限に達しました'}
         result = self._retrieve(key)
         self.pages[key] = result
@@ -284,12 +288,12 @@ class FreshSources:
         return all(any(squash(q) in squash(p.get('text', '')) for p in pages) for q in quotes)
 
 
-def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh):
-    context = fresh.context()
+def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12):
+    context = fresh.context() if context_override is None else context_override
     messages = [{'role': 'user', 'content': prompt + context}]
     remaining_chars = max(0, 100000 - len(context))
     queries, observed, input_tokens, output_tokens = [], [], 0, 0
-    for _ in range(12):
+    for _ in range(max_rounds):
         resp = create(client, model=model, max_tokens=max_tokens, system=system + DIRECT_POLICY,
                       tools=[search_tool, FETCH_TOOL], messages=messages,
                       extra_headers={'anthropic-beta': 'web-search-2025-03-05'})

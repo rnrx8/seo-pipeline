@@ -106,14 +106,14 @@ class SourceFreshnessTests(unittest.TestCase):
              patch.object(FreshSources, "prefetch", lambda self: self.pages.update({OFFICIAL: {"url": OFFICIAL, "status": "success", "text": "現在の料金は月額2,000円"}})), \
              patch.object(sheet, "current_check_date", return_value=TODAY), \
              patch.object(sheet.anthropic, "Anthropic"), \
-             patch.object(sheet, "create_with_retry", return_value=response) as generate, \
+             patch("pipeline.research_collection.collect", return_value=(response, output, [], response.content)) as generate, \
              patch.object(sheet, "upsert_artifact", return_value={"id": "artifact"}) as save:
             sheet.run("job", "料金比較")
         sources.assert_called_once_with("owner", "preset")
         request = generate.call_args.kwargs
-        self.assertIn(TODAY, request["messages"][0]["content"])
+        self.assertIn(TODAY, request["prompt"])
         self.assertIn("登録されているだけで[confirmed]にしない", request["system"])
-        self.assertIn("【公式ソース必須の情報】", request["system"])
+        self.assertIn("【商業情報の代替根拠】", request["system"])
         self.assertIn("Tier 2のソース1件のみ", request["system"])
         stored = save.call_args.kwargs
         self.assertIn(fact(), stored["content_text"])

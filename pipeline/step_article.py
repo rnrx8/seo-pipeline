@@ -662,7 +662,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     cta_prompt = ""
     job = get_job(job_id)
     from .research_requirements import require_matrix
-    require_matrix(job_id)
+    matrix = require_matrix(job_id)
+    structure_prompts += '\n## 共通の調査採用・省略判断（省略情報を復活させない）\n' + json.dumps(matrix,ensure_ascii=False)
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
                                      contract, requirements_for(job, keyword), sources), stage="research")
