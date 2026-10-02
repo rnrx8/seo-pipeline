@@ -173,3 +173,50 @@ class EvidencePolicyTests(unittest.TestCase):
             saved=r.plan('j','おすすめ')
         self.assertTrue(saved['meta']['planning_review_passed'])
         self.assertEqual(json.loads(saved['content_text'])['policy_sha256'],r.plan_policy())
+
+
+class ExpertEvidenceTests(unittest.TestCase):
+    def fixture(self):
+        plan,pages,value=fixture('supporting')
+        plan['items'][0].update(question='検索意図に対応する一般的な注意点',source_requirement='expert_allowed')
+        pages=[{'url':'https://expert.example/faq','status':'success',
+                'text':'執筆：弁護士 山田太郎。個別の事情によって判断が異なります。'}]
+        value['items'][0].update(basis='expert',answer='個別の事情によって判断が異なる',official_checked_urls=[],
+            evidence=[{'url':pages[0]['url'],'quote':'個別の事情によって判断が異なります。',
+                       'source_kind':'secondary','independence_group':'author-yamada',
+                       'expert_name':'山田太郎','expert_qualification_quote':'執筆：弁護士 山田太郎。',
+                       'expert_scope_reason':'弁護士による一般的な説明。特定サービスの適法性を保証しない。'}])
+        return plan,pages,value
+
+    def test_general_expert_explanation_does_not_require_statute_or_two_media(self):
+        plan,pages,value=self.fixture()
+        self.assertFalse(validate_matrix(value,plan,pages))
+        self.assertIn('採用根拠：expert',accepted_facts(value,plan))
+
+    def test_same_explanation_cannot_satisfy_original_source_requirement(self):
+        plan,pages,value=self.fixture()
+        plan['items'][0].update(question='特定の判決の内容',source_requirement='primary_only')
+        self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_invented_or_missing_expert_credentials_fail(self):
+        for field,new in [('expert_name','別人'),('expert_qualification_quote','執筆：弁護士 別人。'),
+                          ('expert_qualification_quote',''),('expert_scope_reason','')]:
+            with self.subTest(field=field,new=new):
+                plan,pages,value=self.fixture();value['items'][0]['evidence'][0][field]=new
+                self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_media_consensus_cannot_replace_qualified_expert(self):
+        plan,pages,value=fixture();plan['items'][0]['source_requirement']='expert_allowed'
+        self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_expert_claim_still_needs_exact_support_and_current_applicability(self):
+        plan,pages,value=self.fixture();value['items'][0]['evidence'][0]['quote']='絶対に合法です。'
+        self.assertTrue(validate_matrix(value,plan,pages))
+        plan,pages,value=self.fixture();plan['items'][0]['requires_current']=True
+        self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_historical_expert_evidence_keeps_time_limit(self):
+        plan,pages,value=self.fixture();value['items'][0]['basis']='historical'
+        self.assertFalse(validate_matrix(value,plan,pages))
+        value['items'][0]['applicable_at']=''
+        self.assertTrue(validate_matrix(value,plan,pages))

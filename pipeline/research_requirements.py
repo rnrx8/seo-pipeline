@@ -25,7 +25,7 @@ SERPに出た全社を自動的に必須対象にせず、終了候補は営業�
 競合の憶測を必須事実とせず、読者の疑問を抽出する。重要な質問をoptionalにして逃げない。
 事実の回答は生成しない。1項目は単一対象(subject)の単一論点。複数社を1項目に束ねない。全体に関する論点のsubjectは「共通」。最大120項目。
 priority=essential/important/supportingとpriority_reasonを検索意図に基づき指定。requiredはpriority=essentialの場合のみtrue。
-source_requirement=standard/primary_only。法律・医療等の専門的判断はprimary_only。商業的な料金・機能はstandard。
+source_requirement=standard/expert_allowed/primary_only。商業的な料金・機能はstandard。検索意図に応じた周辺的な専門解説はexpert_allowed。具体的な法令・判決や個別適法性等の原典を必要とする判断はprimary_only。注意事項自体の必要性を先に判断し、利用者の行動に関する一般論をサービス自体の適法性調査へ広げない。
 requires_currentは「今日の価格」「現在の最安」等、現在性が質問・結論に不可欠な場合だけtrue。
 一般的なおすすめ記事の料金・会員数・機能比較は、確実な適用時点を明記すれば掲載できるため原則false。質問に自分で「現在」と足して必須化しない。古い情報を現在の優劣へ使わない条件は後段でも維持する。
 法律・安全性の現在の判断は過去の規則で回答できないためtrue（歴史的な解説の場合を除く）。
@@ -46,8 +46,9 @@ JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答"
 
 PLAN_SYSTEM += EVIDENCE_POLICY
 MATRIX_SYSTEM += EVIDENCE_POLICY + '''
-各項目にbasis(primary/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。
-primaryは直接の公式/原典/適切な専門根拠。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
+各項目にbasis(primary/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。
+primaryは直接の公式/原典。expertはexpert_allowedの質問への有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
+expert採用時は、使用する各専門解説のevidenceにexpert_name、expert_qualification_quote（同じ取得本文にある氏名・資格・執筆/監修の関与を示す連続した原文）、expert_scope_reason（専門分野と回答範囲が適合する理由）を記録する。それ以外は空文字。専門解説のsource_kindはsecondaryのまま。名前だけの登場や資格不明のメディア解説では不可。
 official_checked_urlsはsources内で実際に取得を試みた関連公式資料のURL。存在しない探索記録を作らない。未調査・取得失敗だけでomittedにしない。十分な関連資料の探索後に省略可否を判定する。公式の関連ページ・別の公式資料・第三者本文のどこまで探索したかexploration_reasonに記録し、不足が残ればexploration_complete=false。
 essentialは非公表でも自動合格にしない。important/supportingは省略理由と検索への回答・比較・結論が維持される条件をomission_reasonへ明記。
 全項目の省略を合わせても記事の重要論点を網羅できるかcoverage_sufficientとcoverage_reasonで判定。
@@ -68,17 +69,18 @@ MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum'
 
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['properties'].update({
     'subject': {'type':'string'}, 'priority': {'type':'string','enum':['essential','important','supporting']},
-    'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','primary_only']},
+    'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','expert_allowed','primary_only']},
     'requires_current': {'type':'boolean'}})
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current']
 mp = MATRIX_SCHEMA['format']['schema']['properties']['items']['items']
-mp['properties'].update({'basis':{'type':'string','enum':['primary','corroborated','historical','omitted','unresolved']},
+mp['properties'].update({'basis':{'type':'string','enum':['primary','expert','corroborated','historical','omitted','unresolved']},
     'official_checked_urls':{'type':'array','items':{'type':'string'}}, 'applicable_at':{'type':'string'},
     'supports_current_conclusion':{'type':'boolean'}, 'omission_reason':{'type':'string'},
     'exploration_complete':{'type':'boolean'}, 'exploration_reason':{'type':'string'}})
 mp['required'] = list(mp['properties'])
 ep = mp['properties']['evidence']['items']
 ep['properties'].update(source_kind={'type':'string','enum':['primary','secondary']},independence_group={'type':'string'})
+ep['properties'].update({k:{'type':'string'} for k in ('expert_name','expert_qualification_quote','expert_scope_reason')})
 ep['required'] = list(ep['properties'])
 MATRIX_SCHEMA['format']['schema']['properties'].update(coverage_sufficient={'type':'boolean'},coverage_reason={'type':'string'})
 MATRIX_SCHEMA['format']['schema']['required'] += ['coverage_sufficient','coverage_reason']
@@ -96,7 +98,7 @@ def validate_plan(value):
     for i in items:
         if i.get('priority') not in ('essential','important','supporting') or not i.get('subject','').strip() or not i.get('priority_reason','').strip():
             raise ContentQualityError('調査計画の対象・重要度・理由が不足しています。計画から再実行してください。')
-        if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','primary_only') or type(i.get('requires_current')) is not bool:
+        if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
             raise ContentQualityError('調査計画の重要度と採用条件が矛盾しています。')
     if not any(i['required'] for i in items):raise ContentQualityError('必須質問がありません。')
 
@@ -177,13 +179,20 @@ def validate_matrix(value, plan_value, pages):
             visited = {p['url'] for p in pages}
             explored = bool(attempted) and all(u in visited for u in attempted) and item.get('exploration_complete') is True and bool(item.get('exploration_reason','').strip())
             primary = any(r.get('source_kind') == 'primary' for r in refs)
+            expert = (planned['source_requirement'] == 'expert_allowed' and any(
+                r.get('source_kind') == 'secondary' and r.get('expert_name','').strip()
+                and r.get('expert_scope_reason','').strip() and r.get('expert_qualification_quote','').strip()
+                and normalize(r['expert_name']) in normalize(r['expert_qualification_quote'])
+                and normalize(r['expert_qualification_quote']) in bodies.get(r['url'],'')
+                for r in refs))
             groups = {r.get('independence_group') for r in refs if r.get('independence_group')}
             domains = {urlsplit(r['url']).hostname for r in refs}
             corroborated = explored and len(groups) >= 2 and len(domains) >= 2
             if basis == 'primary': accepted = accepted and primary
+            elif basis == 'expert': accepted = accepted and expert
             elif basis == 'corroborated': accepted = accepted and planned['source_requirement']=='standard' and corroborated
             elif basis == 'historical':
-                accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or (planned['source_requirement']=='standard' and corroborated))
+                accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or expert or (planned['source_requirement']=='standard' and corroborated))
             elif basis == 'omitted':
                 accepted = (planned['priority'] != 'essential' and item['status'] in ('searched_not_found','explicitly_undisclosed')
                     and explored and bool(item.get('omission_reason','').strip()))
@@ -253,8 +262,9 @@ def verify(job_id, keyword, api_key=None):
         gaps=validate_matrix(value,plan_value,pages)
         if not gaps and plan_value.get('policy_sha256'):
             for page in pages:
-                page['evidence_quotes']=list(dict.fromkeys(r['quote'] for i in value['items'] if i.get('verified') and i.get('basis')!='omitted'
-                    for r in i['evidence'] if r['url']==page['url']))
+                page['evidence_quotes']=list(dict.fromkeys(quote for i in value['items'] if i.get('verified') and i.get('basis')!='omitted'
+                    for r in i['evidence'] if r['url']==page['url']
+                    for quote in (r['quote'], r.get('expert_qualification_quote','')) if quote))
             upsert_artifact(job_id=job_id,step='fresh_sources',content_type='application/json',content_text=json.dumps(pages,ensure_ascii=False),
                 meta={**get_artifact(job_id,'fresh_sources').get('meta',{}),'checked_quote_context':True})
             sources=source_evidence(get_artifact(job_id,'fresh_sources'))

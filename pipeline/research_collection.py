@@ -44,7 +44,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         focused = (prompt + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
             + '\n全ファクトシートを書き直さない。担当質問ごとに回答と出典を残す。まず関連する公式資料の本文を取得する。'
               'リンク先に料金・FAQ・規約があれば必要な本文まで読む。未取得の質問は検索の要約で済ませない。'
-              '公式で確認できない場合は独立した第三者本文を照合する。探索した資料と不足を記録する。'
+              '公式で確認できない場合は独立した第三者本文を照合する。expert_allowedの補足説明は適切な専門家解説と資格・執筆/監修の関与を確認し、個別サービスの適法性や判決原文まで調査を拡大しない。探索した資料と不足を記録する。'
               '各事実は短い独立段落。数表全体を一つの引用にせず、事実ごとにURL・確認日・連続8〜240文字の正確な引用・判定タグを付ける。'
               '原文の引用内にさらに「」がある場合も原文を改変しない。省略記号を挿入しない。'
             + ('\n今回の不足指摘\n'+json.dumps([g for g in gap_rows if g['id'] in task_ids or g['id']=='overall'],ensure_ascii=False) if gaps else ''))
