@@ -80,8 +80,22 @@ def source_evidence(*artifacts: dict) -> str:
         text = page['text']
         clipped = len(text) > limit
         if clipped:
-            half = limit // 2
-            text = text[:half] + '\n[中略：取得本文の抜粋]\n' + text[-half:]
+            # Preserve source context around the checked claims before selecting
+            # generic head/tail excerpts. Never insert model text as a source.
+            positions = [i for i,c in enumerate(text) if not c.isspace()]
+            normalized = ''.join(text[i] for i in positions)
+            snippets=[]
+            used=0
+            for quote in page.get('evidence_quotes',[]):
+                needle=re.sub(r'\s+','',quote)
+                start=normalized.find(needle) if needle else -1
+                if start<0:continue
+                piece=text[max(0,positions[start]-120):min(len(text),positions[start+len(needle)-1]+121)]
+                if any(piece in prior for prior in snippets):continue
+                if used+len(piece)+24>limit:continue
+                snippets.append(piece);used+=len(piece)+24
+            half=max(0,(limit-used)//2)
+            text = '\n[中略：取得本文の抜粋]\n'.join(snippets + ([text[:half],text[-half:]] if half else []))
         result.append({'url': url, 'final_url': page.get('final_url', url),
                        'title': page.get('title', ''), 'text': text,
                        'truncated': bool(page.get('truncated')) or clipped})

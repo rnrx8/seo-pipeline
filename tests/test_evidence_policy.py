@@ -126,3 +126,12 @@ class EvidencePolicyTests(unittest.TestCase):
             result,usage=audit_matrix('j',None,plan,pages,'facts','test',100)
         self.assertTrue(validate_matrix(result,plan,pages))
         self.assertEqual(usage.input_tokens,2)
+
+    def test_checked_middle_quote_survives_shared_source_excerpt(self):
+        from pipeline.content_quality import source_evidence
+        quote='本人確認後に書類を即時破棄します。'
+        page={'url':'https://official.example','status':'success','text':'前'*100000+quote+'後'*100000,'evidence_quotes':[quote,'捏造された記述']}
+        result=json.loads(source_evidence({'content_text':json.dumps([page])}))[0]
+        self.assertIn(quote,result['text'])
+        self.assertNotIn('捏造された記述',result['text'])
+        self.assertTrue(result['truncated'])

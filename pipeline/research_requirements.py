@@ -217,6 +217,12 @@ def verify(job_id, keyword, api_key=None):
         value,usage=audit_matrix(job_id,None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget)
         gaps=validate_matrix(value,plan_value,pages)
         if not gaps and plan_value.get('policy_sha256'):
+            for page in pages:
+                page['evidence_quotes']=list(dict.fromkeys(r['quote'] for i in value['items'] if i.get('verified') and i.get('basis')!='omitted'
+                    for r in i['evidence'] if r['url']==page['url']))
+            upsert_artifact(job_id=job_id,step='fresh_sources',content_type='application/json',content_text=json.dumps(pages,ensure_ascii=False),
+                meta={**get_artifact(job_id,'fresh_sources').get('meta',{}),'checked_quote_context':True})
+            sources=source_evidence(get_artifact(job_id,'fresh_sources'))
             original=get_artifact(job_id,'fact_sheet')
             upsert_artifact(job_id=job_id,step='research_draft',content_type='text/markdown',content_text=facts,meta=original.get('meta',{}))
             facts=accepted_facts(value,plan_value)
