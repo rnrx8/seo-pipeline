@@ -107,7 +107,8 @@ def matrix_policy():
     from .research_verification import COVERAGE_SYSTEM, VERIFICATION_VERSION
     from .ai import tiered_review_enabled
     from .tiered_research import VERSION, POLICY
-    extra = [VERSION, POLICY] if tiered_review_enabled() else []
+    from .source_spans import SPAN_POLICY
+    extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
     return digest(json.dumps(['research-matrix-v2', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 

@@ -1,0 +1,113 @@
+{
+  "source_tree_equivalent_commit": "1888c3b",
+  "observations": [
+    {
+      "step": "tiered_screen_1",
+      "model": "gpt-6-luna",
+      "items": 23,
+      "completed": true
+    },
+    {
+      "step": "tiered_adjudication_1",
+      "model": "gpt-6.1-sol",
+      "items": 11,
+      "completed": true,
+      "quote_mismatches": 6,
+      "ids": [
+        "q01",
+        "q03",
+        "q09",
+        "q11",
+        "q12",
+        "q13",
+        "q15",
+        "q19",
+        "q98",
+        "q99",
+        "q100"
+      ]
+    },
+    {
+      "step": "tiered_screen_2",
+      "model": "gpt-6-luna",
+      "items": 18,
+      "completed": true
+    },
+    {
+      "step": "tiered_adjudication_2",
+      "model": "gpt-6.1-sol",
+      "items": 9,
+      "completed": true,
+      "quote_mismatches": 0,
+      "ids": [
+        "q24",
+        "q26",
+        "q27",
+        "q29",
+        "q30",
+        "q95",
+        "q101",
+        "q102",
+        "q103"
+      ]
+    },
+    {
+      "step": "tiered_screen_3",
+      "model": "gpt-6-luna",
+      "items": 18,
+      "completed": true
+    },
+    {
+      "step": "tiered_adjudication_3",
+      "model": "gpt-6.1-sol",
+      "items": 12,
+      "completed": true,
+      "quote_mismatches": 4,
+      "ids": [
+        "q36",
+        "q37",
+        "q38",
+        "q40",
+        "q41",
+        "q43",
+        "q44",
+        "q47",
+        "q96",
+        "q104",
+        "q105",
+        "q106"
+      ]
+    },
+    {
+      "step": "tiered_screen_4",
+      "model": "gpt-6-luna",
+      "items": 17,
+      "completed": true
+    },
+    {
+      "step": "tiered_adjudication_4",
+      "model": "gpt-6.1-sol",
+      "items": 11,
+      "completed": false,
+      "quote_mismatches": 4,
+      "ids": [
+        "q50",
+        "q52",
+        "q53",
+        "q54",
+        "q55",
+        "q57",
+        "q58",
+        "q97",
+        "q107",
+        "q108",
+        "q109"
+      ]
+    }
+  ],
+  "current_trial_cost_upper_usd": 0.7349888750000001,
+  "cumulative_recorded_cost_upper_usd": 0.912956375,
+  "quality_budget_usd": 1.25,
+  "article_completed": false,
+  "production_changed": false
+}

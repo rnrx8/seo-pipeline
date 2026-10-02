@@ -147,6 +147,12 @@ class TieredReviewTests(unittest.TestCase):
             else:
                 self.assertEqual([q['id'] for q in payload['plan']['items']],['unresolved'])
                 result={'items':[answer],'coverage_sufficient':True,'coverage_reason':'確認済み'}
+            result=copy.deepcopy(result)
+            for item in result.get('items',[]):
+                for ref in item['evidence']:
+                    page=next(p for p in payload['sources'] if p['url']==ref['url'])
+                    ref['source_ref']=next(e['source_ref'] for e in page['excerpts'] if ref['quote'] in e['text'])
+                    ref.pop('quote');ref['expert_source_ref']='';ref.pop('expert_qualification_quote',None)
             return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result))],usage=NS(input_tokens=10,output_tokens=10))
         with patch.object(tiered,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(saved.get(s))), \
              patch.object(tiered,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:copy.deepcopy(kw)})), \

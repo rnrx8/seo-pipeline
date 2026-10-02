@@ -98,6 +98,7 @@ def source_evidence(*artifacts: dict, max_chars: int = 180000) -> str:
             text = '\n[中略：取得本文の抜粋]\n'.join(snippets + ([text[:half],text[-half:]] if half else []))
         result.append({'url': url, 'final_url': page.get('final_url', url),
                        'title': page.get('title', ''), 'text': text,
+                       **({'fetched_at':page['fetched_at']} if page.get('fetched_at') else {}),
                        'truncated': bool(page.get('truncated')) or clipped})
     return json.dumps(result, ensure_ascii=False, sort_keys=True)
 
