@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION
 import anthropic
 from .ai import create_with_retry, get_step_config
-from .db import get_artifact, get_job, upsert_artifact, get_service_by_id, get_company_settings
+from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact, get_service_by_id, get_company_settings
 from .content_quality import ContentQualityError, response_text, requirements_for, source_evidence, digest
 
 PLAN_SYSTEM = '''検索意図と検索上位の重要論点から、執筆前に答えを調べる質問一覧を設計する編集者です。
@@ -115,9 +115,8 @@ def load_plan(job_id):
     return value
 
 
-def plan(job_id, keyword, api_key=None):
+def _plan_context(job_id, keyword):
     job=get_job(job_id)
-    model,budget=get_step_config('search_intent')
     payload={'requirements':requirements_for({k:v for k,v in job.items() if k!='id'},keyword),
              'intent':get_artifact(job_id,'search_intent')['content_text'],
              'serp':get_artifact(job_id,'serp')['content_text']}
@@ -125,6 +124,12 @@ def plan(job_id, keyword, api_key=None):
     payload['featured_service'] = {k:service.get(k) for k in ('name','url','selling_points','must_include','must_exclude')} if service else None
     payload['registered_companies'] = [{k:c.get(k) for k in ('name','recommend_level','notes')} for c in
         get_company_settings(job['tenant_id'],job['category'])] if job.get('tenant_id') and job.get('category') else []
+    return payload
+
+
+def plan(job_id, keyword, api_key=None):
+    model,budget=get_step_config('search_intent')
+    payload=_plan_context(job_id,keyword)
     from .research_plan_review import review
     for step in ('research_plan','research_matrix'):
         upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps({'valid':False,'status':'planning','items':[]}))
@@ -149,6 +154,35 @@ def plan(job_id, keyword, api_key=None):
         payload['previous_plan']=value
         payload['planning_issues']=verdict['issues']
     raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
+
+
+def revalidate_plan(job_id, keyword, api_key=None):
+    """Explicit policy-update resume: preserve questions only after fresh plan review."""
+    from .research_plan_review import review
+    original=get_artifact(job_id,'research_plan')
+    value=json.loads(original['content_text'])
+    validate_plan(value)
+    old_hash=digest(json.dumps(value,ensure_ascii=False,sort_keys=True))
+    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',
+                    content_text=json.dumps({'valid':False,'status':'plan_policy_review'}),meta={'valid':False})
+    verdict,usage=review(job_id,value,_plan_context(job_id,keyword),'policy',api_key)
+    if not verdict['valid']:
+        raise ContentQualityError('現在の方針で調査計画が未合格です。既存計画の確認結果を確認してください。')
+    upsert_artifact(job_id=job_id,step='research_plan_previous_policy',content_type='application/json',
+                    content_text=original['content_text'],meta=original.get('meta',{}))
+    value['policy_sha256']=plan_policy()
+    new_hash=digest(json.dumps(value,ensure_ascii=False,sort_keys=True))
+    # Collection notes are raw evidence, not an acceptance verdict. Only carry
+    # their lineage when the exact question set is unchanged; re-audit all facts.
+    from .research_collection import batches
+    for index,_ in enumerate(batches(value),1):
+        note=get_optional_artifact(job_id,f'research_collection_{index}')
+        if note and note.get('meta',{}).get('plan_sha256')==old_hash:
+            upsert_artifact(job_id=job_id,step=note['step'],content_type=note['content_type'],content_text=note['content_text'],
+                meta={**note['meta'],'plan_sha256':new_hash,'previous_plan_sha256':old_hash,'policy_revalidated':True})
+    return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
+        meta={**original.get('meta',{}),'planning_review_passed':True,'policy_revalidated':True,
+              'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
 
 
 def validate_matrix(value, plan_value, pages):

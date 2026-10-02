@@ -54,3 +54,40 @@ class ResearchResumeTests(unittest.TestCase):
             with self.subTest(change=change):
                 calls,_,_=self.run_case(change)
                 self.assertEqual(len(calls),4)
+
+class PlanPolicyResumeTests(unittest.TestCase):
+    def run_revalidation(self, valid):
+        from pipeline import research_requirements as req
+        plan,_,_=fixture();plan['policy_sha256']='old-policy'
+        original=json.dumps(plan)
+        old_hash=req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))
+        records={'research_plan':{'content_text':original,'meta':{}},
+                 'research_collection_1':{'step':'research_collection_1','content_type':'text/markdown','content_text':'Raw research stays unchanged',
+                    'meta':{'plan_sha256':old_hash}}}
+        def save(**kw):records[kw['step']]=kw;return kw
+        usage=SimpleNamespace(input_tokens=1,output_tokens=2)
+        with patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(records[s])), \
+             patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(records.get(s))), \
+             patch.object(req,'upsert_artifact',side_effect=save),patch.object(req,'_plan_context',return_value={}), \
+             patch('pipeline.research_plan_review.review',return_value=({'valid':valid,'issues':[]},usage)):
+            if valid:req.revalidate_plan('j','keyword')
+            else:
+                with self.assertRaises(ValueError):req.revalidate_plan('j','keyword')
+        return plan,records
+
+    def test_review_pass_preserves_questions_and_notes_but_invalidates_matrix(self):
+        from pipeline import research_requirements as req
+        plan,records=self.run_revalidation(True)
+        updated=json.loads(records['research_plan']['content_text'])
+        self.assertEqual(plan['items'],updated['items'])
+        self.assertEqual(updated['policy_sha256'],req.plan_policy())
+        note=records['research_collection_1']
+        self.assertEqual(note['content_text'],'Raw research stays unchanged')
+        self.assertEqual(note['meta']['plan_sha256'],req.digest(json.dumps(updated,ensure_ascii=False,sort_keys=True)))
+        self.assertFalse(json.loads(records['research_matrix']['content_text'])['valid'])
+
+    def test_failed_review_cannot_refresh_old_plan_policy(self):
+        _,records=self.run_revalidation(False)
+        self.assertEqual(json.loads(records['research_plan']['content_text'])['policy_sha256'],'old-policy')
+        self.assertNotIn('policy_revalidated',records['research_collection_1']['meta'])
+        self.assertFalse(json.loads(records['research_matrix']['content_text'])['valid'])
