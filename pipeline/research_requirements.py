@@ -165,9 +165,34 @@ def revalidate_plan(job_id, keyword, api_key=None):
     old_hash=digest(json.dumps(value,ensure_ascii=False,sort_keys=True))
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',
                     content_text=json.dumps({'valid':False,'status':'plan_policy_review'}),meta={'valid':False})
-    verdict,usage=review(job_id,value,_plan_context(job_id,keyword),'policy',api_key)
+    context=_plan_context(job_id,keyword)
+    verdict,usage=review(job_id,value,context,'policy',api_key)
+    inputs=usage.input_tokens;outputs=usage.output_tokens
     if not verdict['valid']:
-        raise ContentQualityError('現在の方針で調査計画が未合格です。既存計画の確認結果を確認してください。')
+        # A bounded targeted correction preserves IDs and unaffected questions.
+        model,budget=get_step_config('search_intent')
+        msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=4000,
+            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。質問の削除は禁止。補助条件を分離する場合は既存質問からその条件を外し、別の新IDの質問を追加する。',
+            output_config={'format':{'type':'json_schema','schema':{'type':'object','properties':{
+                k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
+                'required':['updates','additions'],'additionalProperties':False}}},
+            messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
+        changes=json.loads(response_text(msg))
+        original_items={i['id']:i for i in value['items']}
+        updates=changes['updates'];additions=changes['additions']
+        if (len({i['id'] for i in updates})!=len(updates)
+            or any(i['id'] not in original_items or i['subject']!=original_items[i['id']]['subject'] for i in updates)
+            or any(i['id'] in original_items for i in additions)):
+            raise ContentQualityError('計画の部分修正でID・対象が変更されています。')
+        by_id={i['id']:i for i in updates}
+        value={**value,'items':[by_id.get(i['id'],i) for i in value['items']]+additions}
+        validate_plan(value)
+        upsert_artifact(job_id=job_id,step='research_plan_policy_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
+        inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
+        verdict,usage=review(job_id,value,context,'policy_repaired',api_key)
+        inputs+=usage.input_tokens;outputs+=usage.output_tokens
+        if not verdict['valid']:
+            raise ContentQualityError('現在の方針で調査計画が未合格です。既存計画の確認結果を確認してください。')
     upsert_artifact(job_id=job_id,step='research_plan_previous_policy',content_type='application/json',
                     content_text=original['content_text'],meta=original.get('meta',{}))
     value['policy_sha256']=plan_policy()
@@ -177,12 +202,13 @@ def revalidate_plan(job_id, keyword, api_key=None):
     from .research_collection import batches
     for index,_ in enumerate(batches(value),1):
         note=get_optional_artifact(job_id,f'research_collection_{index}')
-        if note and note.get('meta',{}).get('plan_sha256')==old_hash:
+        if (note and note.get('meta',{}).get('plan_sha256')==old_hash
+            and json.loads(original['content_text'])['items']==value['items']):
             upsert_artifact(job_id=job_id,step=note['step'],content_type=note['content_type'],content_text=note['content_text'],
                 meta={**note['meta'],'plan_sha256':new_hash,'previous_plan_sha256':old_hash,'policy_revalidated':True})
     return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
         meta={**original.get('meta',{}),'planning_review_passed':True,'policy_revalidated':True,
-              'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
+              'input_tokens':inputs,'output_tokens':outputs})
 
 
 def validate_matrix(value, plan_value, pages):

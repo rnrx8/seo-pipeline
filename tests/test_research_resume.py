@@ -69,6 +69,7 @@ class PlanPolicyResumeTests(unittest.TestCase):
         with patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(records[s])), \
              patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(records.get(s))), \
              patch.object(req,'upsert_artifact',side_effect=save),patch.object(req,'_plan_context',return_value={}), \
+             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[],'additions':[]})), \
              patch('pipeline.research_plan_review.review',return_value=({'valid':valid,'issues':[]},usage)):
             if valid:req.revalidate_plan('j','keyword')
             else:
@@ -91,3 +92,24 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertEqual(json.loads(records['research_plan']['content_text'])['policy_sha256'],'old-policy')
         self.assertNotIn('policy_revalidated',records['research_collection_1']['meta'])
         self.assertFalse(json.loads(records['research_matrix']['content_text'])['valid'])
+
+    def test_targeted_plan_repair_preserves_ids_and_does_not_relabel_old_collection(self):
+        from pipeline import research_requirements as req
+        plan,_,_=fixture();plan['policy_sha256']='old'
+        old_hash=req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))
+        note={'step':'research_collection_1','content_type':'text/markdown','content_text':'original', 'meta':{'plan_sha256':old_hash}}
+        saved={};update={**plan['items'][0],'question':'通常料金'}
+        addition={**update,'id':'q2','question':'期間限定トライアル','priority':'important','required':False}
+        verdicts=[({'valid':False,'issues':[{'id':'q1','reason':'補助条件を分離'}]},SimpleNamespace(input_tokens=1,output_tokens=1)),
+                  ({'valid':True,'issues':[]},SimpleNamespace(input_tokens=1,output_tokens=1))]
+        with patch.object(req,'get_artifact',return_value={'content_text':json.dumps(plan),'meta':{}}), \
+             patch.object(req,'get_optional_artifact',return_value=note),patch.object(req,'_plan_context',return_value={}), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:kw}) or kw), \
+             patch.object(req.anthropic,'Anthropic'),patch.object(req,'create_with_retry',return_value=message({'updates':[update],'additions':[addition]})) as generate, \
+             patch('pipeline.research_plan_review.review',side_effect=verdicts) as review:
+            req.revalidate_plan('j','keyword')
+        value=json.loads(saved['research_plan']['content_text'])
+        self.assertEqual([i['id'] for i in value['items']],['q1','q2'])
+        self.assertTrue(value['items'][0]['required']);self.assertFalse(value['items'][1]['required'])
+        self.assertNotIn('research_collection_1',saved)
+        self.assertEqual(generate.call_count,1);self.assertEqual(review.call_count,2)

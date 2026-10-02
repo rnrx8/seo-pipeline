@@ -25,7 +25,7 @@ def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent
     records=[]
     for index, task in enumerate(batches(plan_value),1):
         saved=get_optional_artifact(job_id,f'research_collection_{index}')
-        if saved:records.append((task,saved))
+        if saved:records.append(({'subject':saved.get('meta',{}).get('subject',task['subject'])},saved))
     grouped={}
     for i in plan_value['items']:grouped.setdefault(i['subject'],[]).append(i)
     items=[];inputs=outputs=0
