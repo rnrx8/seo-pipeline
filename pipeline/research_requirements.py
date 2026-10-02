@@ -214,7 +214,8 @@ def verify(job_id, keyword, api_key=None):
         model,budget=get_step_config('content_audit')
         from .research_verification import audit_matrix
         pages=json.loads(get_artifact(job_id,'fresh_sources')['content_text'])
-        value,usage=audit_matrix(job_id,None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget)
+        context = {k:get_artifact(job_id,k)['content_text'] for k in ('serp','search_intent')} if plan_value.get('policy_sha256') else {}
+        value,usage=audit_matrix(job_id,None if model=='gpt-6-astra' else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget,intent_context=context)
         gaps=validate_matrix(value,plan_value,pages)
         if not gaps and plan_value.get('policy_sha256'):
             for page in pages:
