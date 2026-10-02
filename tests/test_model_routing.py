@@ -113,6 +113,16 @@ class ModelRoutingTests(unittest.TestCase):
             create_review_response(**self.request())
         post.assert_not_called()
 
+    @patch.dict(os.environ, {'OPENAI_API_KEY':'test-only'})
+    def test_streamed_credit_exhaustion_is_explicit_and_not_retried(self):
+        response=self.http_response(200, self.response())
+        response.iter_lines.return_value=[b'event: error', b'data: {"type":"error","error":{"type":"insufficient_quota","code":"credit_balance_exhausted","message":"sensitive message"}}', b'']
+        with patch('pipeline.openai_review.requests.post',return_value=response) as post, self.assertRaises(ContentQualityError) as caught:
+            create_review_response(**self.request())
+        self.assertIn('利用残高',str(caught.exception))
+        self.assertNotIn('sensitive',str(caught.exception))
+        self.assertEqual(post.call_count,1)
+
     def test_opus_thinking_blocks_and_budget(self):
         response=NS(content=[NS(type='thinking'),NS(type='text',text='本文')])
         client=Mock();client.messages.stream.return_value.__enter__=Mock(return_value=NS(get_final_message=lambda:response))

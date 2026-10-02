@@ -23,6 +23,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
     try:
+        from .research_requirements import require_matrix
+        require_matrix(job_id)
+    except Exception as exc:
+        violations.append({'key':'research_not_ready','reason':str(exc)[:200]})
+    try:
         facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], article,
                            high_accuracy=bool(job.get('high_accuracy_mode')),
                            evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)

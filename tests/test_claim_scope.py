@@ -57,7 +57,7 @@ class ClaimScopeTests(unittest.TestCase):
         report={'valid':True,'policy_version':POLICY_VERSION,'checks':[{'key':k,'reason':'確認','status':'pass'} for k in CHECKS],
                 'snapshot':snapshot(text,confirmed_facts(FACTS),outline,{'required_sections':[]},requirements_for({},'比較'),source_evidence(source))}
         artifacts['content_audit']={'content_text':json.dumps(report)}
-        with patch.object(step_final_validate,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_final_validate,'get_job',return_value={}),patch.object(step_final_validate,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+        with patch('pipeline.research_requirements.require_matrix',return_value={}), patch.object(step_final_validate,'get_artifact',side_effect=lambda _,s:artifacts[s]),patch.object(step_final_validate,'get_job',return_value={}),patch.object(step_final_validate,'upsert_artifact',side_effect=lambda **kw:kw) as save:
             with self.assertRaises(ContentQualityError):step_final_validate.run('j','比較')
         saved=json.loads(save.call_args.kwargs['content_text'])
         self.assertIn('missing_audience_condition',[i['key'] for i in saved['violations']])

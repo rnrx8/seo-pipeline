@@ -31,7 +31,7 @@ class QualityGateTests(unittest.TestCase):
         updated=carry_sections(before,after,outline,binding,allow_h4=True)
         self.assertTrue(valid_binding(after,outline,updated))
         self.assertEqual([e['id'] for e in updated['entries'] if not e['id'].startswith('layout-')],[e['id'] for e in binding['entries']])
-        for invalid in [after.replace('#### 条件\n',''), before.replace('## 比較\n','## 比較\n#### 不正\n')]:
+        for invalid in [before.replace('#### 条件\n',''), before.replace('## 比較\n','## 比較\n#### 不正\n')]:
             with self.assertRaises(ValueError):carry_sections(before,invalid,outline,binding,allow_h4=True)
 
     def test_missing_required_question_and_fabricated_quote_fail(self):
@@ -66,3 +66,42 @@ class QualityGateTests(unittest.TestCase):
             with self.assertRaises(q.ContentQualityError):
                 q.audit(None,stage='article',text='# 記事',facts='',outline='',contract={},requirements={},checkpoint=lambda role,p:saved.append(role))
         self.assertEqual(saved,['evidence'])
+
+    def test_targeted_research_is_bounded_and_cannot_drop_questions(self):
+        from pipeline import research_requirements as research
+        from types import SimpleNamespace
+        plan={'items':[{'id':'q1','question':'必要な返金条件','required':True}]}
+        pages={'content_text':json.dumps([{'url':'https://official.test','status':'success','text':'料金のみ'}])}
+        artifacts={'fresh_sources':pages,'fact_sheet':{'content_text':'料金のみ'}}
+        msg=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps({'items':[
+            {'id':'q1','status':'unresearched','answer':'','evidence':[],'reason':'規約未取得'}]}))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
+        with patch.object(research,'load_plan',return_value=plan),patch.object(research,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(research,'create_with_retry',return_value=msg),patch.object(research,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
+             patch('pipeline.step_fact_sheet.run') as fetch:
+            with self.assertRaises(q.ContentQualityError):research.verify('job','比較')
+        self.assertEqual(fetch.call_count,2)
+        self.assertIn('必要な返金条件',fetch.call_args.kwargs['research_gaps'])
+        self.assertFalse(save.call_args.kwargs['meta']['valid'])
+
+    def test_matrix_changes_in_sources_facts_and_plan_invalidate_readiness(self):
+        from pipeline import research_requirements as research
+        plan={'items':[{'id':'q1','question':'返金条件','required':True}]}
+        pages={'content_text':json.dumps([{'url':'https://official.test','status':'success','text':'返金不可'}])}
+        matrix={'valid':True,'policy_sha256':research.matrix_policy(),'items':[{'id':'q1','status':'confirmed','answer':'返金不可','evidence':[{'url':'https://official.test','quote':'返金不可'}]}],
+                'plan_sha256':q.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
+                'sources_sha256':q.digest(q.source_evidence(pages)),'facts_sha256':q.digest('確認済み')}
+        artifacts={'research_matrix':{'content_text':json.dumps(matrix)},'fresh_sources':pages,'fact_sheet':{'content_text':'確認済み'}}
+        with patch.object(research,'load_plan',return_value=plan),patch.object(research,'get_artifact',side_effect=lambda _,s:artifacts[s]):
+            self.assertTrue(research.require_matrix('job')['valid'])
+            with patch.object(research,'MATRIX_SYSTEM','変更後の判定方針'):
+                with self.assertRaises(q.ContentQualityError):research.require_matrix('job')
+            artifacts['fact_sheet']['content_text']='変更済み'
+            with self.assertRaises(q.ContentQualityError):research.require_matrix('job')
+            artifacts['fact_sheet']['content_text']='確認済み';plan['items'][0]['question']='新たな質問'
+            with self.assertRaises(q.ContentQualityError):research.require_matrix('job')
+
+    def test_h3_short_intro_with_complete_h4_is_not_an_empty_section(self):
+        from pipeline.article_quality import validate_delivery
+        outline='### H2：比較\n#### H3：料金'
+        text='## 比較\n比較します。\n### 料金\n支払額を比較します。\n#### 支払額\n'+'具体的な料金条件。'*10
+        self.assertNotIn('empty_section',[i['key'] for i in validate_delivery(text,outline)])

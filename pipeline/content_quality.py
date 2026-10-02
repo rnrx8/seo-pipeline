@@ -360,18 +360,6 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         check = next(c for c in report['checks'] if c['key'] == 'unsupported_guarantees')
         check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
         report['valid'] = False
-    if stage == 'article':
-        focused = editorial_audit(client, text, model, requirements)
-        report['editorial_audit'] = focused
-        guarantees = explicit_risk_guarantees(text)
-        if guarantees:
-            check = next(c for c in focused['checks'] if c['key'] == 'unsupported_guarantees')
-            check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
-        for result in focused['checks']:
-            if result['status'] == 'fail':
-                check = next(c for c in report['checks'] if c['key'] == result['key'])
-                check.update(status='fail', reason=check['reason'] + '\n本文単独検査: ' + result['reason'], affected_blocks=check.get('affected_blocks', []) + result.get('affected_blocks', []))
-                report['valid'] = False
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
                   snapshot=snapshot(text, facts, outline, contract, requirements, sources),

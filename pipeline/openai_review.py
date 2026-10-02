@@ -31,8 +31,19 @@ def _completed_response(response, started):
                 return event['response']
             if event.get('type') in ('error', 'response.failed', 'response.incomplete'):
                 details = (event.get('response') or {}).get('incomplete_details') or {}
-                reason = {'max_output_tokens':'出力上限', 'content_filter':'内容フィルター'}.get(details.get('reason'), '原因未特定')
-                raise ContentQualityError(f'Astra確認の応答が未完了です（{reason}）。')
+                reason = {'max_output_tokens':'出力上限', 'content_filter':'内容フィルター'}.get(details.get('reason'))
+                error = (event.get('response') or {}).get('error') or event.get('error') or event
+                code = error.get('code') if isinstance(error, dict) else None
+                kind = error.get('type') if isinstance(error, dict) else None
+                if code == 'credit_balance_exhausted':
+                    raise ContentQualityError('OpenAI APIの利用残高がありません。残高追加後に確認工程から再開してください。')
+                if code == 'insufficient_quota' or kind == 'insufficient_quota':
+                    raise ContentQualityError('OpenAI APIの利用枠が不足しています。課金残高・利用上限を確認してください。')
+                safe_codes = {'server_error', 'rate_limit_exceeded', 'insufficient_quota', 'invalid_api_key',
+                              'context_length_exceeded', 'invalid_prompt', 'invalid_request_error',
+                              'model_not_found', 'invalid_json_schema', 'unsupported_parameter'}
+                if reason is None: reason = code if code in safe_codes else '原因未特定'
+                raise ContentQualityError(f'Astra確認の応答が未完了です（{event["type"]}: {reason}）。')
     raise ContentQualityError('Astra確認の通信が完了通知前に終了しました。')
 
 
@@ -58,10 +69,12 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
                 stream=True, timeout=(15, 600))
             if response.status_code == 429:
                 try:
-                    code = response.json().get("error", {}).get("code")
+                    error = response.json().get("error", {})
+                    code = error.get("code")
+                    if error.get("type") == "insufficient_quota": code = "insufficient_quota"
                 except ValueError:
                     code = None
-                if code == "insufficient_quota":
+                if code in ("insufficient_quota", "credit_balance_exhausted"):
                     raise ContentQualityError("OpenAI APIの利用枠が不足しています。")
                 if attempt < 2:
                     response.close()

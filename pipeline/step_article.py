@@ -665,7 +665,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     require_matrix(job_id)
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                     contract, requirements_for(job, keyword), sources))
+                                     contract, requirements_for(job, keyword), sources), stage="research")
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")

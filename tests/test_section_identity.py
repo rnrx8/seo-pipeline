@@ -42,6 +42,11 @@ class SectionIdentityTests(unittest.TestCase):
         self.assertIsNone(unchanged_heading_binding(TEXT,TEXT.replace('会員数','特徴'),binding))
 
 class SectionPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        patcher=patch('pipeline.research_requirements.require_matrix',return_value={})
+        patcher.start();self.addCleanup(patcher.stop)
+
     def test_renamed_section_survives_repair_and_final_gate(self):
         import json
         from types import SimpleNamespace

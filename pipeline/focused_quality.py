@@ -47,7 +47,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         # Source-heavy context is restricted to the roles that actually need it.
         payload = {'current_date':datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements':requirements}
         if role in ('evidence','coverage'):
-            payload.update(confirmed_facts=facts, source_documents=sources, outline=outline, content_contract=contract)
+            payload.update(confirmed_facts=facts, outline=outline, content_contract=contract)
+        if role == 'evidence': payload['source_documents'] = sources
         system = (AUDIT_SYSTEM if role in ('evidence','coverage') else EDITORIAL_SYSTEM)
         system += ('\n【今回の担当範囲：上記の全項目出力指定より優先】\n' + ROLE_INSTRUCTIONS[role]
                    + '\n今回返すchecksは次のキーだけ、各1件：' + ', '.join(keys)

@@ -15,6 +15,7 @@ PLAN_SYSTEM = '''検索意図と検索上位の重要論点から、執筆前に
 featured_serviceがある場合「自社サービス」という未特定の語を使わず実際の名前を書く。
 比較対象は検索意図・登録企業の制約・競合での扱いから選び、candidate_servicesに実名で固定する。
 SERPに出た全社を自動的に必須対象にせず、終了候補は営業状況の確認対象として区別する。
+登録企業のrecommend_level=0は紹介対象にしない。registered_onlyは登録リストに限定、registered_plusは登録企業を優先して他社も比較する。サービスのmust_include/must_excludeを調査範囲に反映するが、登録数値そのものは出典として扱わない。
 共通の比較質問の対象はcandidate_servicesだけと明記し、途中で「等」で対象を無制限に広げない。
 契約の選択に必要な比較条件を優先し、全社の所在地や全期間/全プラン/全機能の一覧を機械的に必須化しない。
 ユーザーが指定した対象・件数を減らしてはいけない。検索意図に必要な重要論点を省略してはいけない。
@@ -46,6 +47,10 @@ MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum'
     'properties':{'url':{'type':'string'},'quote':{'type':'string'}},'required':['url','quote'],'additionalProperties':False}}})
 
 
+def matrix_policy():
+    return digest(json.dumps(['research-matrix-v1', MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+
+
 def load_plan(job_id):
     return json.loads(get_artifact(job_id,'research_plan')['content_text'])
 
@@ -57,8 +62,8 @@ def plan(job_id, keyword, api_key=None):
              'intent':get_artifact(job_id,'search_intent')['content_text'],
              'serp':get_artifact(job_id,'serp')['content_text']}
     service = get_service_by_id(job['service_id']) if job.get('service_id') else None
-    payload['featured_service'] = {'name':service['name']} if service else None
-    payload['registered_companies'] = [{'name':c.get('name',c.get('company_name',''))} for c in
+    payload['featured_service'] = {k:service.get(k) for k in ('name','url','selling_points','must_include','must_exclude')} if service else None
+    payload['registered_companies'] = [{k:c.get(k) for k in ('name','recommend_level','notes')} for c in
         get_company_settings(job['tenant_id'],job['category'])] if job.get('tenant_id') and job.get('category') else []
     msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=budget,system=PLAN_SYSTEM,
         output_config=PLAN_SCHEMA,messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
@@ -74,7 +79,13 @@ def plan(job_id, keyword, api_key=None):
 
 
 def validate_matrix(value, plan_value, pages):
-    items=value.get('items',[]);required={i['id']:i for i in plan_value['items']}
+    if not isinstance(value,dict) or not isinstance(value.get('items'),list):
+        raise ContentQualityError('調査確認の形式が不正です。')
+    items=value['items'];required={i['id']:i for i in plan_value['items']}
+    if any(not isinstance(i,dict) or not isinstance(i.get('answer'),str) or not isinstance(i.get('evidence'),list) for i in items):
+        raise ContentQualityError('調査確認の回答・根拠の形式が不正です。')
+    if any(not isinstance(r,dict) or not isinstance(r.get('url'),str) or not isinstance(r.get('quote'),str) for i in items for r in i['evidence']):
+        raise ContentQualityError('調査確認の引用形式が不正です。')
     if len(items)!=len(required) or {i.get('id') for i in items}!=set(required): raise ContentQualityError('調査確認の質問が不足・重複しています。')
     normalize=lambda s: re.sub(r'\s+','',s)
     bodies={p['url']:normalize(p['text']) for p in pages if p.get('status','success')=='success' and p.get('text')}
@@ -98,6 +109,7 @@ def verify(job_id, keyword, api_key=None):
     """At most two targeted retrieval retries; never drop planned questions."""
     from . import step_fact_sheet
     plan_value=load_plan(job_id)
+    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
     for attempt in range(3):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
@@ -106,7 +118,7 @@ def verify(job_id, keyword, api_key=None):
             system=MATRIX_SYSTEM,output_config=MATRIX_SCHEMA,messages=[{'role':'user','content':json.dumps({
                 'plan':plan_value,'sources':json.loads(sources),'facts':facts},ensure_ascii=False)}])
         value=json.loads(response_text(msg));gaps=validate_matrix(value,plan_value,json.loads(sources))
-        value.update(valid=not gaps, gaps=gaps, attempt=attempt+1, plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
+        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1, plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
                      sources_sha256=digest(sources), facts_sha256=digest(facts))
         for step in (f'research_matrix_{attempt+1}','research_matrix'):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
@@ -120,7 +132,7 @@ def require_matrix(job_id):
     plan_value=load_plan(job_id)
     matrix=json.loads(get_artifact(job_id,'research_matrix')['content_text'])
     sources=source_evidence(get_artifact(job_id,'fresh_sources'))
-    if matrix.get('valid') is not True or matrix.get('plan_sha256')!=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)) or matrix.get('sources_sha256')!=digest(sources) or matrix.get('facts_sha256')!=digest(get_artifact(job_id,'fact_sheet')['content_text']):
+    if matrix.get('valid') is not True or matrix.get('policy_sha256')!=matrix_policy() or matrix.get('plan_sha256')!=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)) or matrix.get('sources_sha256')!=digest(sources) or matrix.get('facts_sha256')!=digest(get_artifact(job_id,'fact_sheet')['content_text']):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(sources)): raise ContentQualityError('調査の必須回答が不足しています。')
     return matrix
