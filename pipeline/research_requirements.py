@@ -174,14 +174,14 @@ def validate_matrix(value, plan_value, pages):
                 accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or (planned['source_requirement']=='standard' and corroborated))
             elif basis == 'omitted':
                 accepted = (planned['priority'] != 'essential' and item['status'] in ('searched_not_found','explicitly_undisclosed')
-                    and explored and bool(item.get('omission_reason','').strip()) and value.get('coverage_sufficient') is True)
+                    and explored and bool(item.get('omission_reason','').strip()))
             else: accepted = False
             if basis != 'omitted' and planned.get('requires_current') and item.get('supports_current_conclusion') is not True: accepted = False
             if basis != 'omitted' and item['status'] != 'confirmed': accepted = False
         item['verified']=accepted
         if (required[item['id']]['required'] or 'priority' in required[item['id']]) and not accepted:
             gaps.append({**required[item['id']], 'status':item['status'],'reason':item.get('reason','根拠不足')})
-    if any('priority' in i for i in required.values()) and (value.get('coverage_sufficient') is not True or not value.get('coverage_reason','').strip()):
+    if not gaps and any('priority' in i for i in required.values()) and (value.get('coverage_sufficient') is not True or not value.get('coverage_reason','').strip()):
         gaps.append({'id':'overall','question':'省略を含めた記事全体の重要論点の網羅','required':True,'reason':value.get('coverage_reason','網羅性未確認')})
     return gaps
 

@@ -135,3 +135,13 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertIn(quote,result['text'])
         self.assertNotIn('捏造された記述',result['text'])
         self.assertTrue(result['truncated'])
+
+    def test_one_missing_answer_does_not_retry_every_completed_subject(self):
+        plan,pages,value=fixture()
+        other=copy.deepcopy(plan['items'][0]);other.update(id='q2',priority='supporting',required=False)
+        plan['items'].append(other)
+        omission=copy.deepcopy(value['items'][0]);omission.update(id='q2',status='searched_not_found',basis='omitted',answer='',evidence=[],omission_reason='補助的な地域分布は回答に不可欠でない')
+        value['items'].append(omission)
+        value['items'][0].update(status='unresearched',basis='unresolved')
+        value['coverage_sufficient']=False;value['coverage_reason']='q1の必須料金が不足'
+        self.assertEqual([g['id'] for g in validate_matrix(value,plan,pages)],['q1'])
