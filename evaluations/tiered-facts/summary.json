@@ -1,0 +1,66 @@
+{
+  "scope": "Small fixed-evidence pilot, not normal article flow or source retrieval validation. Follow-up uses same service domain.",
+  "labels": {
+    "contradicted": 18,
+    "supported": 20,
+    "insufficient": 7,
+    "conflict": 1
+  },
+  "models": {
+    "gpt-6-luna": {
+      "cases": 46,
+      "exact": 44,
+      "false_accept": 0,
+      "false_reject": 1,
+      "mismatches": [
+        {
+          "id": "C06",
+          "expected": "supported",
+          "verdict": "insufficient",
+          "reason": "男性へのメッセージは無料・無制限だが、男性同士のやり取りとは記されていない。",
+          "source_indexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "id": "C08",
+          "expected": "contradicted",
+          "verdict": "insufficient",
+          "reason": "メッセージには年齢確認が必要とあるが、男性同士のやり取りへの適用は特定されていない。",
+          "source_indexes": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "gpt-6.1-sol": {
+      "cases": 46,
+      "exact": 46,
+      "false_accept": 0,
+      "false_reject": 0,
+      "mismatches": []
+    }
+  },
+  "routed_replay": {
+    "description": "Offline replay of actual independent model outputs; all non-supported Luna cases use Sol. No gold labels in dispatch. Not a production routing implementation.",
+    "escalated": 27,
+    "exact": 46
+  },
+  "accounting": {
+    "method": "Conservative ceiling: all input at cache-write rate; all output at Standard rate.",
+    "ceiling_usd": 0.16396175000000002,
+    "yen_allowance_per_usd": 200,
+    "call_statuses": {
+      "completed": 8,
+      "failed": 1
+    }
+  },
+  "limitations": [
+    "One failed Luna request lacked raw-response persistence; exact validation failure unknown. One controlled retry passed; both charged usages counted. Subsequent raw responses retained locally.",
+    "Curated passages and seeded errors, not representative error-frequency sampling.",
+    "Luna-supported false negatives cannot be rescued by uncertainty-only routing; larger blind tests and pass sampling still needed.",
+    "No full article generation, prose/coherence/rendering evaluation, or deployment."
+  ]
+}
