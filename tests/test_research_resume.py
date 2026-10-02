@@ -115,6 +115,33 @@ class PlanPolicyResumeTests(unittest.TestCase):
         self.assertEqual(generate.call_count,1);self.assertEqual(review.call_count,2)
 
 class SourceLineageTests(unittest.TestCase):
+    def test_cross_service_review_receives_evidence_but_not_other_verdicts(self):
+        plan,pages,result=fixture()
+        common={**plan['items'][0],'id':'q2','subject':'共通','question':'Aの料金を比較できるか'}
+        plan['items'].insert(0,common)
+        notes={
+            'research_collection_1':{'content_text':'common note','meta':{'subject':'共通','source_urls':[pages[0]['url']]}},
+            'research_collection_2':{'content_text':'A note','meta':{'subject':'A','source_urls':[p['url'] for p in pages]}}}
+        requests=[];saved={}
+        def create(*args,**kw):
+            payload=json.loads(kw['messages'][0]['content']);requests.append(payload)
+            if 'plan' in payload and payload['plan']['items'][0]['id']=='q1':return message(result)
+            if 'sources' in payload:
+                failed=copy.deepcopy(result);failed['items'][0].update(id='q2',basis='unresolved',status='unresearched')
+                return message(failed)
+            return message({'coverage_sufficient':False,'coverage_reason':'not confirmed'})
+        with patch.object(r,'get_optional_artifact',side_effect=lambda j,s:notes.get(s)), \
+             patch.object(r,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:kw})), \
+             patch.object(r,'create_with_retry',side_effect=create):
+            value,_=r.audit_matrix('j',None,plan,pages,'facts','model',100)
+        self.assertEqual(requests[0]['plan']['items'][0]['id'],'q1')
+        self.assertEqual(requests[1]['plan']['items'][0]['id'],'q2')
+        self.assertEqual({p['url'] for p in requests[1]['sources']},{p['url'] for p in pages})
+        self.assertNotIn('decisions',requests[1])
+        self.assertFalse(next(i for i in value['items'] if i['id']=='q2')['verified'])
+        self.assertEqual(saved['research_check_1']['meta']['subject'],'共通')
+        self.assertEqual(saved['research_check_2']['meta']['subject'],'A')
+
     def test_fetched_linked_price_is_kept_even_if_latest_note_omits_it(self):
         pages=[{'url':'https://official.example','text':'home','links':[{'url':'https://official.example/price'}, {'url':'https://official.example/unfetched'}, {'url':'https://other.example/ad'}]},
                {'url':'https://official.example/price','text':'price','links':[]},
