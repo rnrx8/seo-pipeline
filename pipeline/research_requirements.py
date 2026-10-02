@@ -13,7 +13,9 @@ PLAN_SYSTEM = '''検索意図と検索上位の重要論点から、執筆前に
 自社の強みを正しく伝える比較軸を含めるが、不都合な必須条件を外さない。
 対象サービスごとの料金・対象/期間/必要機能・無料範囲・更新/解約/返金・安全/個人情報など、
 その検索意図で重要な具体的質問を作る。別テーマにこれらを機械的に強制しない。
-各項目は検証できる単位とし、質問内に必要な対象/比較範囲を明記する。
+各項目は読者の判断に必要な論点単位とし、質問内に必要な対象/比較範囲を明記する。
+補助情報の候補を網羅的に列挙して全社へ複製しない。記事で使わない細目は調査義務に追加しない。
+地域別統計・通知の細部等は、検索意図に必要な理由がない限り独立質問にしない。
 featured_serviceがある場合「自社サービス」という未特定の語を使わず実際の名前を書く。
 比較対象は検索意図・登録企業の制約・競合での扱いから選び、candidate_servicesに実名で固定する。
 SERPに出た全社を自動的に必須対象にせず、終了候補は営業状況の確認対象として区別する。
@@ -109,7 +111,7 @@ def matrix_policy():
     from .tiered_research import VERSION, POLICY
     from .source_spans import SPAN_POLICY
     extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
-    return digest(json.dumps(['research-matrix-v2', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+    return digest(json.dumps(['research-matrix-v3-bounded', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def load_plan(job_id):
@@ -164,6 +166,14 @@ def apply_plan_repair(value, changes):
     """Apply questions and their enclosing scope atomically; never publish a partial patch."""
     original_items={i['id']:i for i in value['items']}
     updates=changes['updates'];additions=changes['additions']
+    removals=changes.get('removals',[])
+    if not isinstance(removals,list) or any(not isinstance(r,dict) for r in removals):
+        raise ContentQualityError('質問の整理指定が不正です。')
+    removed={r.get('id') for r in removals}
+    if (len(removed)!=len(removals) or not removed<=set(original_items)
+        or any(not isinstance(r.get('reason'),str) or not r['reason'].strip() for r in removals)
+        or removed & {i['id'] for i in updates}):
+        raise ContentQualityError('質問の整理対象・理由が不正です。')
     services=changes.get('candidate_services');reason=changes.get('scope_reason')
     if (not isinstance(services,list)
         or any(not isinstance(name,str) or not name.strip() for name in services)
@@ -173,9 +183,21 @@ def apply_plan_repair(value, changes):
         or any(i['id'] not in original_items or i['subject']!=original_items[i['id']]['subject'] for i in updates)
         or any(i['id'] in original_items for i in additions)):
         raise ContentQualityError('計画の部分修正でID・対象が変更されています。')
+    if any(original_items[i['id']].get('required') and not i.get('required') for i in updates):
+        raise ContentQualityError('必須質問を更新で補助情報へ降格できません。')
     by_id={i['id']:i for i in updates}
-    result={**value,'items':[by_id.get(i['id'],i) for i in value['items']]+additions,
+    result={**value,'items':[by_id.get(i['id'],i) for i in value['items'] if i['id'] not in removed]+additions,
             'candidate_services':services,'scope_reason':reason}
+    remaining={i['id']:i for i in result['items']}
+    for r in removals:
+        replacements=r.get('replaced_by',[])
+        if not isinstance(replacements,list) or any(i not in remaining for i in replacements):
+            raise ContentQualityError('統合先の質問がありません。')
+        original=original_items[r['id']]
+        if original.get('required') and not any(remaining[i].get('required')
+            and remaining[i]['subject']==original['subject'] for i in replacements):
+            raise ContentQualityError('必須質問を代替なしで削除できません。')
+    result['plan_retirements']=removals
     validate_plan(result)
     return result
 
@@ -198,15 +220,17 @@ def revalidate_plan(job_id, keyword, api_key=None):
         model,budget=get_step_config('content_repair' if tiered_review_enabled() else 'search_intent')
         msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
             model=model,max_tokens=budget if tiered_review_enabled() else 4000,
-            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。質問の削除は禁止。補助条件を分離する場合は既存質問からその条件を外し、別の新IDの質問を追加する。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
+            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
             output_config={'format':{'type':'json_schema','schema':{'type':'object','properties':{
                 **{k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
+                'removals':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'},'replaced_by':{'type':'array','items':{'type':'string'}}},'required':['id','reason','replaced_by'],'additionalProperties':False}},
                 'candidate_services':{'type':'array','items':{'type':'string'}}, 'scope_reason':{'type':'string'}},
-                'required':['updates','additions','candidate_services','scope_reason'],'additionalProperties':False}}},
+                'required':['updates','additions','removals','candidate_services','scope_reason'],'additionalProperties':False}}},
             messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
         raw=response_text(msg)
         upsert_artifact(job_id=job_id,step='research_plan_policy_repair_response',content_type='application/json',content_text=raw,
             meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+        context={**context,'previous_plan':value,'proposed_changes':json.loads(raw)}
         value=apply_plan_repair(value,json.loads(raw))
         upsert_artifact(job_id=job_id,step='research_plan_policy_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
         inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
@@ -340,7 +364,7 @@ def resume_research_gaps(artifact,plan):
     try:
         value=json.loads(artifact['content_text'])
         if (value.get('valid') is not False or type(value.get('attempt')) is not int
-            or not 1<=value['attempt']<=3 or not value.get('gaps')
+            or not 1<=value['attempt']<=2 or not value.get('gaps')
             or value.get('policy_sha256')!=matrix_policy()
             or value.get('plan_sha256')!=digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))):return None
         ids={q['id'] for q in plan['items']}|{'overall'}
@@ -349,9 +373,26 @@ def resume_research_gaps(artifact,plan):
     except (ValueError,TypeError,KeyError,AttributeError):return None
 
 
-def verify(job_id, keyword, api_key=None):
-    """At most two targeted retrieval retries; never drop planned questions."""
+def supplement_once(job_id, keyword, plan, gaps, api_key=None):
+    """One supplemental collection per job, resumable at completed subject receipts."""
     from . import step_fact_sheet
+    key=digest(json.dumps({'plan':plan,'gaps':gaps},ensure_ascii=False,sort_keys=True))
+    old=get_optional_artifact(job_id,'research_supplement')
+    if old:
+        state=json.loads(old['content_text'])
+        if state.get('request_sha256')!=key:
+            raise ContentQualityError('この記事の追加調査枠は使用済みです。別の不足で全体を再調査しません。')
+        if state.get('status')=='completed':return
+    def save(status):
+        upsert_artifact(job_id=job_id,step='research_supplement',content_type='application/json',
+            content_text=json.dumps({'request_sha256':key,'status':status}),meta={})
+    save('running')
+    step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(gaps,ensure_ascii=False))
+    save('completed')
+
+
+def verify(job_id, keyword, api_key=None):
+    """At most one targeted retrieval retry; never drop planned questions."""
     plan_value=load_plan(job_id)
     previous=get_optional_artifact(job_id,'research_matrix')
     pending=resume_research_gaps(previous,plan_value)
@@ -359,13 +400,13 @@ def verify(job_id, keyword, api_key=None):
     first_attempt=0
     if pending:
         first_attempt,pending_gaps=pending
-        if first_attempt>=3:raise ContentQualityError('追加調査の上限まで確認済みです。同じ不合格を自動再試行しません。')
+        if first_attempt>=2:raise ContentQualityError('追加調査の上限まで確認済みです。同じ不合格を自動再試行しません。')
         # Reuse failures only as retrieval instructions, never as a passing
         # verdict. Always run the complete current-source audit after retrieval.
         print('[research] Resume pending retrieval; do not repeat the completed audit',flush=True)
-        step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(pending_gaps,ensure_ascii=False))
+        supplement_once(job_id,keyword,plan_value,pending_gaps,api_key)
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
-    for attempt in range(first_attempt,3):
+    for attempt in range(first_attempt,2):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
         model,budget=get_step_config('content_audit')
@@ -393,7 +434,7 @@ def verify(job_id, keyword, api_key=None):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
                 meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
         if not gaps:return saved
-        if attempt<2: step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(gaps,ensure_ascii=False))
+        if attempt<1: supplement_once(job_id,keyword,plan_value,gaps,api_key)
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
 
 

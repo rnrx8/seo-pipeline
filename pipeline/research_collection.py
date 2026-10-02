@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 from .ai import create_with_retry
 from .db import get_optional_artifact, upsert_artifact
-from .fresh_sources import run_with_fetch, extract_urls, normalize_url
+from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL
 from .content_quality import digest, ContentQualityError
 
 
@@ -13,11 +13,26 @@ def batches(plan):
         grouped.setdefault(item['subject'], []).append(item)
     result = []
     for subject, items in grouped.items():
-        # Keep each pass focused even when a plan has many distinct subquestions.
-        for start in range(0, len(items), 8):
-            result.append({'subject':subject, 'items':items[start:start+8]})
+        # Read a subject's sources once rather than starting a new agent every 8 questions.
+        result.append({'subject':subject, 'items':items})
     if len(result)>24: raise ContentQualityError('調査対象が24バッチを超えました。対象範囲の確認が必要です。')
     return result
+
+
+def source_fingerprint(pages, urls):
+    # Same-day refetch timestamps are not new evidence; changed content is.
+    return digest(json.dumps({u:({k:pages[u].get(k) for k in ('url','status','text','links','title','reason')}
+        if u in pages else None) for u in urls},ensure_ascii=False,sort_keys=True))
+
+
+def collection_records(job_id, loader=None):
+    """New collections publish their active slots; old jobs retain all 24 slots."""
+    loader=loader or get_optional_artifact
+    manifest=loader(job_id,'research_collection_manifest')
+    steps=json.loads(manifest['content_text'])['steps'] if manifest else [f'research_collection_{n}' for n in range(1,25)]
+    if not isinstance(steps,list) or len(steps)>24 or len(set(steps))!=len(steps) or any(x not in {f'research_collection_{n}' for n in range(1,25)} for x in steps):
+        raise ContentQualityError('調査記録の一覧が不正です。')
+    return [r for step in steps if (r:=loader(job_id,step))]
 
 
 def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, gaps=''):
@@ -25,25 +40,38 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
     plan_hash = digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))
     gap_rows = json.loads(gaps) if gaps else []
     known_ids = {i['id'] for i in plan['items']}
-    # Post-outline audits report check keys, not question IDs. Never silently
-    # reuse every batch or crash when those existing callers request research.
-    gap_rows = [g if g.get('id') in known_ids else {**g, 'id':'overall'} for g in gap_rows]
+    if any(g.get('id') not in known_ids for g in gap_rows):
+        raise ContentQualityError('追加調査の質問IDが未特定です。全対象の再調査には広げません。')
     ids = {i['id'] for i in gap_rows}
-    prior_records=[get_optional_artifact(job_id,f'research_collection_{n}') for n in range(1,25)] if gaps else []
+    prior_records=collection_records(job_id) if gaps else []
     notes, queries, observed = [], [], []
     inputs = outputs = 0
     for index, task in enumerate(tasks, 1):
         step = f'research_collection_{index}'
         task_ids = {i['id'] for i in task['items']}
         prior_subject=[r for r in prior_records if r and r.get('meta',{}).get('subject')==task['subject']]
-        if gaps and 'overall' not in ids and not (task_ids & ids) and prior_subject:
+        if gaps and not (task_ids & ids):
             # These are raw notes, not a passed check. A plan edit need not
             # recollect questions the current full audit did not flag.
-            notes.extend(r['content_text'] for r in prior_subject); continue
-        if gaps and 'overall' not in ids:
+            preserved='\n\n'.join(dict.fromkeys(r['content_text'] for r in prior_subject))
+            upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=preserved,
+                meta={'subject':task['subject'],'raw_notes_preserved':True,
+                      'source_urls':sorted({u for r in prior_subject for u in r.get('meta',{}).get('source_urls',[])}),
+                      'search_queries':list(dict.fromkeys(q for r in prior_subject for q in r.get('meta',{}).get('search_queries',[])))})
+            notes.append(preserved);continue
+        if gaps:
             task={**task,'items':[i for i in task['items'] if i['id'] in ids]}
             if not task['items']:continue
             task_ids={i['id'] for i in task['items']}
+        request_key=digest(json.dumps({'version':'subject-once-v1','plan':plan_hash,'task':task,
+            'gaps':gap_rows,'system':system+DIRECT_POLICY,'prompt':prompt,'model':model,
+            'search_tool':search_tool,'fetch_tool':FETCH_TOOL,'max_rounds':3,'max_tokens':9000},ensure_ascii=False,sort_keys=True))
+        receipt=get_optional_artifact(job_id,'collection_receipt_'+request_key)
+        if receipt and receipt.get('meta',{}).get('result_sha256')==digest(receipt.get('content_text','')):
+            if receipt['meta'].get('sources_sha256')==source_fingerprint(fresh.pages,receipt['meta'].get('source_urls',[])):
+                upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',
+                    content_text=receipt['content_text'],meta=receipt['meta'])
+                notes.append(receipt['content_text']);continue
         print(f'[research] Collecting {index}/{len(tasks)}: {task["subject"]}', flush=True)
         # List known URLs, but do not drown this subject in other subjects' bodies.
         index_context = '\n取得済み資料索引（必要な本文はfetch_current_pageで読む）\n' + json.dumps([
@@ -58,8 +86,8 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         prior_urls = set(fresh.pages)
         try:
             resp, note, searches, blocks = run_with_fetch(client, create=create_with_retry, model=model,max_tokens=9000,
-                system=system, prompt=focused, search_tool={**search_tool,'max_uses':8},fresh=fresh,
-                context_override=index_context,max_rounds=8)
+                system=system, prompt=focused, search_tool={**search_tool,'max_uses':3},fresh=fresh,
+                context_override=index_context,max_rounds=3)
             fresh.fetch_confirmed_citations(note)
         finally:
             fresh.save(job_id)
@@ -75,6 +103,14 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
             meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'targeted_retry':bool(gaps),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
                   'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':search_history})
+        # A completed collection receipt is raw evidence only; final matrix review remains mandatory.
+        meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),
+              'source_urls':sorted(u for u in used_urls if u in fresh.pages),'search_queries':search_history,
+              'result_sha256':digest(note)}
+        meta['sources_sha256']=source_fingerprint(fresh.pages,meta['source_urls'])
+        upsert_artifact(job_id=job_id,step='collection_receipt_'+request_key,content_type='text/markdown',content_text=note,meta=meta)
         notes.append(note); queries.extend(searches); observed.extend(blocks)
         inputs += resp.usage.input_tokens; outputs += resp.usage.output_tokens
+    upsert_artifact(job_id=job_id,step='research_collection_manifest',content_type='application/json',
+        content_text=json.dumps({'steps':[f'research_collection_{n}' for n in range(1,len(tasks)+1)]}),meta={'plan_sha256':plan_hash})
     return SimpleNamespace(usage=SimpleNamespace(input_tokens=inputs,output_tokens=outputs)), '\n\n'.join(dict.fromkeys(notes)), queries, observed

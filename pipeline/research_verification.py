@@ -7,7 +7,7 @@ from .content_quality import response_text, digest
 from .evidence_policy import EVIDENCE_POLICY
 from .fresh_sources import extract_urls, normalize_url
 from urllib.parse import urlsplit
-from .research_collection import batches
+from .research_collection import collection_records
 
 
 VERIFICATION_VERSION = 'subject-verification-v7'
@@ -41,10 +41,7 @@ def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent
         msg=create_with_retry(client,model=model,max_tokens=budget,system=MATRIX_SYSTEM,output_config=MATRIX_SCHEMA,
             messages=[{'role':'user','content':json.dumps({'plan':plan_value,'sources':pages,'facts':facts},ensure_ascii=False)}])
         return json.loads(response_text(msg)),msg.usage
-    records=[]
-    for index, task in enumerate(batches(plan_value),1):
-        saved=get_optional_artifact(job_id,f'research_collection_{index}')
-        if saved:records.append(({'subject':saved.get('meta',{}).get('subject',task['subject'])},saved))
+    records=[({'subject':saved.get('meta',{}).get('subject','')},saved) for saved in collection_records(job_id,get_optional_artifact)]
     historical=[]
     for attempt in range(1,4):
         saved=get_optional_artifact(job_id,f'research_matrix_{attempt}')

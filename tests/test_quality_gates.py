@@ -79,7 +79,7 @@ class QualityGateTests(unittest.TestCase):
              patch('pipeline.research_verification.create_with_retry',return_value=msg),patch.object(research,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
              patch('pipeline.step_fact_sheet.run') as fetch:
             with self.assertRaises(q.ContentQualityError):research.verify('job','比較')
-        self.assertEqual(fetch.call_count,2)
+        self.assertEqual(fetch.call_count,1)
         self.assertIn('必要な返金条件',fetch.call_args.kwargs['research_gaps'])
         self.assertFalse(save.call_args.kwargs['meta']['valid'])
 

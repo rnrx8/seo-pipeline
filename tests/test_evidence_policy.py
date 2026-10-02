@@ -132,17 +132,18 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertIn('"id": "q2"',run.call_args.kwargs['prompt'])
         self.assertNotIn('"id": "q1"',run.call_args.kwargs['prompt'])
         self.assertIn('B notes',text)
-        self.assertEqual(save.call_args.kwargs['meta']['search_queries'],['old query','new query'])
+        self.assertEqual(next(c.kwargs['meta']['search_queries'] for c in save.call_args_list if c.kwargs['step']=='research_collection_1'),['old query','new query'])
 
-    def test_outline_audit_keys_trigger_research_instead_of_missing_id_error(self):
+    def test_unscoped_gap_cannot_trigger_all_subjects_research(self):
         plan,_,_=fixture();fresh=FreshSources({},[])
         response=SimpleNamespace(usage=SimpleNamespace(input_tokens=1,output_tokens=2))
         with patch('pipeline.research_collection.upsert_artifact'),patch.object(fresh,'save'), \
              patch('pipeline.research_collection.get_optional_artifact',return_value=None), \
              patch('pipeline.research_collection.run_with_fetch',return_value=(response,'new',[],[])) as run:
-            collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},
-                gaps=json.dumps([{'key':'evidence_support','reason':'料金の根拠が不足'}]))
-        self.assertIn('料金の根拠が不足',run.call_args.kwargs['prompt'])
+            with self.assertRaises(ValueError):
+                collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},
+                    gaps=json.dumps([{'key':'evidence_support','reason':'料金の根拠が不足'}]))
+        run.assert_not_called()
 
     def test_separate_source_checks_cannot_override_global_coverage_failure(self):
         from pipeline.research_verification import audit_matrix

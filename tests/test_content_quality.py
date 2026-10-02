@@ -133,12 +133,12 @@ class QualityTests(unittest.TestCase):
              patch.object(step_content_audit, 'create_with_retry', side_effect=responses) as repair, \
              patch.object(step_content_audit, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
             with self.assertRaises(quality.ContentQualityError):step_content_audit.run('j', '比較')
-        self.assertEqual(audit.call_count, 3)
-        self.assertEqual(repair.call_count, 2)
-        self.assertEqual(audit.call_args.kwargs['text'], '## 比較\n修正した説明。')
+        self.assertEqual(audit.call_count, 2)
+        self.assertEqual(repair.call_count, 1)
+        self.assertEqual(audit.call_args.kwargs['text'], '## 比較\n一度修正した説明。')
         self.assertFalse(json.loads([c.kwargs for c in save.call_args_list if c.kwargs['step'] == 'content_audit'][-1]['content_text'])['valid'])
 
-    def test_missing_research_reruns_retrieval_once_and_rejects_persistent_gap(self):
+    def test_outline_gap_repairs_once_without_recursive_research_and_still_fails(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
         artifacts = {'outline': {'content_text': '### H2：比較8選'}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
                      'content_contract': {'content_text': '{}'}}
@@ -151,9 +151,8 @@ class QualityTests(unittest.TestCase):
              patch.object(step_content_contract, 'run'), patch.object(step_outline, 'run'), \
              patch.object(step_structure_guard, 'run'):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j', '比較')
-        self.assertEqual(audit.call_count, 3)
-        self.assertEqual(research.call_count, 2)
-        self.assertIn('research_gaps', research.call_args.kwargs)
+        self.assertEqual(audit.call_count, 2)
+        research.assert_not_called()
 
 
     def test_outline_condition_error_can_recover_without_repeating_source_search(self):
@@ -196,7 +195,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_structure_guard,'run_before_research'), \
              patch.object(step_structure_guard,'validate_structure',return_value=[{'key':'named_service_comparison','reason':'不足'}]):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j','比較')
-        self.assertEqual(research.call_count,2)
+        research.assert_not_called()
         self.assertFalse(save.call_args.kwargs['meta']['valid'])
         checks=json.loads(save.call_args.kwargs['content_text'])['checks']
         self.assertEqual(next(c for c in checks if c['key']=='coverage')['status'],'fail')

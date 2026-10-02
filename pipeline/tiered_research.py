@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from .ai import create_with_retry
 from .db import get_optional_artifact,upsert_artifact
 from .content_quality import response_text,digest,source_evidence
-from .research_collection import batches
+from .research_collection import collection_records
 from .fresh_sources import extract_urls
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
 VERSION='tiered-research-v2-source-ids'
@@ -58,7 +58,7 @@ def validate_visible_matrix(value,plan,pages):
 def audit_matrix(job_id,plan,pages,facts,intent_context):
  from .research_requirements import MATRIX_SYSTEM,MATRIX_SCHEMA,validate_matrix
  from .research_verification import COVERAGE_SYSTEM,subject_sources
- records=[get_optional_artifact(job_id,f'research_collection_{i}') for i,_ in enumerate(batches(plan),1)]
+ records=collection_records(job_id,get_optional_artifact)
  history=[]
  for n in range(1,4):
   old=get_optional_artifact(job_id,f'research_matrix_{n}')

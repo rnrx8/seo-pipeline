@@ -1,0 +1,8 @@
+{
+  "allowed": false,
+  "reason": "追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。",
+  "quality_limit_usd": 1.25,
+  "conservative_request_reservation_usd": 24.165000000000003,
+  "external_api_calls": 0,
+  "note": "Worst-case reservation, not expected cost or a bill. Live test remains blocked by this preflight."
+}

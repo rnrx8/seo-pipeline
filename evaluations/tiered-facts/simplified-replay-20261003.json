@@ -1,0 +1,167 @@
+{
+  "status": "offline_control_checks_passed",
+  "external_api_calls": 0,
+  "new_article_generated": false,
+  "semantic_quality_revalidated": false,
+  "plan_questions": 109,
+  "old_collection_batches": 22,
+  "new_collection_batches": 12,
+  "old_per_collection_request_ceiling": 176,
+  "new_per_collection_request_ceiling": 36,
+  "captured_unresolved_items": 33,
+  "captured_gap_ids": [
+    "q01",
+    "q100",
+    "q101",
+    "q102",
+    "q103",
+    "q104",
+    "q105",
+    "q106",
+    "q27",
+    "q29",
+    "q30",
+    "q41",
+    "q43",
+    "q44",
+    "q55",
+    "q58",
+    "q66",
+    "q70",
+    "q74",
+    "q81",
+    "q83",
+    "q85",
+    "q86",
+    "q89",
+    "q90",
+    "q91",
+    "q92",
+    "q94",
+    "q95",
+    "q96",
+    "q97",
+    "q98",
+    "q99"
+  ],
+  "mechanical_acceptance_unchanged": true,
+  "fabricated_quote_rejected": true,
+  "supplement_subjects": 10,
+  "repeated_completed_collection_calls": 0,
+  "collection_requests": [
+    {
+      "subject": "既婚者クラブ",
+      "question_ids": [
+        "q01",
+        "q94",
+        "q98",
+        "q99",
+        "q100"
+      ],
+      "initial_payload_bytes": 30180,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "ヒールメイト",
+      "question_ids": [
+        "q27",
+        "q29",
+        "q30",
+        "q95",
+        "q101",
+        "q102",
+        "q103"
+      ],
+      "initial_payload_bytes": 32480,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "カドル",
+      "question_ids": [
+        "q41",
+        "q43",
+        "q44",
+        "q96",
+        "q104",
+        "q105",
+        "q106"
+      ],
+      "initial_payload_bytes": 31409,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "マリーゴー",
+      "question_ids": [
+        "q55",
+        "q58",
+        "q97"
+      ],
+      "initial_payload_bytes": 26486,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "アネモネ",
+      "question_ids": [
+        "q66",
+        "q70"
+      ],
+      "initial_payload_bytes": 25349,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "既婚マッチ",
+      "question_ids": [
+        "q74",
+        "q81"
+      ],
+      "initial_payload_bytes": 25352,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "共通",
+      "question_ids": [
+        "q83",
+        "q85",
+        "q90",
+        "q91"
+      ],
+      "initial_payload_bytes": 28015,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "Pairs",
+      "question_ids": [
+        "q86"
+      ],
+      "initial_payload_bytes": 24207,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "タップル",
+      "question_ids": [
+        "q89"
+      ],
+      "initial_payload_bytes": 23688,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    },
+    {
+      "subject": "Layer",
+      "question_ids": [
+        "q92"
+      ],
+      "initial_payload_bytes": 23901,
+      "max_rounds": 3,
+      "search_max_uses": 3
+    }
+  ],
+  "cost_status": "No live token usage. Initial payload bytes and theoretical request ceilings are not a yen estimate."
+}

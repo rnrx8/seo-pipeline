@@ -1,9 +1,11 @@
 import json
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit, urlunsplit
 
 import anthropic
-from .db import get_artifact, get_job, get_primary_sources, get_primary_sources_by_preset, upsert_artifact
+from .db import get_artifact, get_optional_artifact, get_job, get_primary_sources, get_primary_sources_by_preset, upsert_artifact
 from .ai import create_with_retry, get_step_config
 from .source_freshness import SOURCE_FRESHNESS_POLICY, SOURCE_POLICY_VERSION, current_check_date, freshness_context
 
@@ -20,6 +22,18 @@ def restore_research_sources(fresh, pages):
         fresh.pages[page['url']] = page
     fresh.max_urls = min(200, max(120, len(fresh.pages) + 40))
     fresh.browser_attempts = sum(bool(p.get('browser_attempted')) for p in pages)
+
+def resumable_pages(artifact, fresh, checked_on):
+    """Same job, same date, still-allowed sources only; never promote old material."""
+    pages=[]
+    for page in json.loads(artifact['content_text']) if artifact else []:
+        try:
+            date=datetime.fromisoformat(page['fetched_at']).astimezone(ZoneInfo('Asia/Tokyo')).date().isoformat()
+            fresh.check_allowed(page['url'])
+        except (KeyError,ValueError,TypeError):continue
+        if date==checked_on:pages.append(page)
+    return pages
+
 
 SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたは記事の根拠を収集する調査担当です。
@@ -232,13 +246,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")
     primary_sources_prompt = _build_primary_sources_prompt(sources)
     fresh = FreshSources(job, load_settings(job, sources), max_urls=120, render_dynamic=True, max_browser_attempts=20, retry_failed=bool(research_gaps))
-    if research_gaps:
-        restore_research_sources(fresh, json.loads(get_artifact(job_id, 'fresh_sources')['content_text']))
+    checked_on = current_check_date()
+    previous=get_optional_artifact(job_id,'fresh_sources')
+    if previous:
+        restore_research_sources(fresh,resumable_pages(previous,fresh,checked_on))
     fresh.prefetch()
     fresh.save(job_id)
 
     client = anthropic.Anthropic(api_key=api_key)
-    checked_on = current_check_date()
     from .research_requirements import load_plan
     from .research_collection import collect
     # Collection owns the bounded question list and targeted retry, not a full-sheet rewrite.

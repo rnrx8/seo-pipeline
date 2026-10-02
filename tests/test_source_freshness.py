@@ -98,7 +98,7 @@ class SourceFreshnessTests(unittest.TestCase):
             content=[Block(type="web_search_tool_result", content=[{"type": "web_search_result", "url": OFFICIAL}]),
                      Block(type="text", text=output)],
         )
-        with patch.object(sheet, "get_artifact", return_value={"content_text": "テスト資料"}), \
+        with patch.object(sheet, "get_optional_artifact", return_value=None),patch.object(sheet, "get_artifact", return_value={"content_text": "テスト資料"}), \
              patch.object(sheet, "get_job", return_value={"tenant_id": "owner", "preset_id": "preset"}), \
              patch.object(sheet, "get_primary_sources_by_preset", return_value=[{"title": "旧資料", "content_text": "月額1,000円"}]) as sources, \
              patch.object(FreshSources, "save"), \

@@ -304,10 +304,13 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
     messages = [{'role': 'user', 'content': prompt + context}]
     remaining_chars = max(0, 100000 - len(context))
     queries, observed, input_tokens, output_tokens = [], [], 0, 0
-    for _ in range(max_rounds):
+    delivered_pages=set()
+    for turn in range(max_rounds):
+        # Reserve the final response for an honest result, not another tool loop.
+        final_turn={'tool_choice':{'type':'none'}} if turn==max_rounds-1 else {}
         resp = create(client, model=model, max_tokens=max_tokens, system=system + DIRECT_POLICY,
                       tools=[search_tool, FETCH_TOOL], messages=messages,
-                      extra_headers={'anthropic-beta': 'web-search-2025-03-05'}, **caching)
+                      extra_headers={'anthropic-beta': 'web-search-2025-03-05'}, **caching, **final_turn)
         input_tokens += resp.usage.input_tokens
         output_tokens += resp.usage.output_tokens
         observed.extend(resp.content)
@@ -319,7 +322,11 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
                 if block.name != 'fetch_current_page':
                     raise ValueError('未対応の確認ツールが要求されました')
                 page = dict(fresh.fetch((block.input or {}).get('url', '')))
-                if page['status'] == 'success':
+                if page['status'] == 'success' and page.get('url') in delivered_pages:
+                    page={'url':page['url'],'status':'success','already_in_context':True,
+                          'text':'このURLの本文は同じ会話の前の取得結果にあります。再掲せずその本文を参照してください。'}
+                elif page['status'] == 'success':
+                    delivered_pages.add(page.get('url'))
                     limit = min(12000, remaining_chars)
                     page['truncated'] = page.get('truncated', False) or len(page.get('text', '')) > limit
                     page['text'] = page.get('text', '')[:limit]

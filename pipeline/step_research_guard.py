@@ -8,13 +8,13 @@ from .db import get_artifact, get_job, upsert_artifact
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
-    from . import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
-    from .research_requirements import require_matrix, verify
+    from . import step_outline, step_structure_guard
+    from .research_requirements import require_matrix
     require_matrix(job_id)
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
-    for attempt in range(3):
+    for attempt in range(2):
         job = get_job(job_id)
         outline_artifact = get_artifact(job_id, 'outline')
         outline, normalized = step_outline.ensure_complete_volume_design(outline_artifact['content_text'], job.get('word_count_setting'))
@@ -44,18 +44,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                         content_text=json.dumps(report, ensure_ascii=False), meta={'valid': report['valid']})
         if report['valid']:
             return artifact
-        if attempt < 2:
+        if attempt == 0:
             gaps = json.dumps([c for c in report['checks'] if c['status'] == 'fail'], ensure_ascii=False)
-            evidence_gap = any(c['status']=='fail' and c['key'] in ('coverage','evidence_support','unfinished_content') for c in report['checks'])
-            if attempt == 0 and not evidence_gap:
-                print('[research_guard] Correcting outline with existing source evidence before new retrieval')
-            else:
-                print('[research_guard] Evidence gaps persist; researching and rebuilding once')
-                step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
-                verify(job_id, keyword, api_key=api_key)
-                step_content_contract.run(job_id, keyword, api_key=api_key)
-            # Re-audit both semantics and the mechanical contract. Merely removing
-            # missing required topics cannot turn an evidence gap into approval.
+            # A checked evidence set is the boundary: fix the outline once against
+            # it. New genuine obligations need an explicit plan change, never an
+            # unscoped full collection inside a second retry loop.
             step_outline.run(job_id, keyword, api_key=api_key, research_gaps=gaps)
             step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
-    raise ContentQualityError('追加調査後も必要情報・比較条件が未充足です。research_validationを確認してください。')
+    raise ContentQualityError('確認済み資料で構成を修正しても必要情報・比較条件が未充足です。全体の再調査は行いません。research_validationを確認してください。')

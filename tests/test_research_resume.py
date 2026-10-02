@@ -28,7 +28,7 @@ class ResearchResumeTests(unittest.TestCase):
         artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
         def audit(*a,**kw):
             events.append('audit');return result,SimpleNamespace(input_tokens=1,output_tokens=1)
-        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_optional_artifact',return_value=artifact), \
+        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_optional_artifact',side_effect=lambda j,s:artifact if s=='research_matrix' else None), \
              patch.object(req,'matrix_policy',return_value=failed['policy_sha256']),patch.object(req,'refresh_dynamic_sources'),patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
              patch.object(req,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
              patch('pipeline.step_fact_sheet.run',side_effect=lambda *a,**kw:events.append('retrieve')),patch.object(r,'audit_matrix',side_effect=audit):
@@ -264,11 +264,11 @@ class SourceLineageTests(unittest.TestCase):
         old={'content_text':'old note','meta':{'subject':'A','plan_sha256':digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
              'source_urls':[pages[0]['url']],'search_queries':['earlier search']}}
         saved={}
-        with patch.object(c,'get_optional_artifact',return_value=old),patch.object(c,'upsert_artifact',side_effect=lambda **kw:saved.update(kw)), \
+        with patch.object(c,'get_optional_artifact',side_effect=lambda j,s:old if s=='research_collection_1' else None),patch.object(c,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:kw})), \
              patch.object(fresh,'save'),patch.object(c,'run_with_fetch',return_value=(message({}),'new note',['new search'],[])):
             c.collect('j',None,plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},gaps=json.dumps([{'id':'q1'}]))
-        self.assertIn(pages[0]['url'],saved['meta']['source_urls'])
-        self.assertEqual(saved['meta']['search_queries'],['earlier search','new search'])
+        self.assertIn(pages[0]['url'],saved['research_collection_1']['meta']['source_urls'])
+        self.assertEqual(saved['research_collection_1']['meta']['search_queries'],['earlier search','new search'])
 
     def test_markdown_code_delimiters_are_not_part_of_urls(self):
         from pipeline.fresh_sources import extract_urls
