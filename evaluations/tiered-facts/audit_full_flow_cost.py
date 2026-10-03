@@ -53,7 +53,8 @@ def run(research,article,capture=None):
   payload.update(requirements=req,outline=outline);payload.pop('outline_is_document',None)
   previous['messages'][0]['content']=json.dumps(payload,ensure_ascii=False)
   row('outline_audit',request,previous);raise Captured()
- with patch.object(cq,'create_with_retry',side_effect=capture_outline):
+ with patch.object(cq,'create_with_retry',side_effect=capture_outline), \
+      patch.object(tr,'checked_request',side_effect=lambda job,stage,request:capture_outline(**request)):
   try:cq.audit(None,stage='research',text=outline,facts=facts,outline=outline,contract=contract,requirements=req,sources=sources)
   except Captured:pass
  def final_send(job,step,request):

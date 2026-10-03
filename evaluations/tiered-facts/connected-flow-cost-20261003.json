@@ -1,0 +1,115 @@
+{
+  "api_calls": 0,
+  "quality_validated": false,
+  "article_completed": false,
+  "safety_multiplier": 1.2,
+  "jpy_per_usd": 200,
+  "pricing_basis": "Existing conservative repository constants, not a current provider quote or invoice",
+  "scope": "Measured quality stages only. Generation, planning reviews outside these stages, new search, outline repair, encoding retry and any second research round excluded.",
+  "fixture_warning": "Archived screen outcomes + current request builders + old article volume. Not a normal-flow completion.",
+  "archived_screen_requests_exactly_verified": 12,
+  "article_chars": 13408,
+  "downstream_matrix_question_count": 102,
+  "downstream_matrix_matches_current_plan": true,
+  "learned_style_rules_missing": true,
+  "whole_research_coverage_fixture_usd": 0.1866225,
+  "downstream_no_repair_usd": 4.07799,
+  "downstream_input_only_usd_without_margin": 1.7405475000000001,
+  "downstream_with_one_repair_and_full_reaudit_usd": 8.139994999999997,
+  "unknown_reread_success_followup_cost_not_included": true,
+  "full_article_300_yen_proven": false,
+  "may_authorize_paid_test": false,
+  "scenarios": {
+    "saved_outcomes_no_expansion": {
+      "requests": 23,
+      "usd": 0.827469875,
+      "quality_pass": false,
+      "unresolved_after_simulation": 42,
+      "quality_no_article_repair_usd": 5.0920823749999995,
+      "quality_one_repair_and_full_reaudit_usd": 9.154087375
+    },
+    "saved_outcomes_with_expansion": {
+      "requests": 33,
+      "usd": 2.0111960000000004,
+      "quality_pass": false,
+      "unresolved_after_simulation": 42,
+      "quality_no_article_repair_usd": 6.2758085,
+      "quality_one_repair_and_full_reaudit_usd": 10.3378135
+    }
+  },
+  "downstream_rows": [
+    {
+      "stage": "tiered_audit_research",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 260681,
+      "input_with_margin": 312818,
+      "output_cap": 6000,
+      "cost_usd": 1.65409
+    },
+    {
+      "stage": "tiered_article_evidence",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 262427,
+      "input_with_margin": 314913,
+      "output_cap": 6000,
+      "cost_usd": 1.664565
+    },
+    {
+      "stage": "tiered_article_coverage",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 119750,
+      "input_with_margin": 143700,
+      "output_cap": 6000,
+      "cost_usd": 0.41925
+    },
+    {
+      "stage": "tiered_article_language",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17724,
+      "input_with_margin": 21269,
+      "output_cap": 6000,
+      "cost_usd": 0.1131725
+    },
+    {
+      "stage": "tiered_article_consistency",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17732,
+      "input_with_margin": 21279,
+      "output_cap": 6000,
+      "cost_usd": 0.1131975
+    },
+    {
+      "stage": "tiered_article_organization",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17905,
+      "input_with_margin": 21486,
+      "output_cap": 6000,
+      "cost_usd": 0.113715
+    },
+    {
+      "stage": "tiered_content_repair_1_0",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 248017,
+      "input_with_margin": 297621,
+      "output_cap": 10000,
+      "cost_usd": 1.638105
+    }
+  ],
+  "same_input_lower_model_price_only_comparisons": [
+    {
+      "hypothetical_luna_stages": [
+        "tiered_article_evidence"
+      ],
+      "quality_no_repair_usd": 3.5107456249999993,
+      "quality_validated": false
+    },
+    {
+      "hypothetical_luna_stages": [
+        "tiered_article_evidence",
+        "tiered_audit_research"
+      ],
+      "quality_no_repair_usd": 1.9393601249999994,
+      "quality_validated": false
+    }
+  ]
+}
