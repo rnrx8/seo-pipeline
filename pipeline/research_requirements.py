@@ -117,7 +117,7 @@ def matrix_policy():
     from .tiered_research import VERSION, POLICY
     from .source_spans import SPAN_POLICY
     extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
-    return digest(json.dumps(['research-matrix-v3-bounded', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+    return digest(json.dumps(['research-matrix-v4-optional-coverage', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def load_plan(job_id):
@@ -262,6 +262,41 @@ def revalidate_plan(job_id, keyword, api_key=None):
               'input_tokens':inputs,'output_tokens':outputs})
 
 
+def major_sources_checked(item, pages):
+    """Successful relevant official bodies recorded by the source reviewer.
+
+    This is a prerequisite for proposing omission, not evidence of absence.
+    It does not require item-specific exhaustive search certification.
+    """
+    attempted=item.get('official_checked_urls',[])
+    bodies={p['url'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
+    visited={p['url'] for p in pages}
+    return (bool(attempted) and all(u in visited for u in attempted)
+            and any(u in bodies for u in attempted)
+            and bool(item.get('exploration_reason','').strip()))
+
+
+def propose_optional_omissions(items, plan, pages):
+    """Offer unverified optional facts for whole-article omission review.
+
+    Called after factual checks. Never marks the article complete; coverage can
+    reject any proposal, including a mistaken priority in the original plan.
+    """
+    planned={q['id']:q for q in plan['items']}
+    for item in items:
+        q=planned[item['id']]
+        if (item.get('verified') or q.get('required') is not False
+            or q.get('priority') not in ('important','supporting')
+            or not major_sources_checked(item,pages)):
+            continue
+        item['omission_candidate_from']={k:item.get(k) for k in ('status','basis','reason')}
+        item.update(basis='omitted',status='searched_not_found',answer='',evidence=[],
+            supports_current_conclusion=False,
+            omission_reason='主要な関連公式資料を確認済みだが、この補助情報は未確認のため本文に使用しない。'
+                '検索意図への主要な回答・比較・結論が維持できるかは記事全体の網羅性判定で確認する。')
+    return items
+
+
 def validate_matrix(value, plan_value, pages):
     if not isinstance(value,dict) or not isinstance(value.get('items'),list):
         raise ContentQualityError('調査確認の形式が不正です。')
@@ -305,8 +340,9 @@ def validate_matrix(value, plan_value, pages):
             elif basis == 'historical':
                 accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or expert or (planned['source_requirement']=='standard' and corroborated))
             elif basis == 'omitted':
-                accepted = (planned['priority'] != 'essential' and item['status'] in ('searched_not_found','explicitly_undisclosed')
-                    and explored and bool(item.get('omission_reason','').strip()))
+                accepted = (planned['priority'] != 'essential' and planned.get('required') is False
+                    and item['status'] in ('searched_not_found','explicitly_undisclosed')
+                    and major_sources_checked(item,pages) and bool(item.get('omission_reason','').strip()))
             else: accepted = False
             if basis != 'omitted' and planned.get('requires_current') and item.get('supports_current_conclusion') is not True: accepted = False
             if basis != 'omitted' and item['status'] != 'confirmed': accepted = False

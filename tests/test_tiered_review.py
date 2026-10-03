@@ -10,7 +10,7 @@ from pipeline import quality_budget as budget
 from pipeline.ai import create_with_retry, get_step_config, validate_model_credentials
 from pipeline.content_quality import ContentQualityError
 from pipeline.openai_review import create_review_response, count_review_input
-from pipeline.research_requirements import validate_matrix, matrix_policy
+from pipeline.research_requirements import validate_matrix, matrix_policy, accepted_facts
 from pipeline.tiered_research import checked_request, needs_adjudication, validate_visible_matrix
 from test_evidence_policy import fixture
 
@@ -234,6 +234,32 @@ class TieredReviewTests(unittest.TestCase):
         self.assertEqual([c['model'] for c in calls],['gpt-6-luna','gpt-6.1-sol','gpt-6.1-sol'])
         self.assertEqual(usage.input_tokens,0)
         self.assertEqual(result,again)
+
+    def test_unknown_optional_skips_second_fact_check_but_cannot_skip_coverage(self):
+        from pipeline import tiered_research as tiered
+        plan,pages,value=fixture('supporting')
+        value['items'][0].update(status='unresearched',basis='unresolved',answer='',evidence=[],exploration_complete=False)
+        saved={};calls=[]
+        def generate(*args,**request):
+            payload=json.loads(request['messages'][0]['content']);calls.append(request['model'])
+            if request['model']=='gpt-6-luna':result=value
+            else:
+                self.assertIn('decisions',payload)  # no Sol factual adjudication
+                self.assertEqual(payload['decisions'][0]['basis'],'omitted')
+                self.assertEqual(payload['decisions'][0]['answer'],'')
+                result={'coverage_sufficient':False,'coverage_reason':'この質問は記事全体では不可欠',
+                        'coverage_issues':[{'id':'q1','reason':'主要比較の根拠が不足'}]}
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result))],usage=NS(input_tokens=1,output_tokens=1))
+        with patch.object(tiered,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(saved.get(s))), \
+             patch.object(tiered,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:copy.deepcopy(kw)})), \
+             patch.object(tiered,'create_with_retry',side_effect=generate):
+            result,_=tiered.audit_matrix('test-job',plan,pages,'facts',{})
+            again,usage=tiered.audit_matrix('test-job',plan,pages,'facts',{})
+        self.assertEqual(calls,['gpt-6-luna','gpt-6.1-sol'])
+        self.assertEqual(usage.input_tokens,0)
+        self.assertEqual(result,again)
+        self.assertTrue(validate_matrix(result,plan,pages))
+        self.assertEqual(accepted_facts(result,plan),'')
 
 
 if __name__=='__main__':unittest.main()

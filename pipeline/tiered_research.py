@@ -34,11 +34,18 @@ def needs_adjudication(item,question):
          or any(word in question['question'] for word in ('唯一','最多','最安','No.1'))
          or int(digest(question['id'])[:8],16)%10==0)
 
-def checked_request(job_id,step,request):
+def cached_result(job_id,step,request):
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True));old=get_optional_artifact(job_id,step)
  if old and old.get('meta',{}).get('request_sha256')==fingerprint and old.get('meta',{}).get('result_sha256')==digest(old['content_text']):
+  return json.loads(old['content_text'])
+ return None
+
+def checked_request(job_id,step,request):
+ fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
+ old=cached_result(job_id,step,request)
+ if old is not None:
   print('[tiered] Reuse '+step,flush=True)
-  return json.loads(old['content_text']),SimpleNamespace(input_tokens=0,output_tokens=0)
+  return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  msg=create_with_retry(None,**request);value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
  upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=text,
   meta={'request_sha256':fingerprint,'result_sha256':digest(text),'model':request['model'],'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
@@ -56,7 +63,7 @@ def validate_visible_matrix(value,plan,pages):
 
 
 def audit_matrix(job_id,plan,pages,facts,intent_context):
- from .research_requirements import MATRIX_SYSTEM,MATRIX_SCHEMA,validate_matrix
+ from .research_requirements import MATRIX_SYSTEM,MATRIX_SCHEMA,validate_matrix,propose_optional_omissions
  from .research_verification import COVERAGE_SYSTEM,subject_sources
  records=collection_records(job_id,get_optional_artifact)
  history=[]
@@ -101,16 +108,29 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    payload['candidate_answers']=pending
    request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。回答対象はplan.itemsのみ。')
    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
-   print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
-   second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
-   second=expand_references(second,source_index)
-   validate_visible_matrix(second,{'items':payload['plan']['items']},packed)
-   replacements={i['id']:i for i in second['items']}
-   value['items']=[replacements.get(i['id'],i) for i in value['items']]
+   # Keep already-paid identical factual checks. For new work, offer eligible
+   # unknown optional facts for coverage review before buying another fact check.
+   if cached_result(job_id,f'tiered_adjudication_{index}',request) is None:
+    propose_optional_omissions(value['items'],{'items':questions},packed)
+    pending=[i for i in pending if not (i.get('basis')=='omitted' and i.get('omission_candidate_from'))]
+    pending_ids={i['id'] for i in pending}
+    payload['plan']={**scope,'items':[q for q in questions if q['id'] in pending_ids]}
+    payload['article_plan']={**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in pending_ids]}
+    payload['candidate_answers']=pending
+    request['max_tokens']=min(10000,2000+len(pending)*900)
+    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
+   if pending:
+    print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
+    second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
+    second=expand_references(second,source_index)
+    validate_visible_matrix(second,{'items':payload['plan']['items']},packed)
+    replacements={i['id']:i for i in second['items']}
+    value['items']=[replacements.get(i['id'],i) for i in value['items']]
   validate_matrix(value,{'items':questions},selected)
   items.extend(value['items'])
  schema={'format':{'type':'json_schema','schema':{'type':'object','properties':{
   'coverage_sufficient':{'type':'boolean'},'coverage_reason':{'type':'string'},'coverage_issues':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},'required':['coverage_sufficient','coverage_reason','coverage_issues'],'additionalProperties':False}}}
+ propose_optional_omissions(items,plan,pages)
  decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
