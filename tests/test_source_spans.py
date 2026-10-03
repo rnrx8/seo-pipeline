@@ -51,3 +51,19 @@ class SourceSpanTests(unittest.TestCase):
         self.assertEqual(MATRIX_SCHEMA,original)
 
 if __name__=='__main__':unittest.main()
+
+class CompactSpanTests(unittest.TestCase):
+    def test_original_text_is_preserved_without_overlap(self):
+        from pipeline.source_spans import indexed_sources
+        body=('料金条件と例外\n'*120)+'最終行'
+        visible,index=indexed_sources([{'url':'https://a.example','text':body}])
+        self.assertEqual(''.join(x['text'] for x in visible[0]['excerpts']),body)
+        self.assertEqual(sum(len(r['quote']) for r in index.values()),len(body))
+        self.assertEqual(len(index),len(set(index)))
+    def test_identical_text_on_different_pages_keeps_distinct_references(self):
+        from pipeline.source_spans import indexed_sources
+        pages=[{'url':'https://a.example','text':'同じ本文です。'},{'url':'https://b.example','text':'同じ本文です。'}]
+        visible,index=indexed_sources(pages)
+        self.assertEqual(len(index),2)
+        for page in visible:
+            self.assertEqual(index[page['excerpts'][0]['source_ref']]['url'],page['url'])

@@ -88,3 +88,12 @@ class ResearchSearchTests(unittest.TestCase):
             self.assertEqual(args['max_rounds'],4)
             self.assertEqual(args['max_tokens'],6000)
             self.assertIsInstance(args['search_handler'],search.SourceSearch)
+    def test_total_cap_includes_generation_and_cannot_be_removed_on_resume(self):
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'.05'}),budget.scope('test','article'):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve_claude({'model':'claude-sonnet-4-6','max_tokens':9000,'messages':[]})
+        with budget.scope('test','article'):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve_claude({'model':'claude-sonnet-4-6','max_tokens':9000,'messages':[]})
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'10'}),self.assertRaises(ContentQualityError):
+            budget.reserve_search('q')

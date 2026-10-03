@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v2-source-ids'
+VERSION='tiered-research-v3-compact-context'
 POLICY='''
 各質問は記事の検索意図に必要な範囲で回答する。質問文に複数の細目があっても、非必須項目の細部を際限なく追わない。確認できた範囲に回答を限定し、その限定で主要な判断が成立するなら採用する。条件や数値を捏造しない。
 存在するかという質問は該当例と条件を示せれば回答可能。全対象の不存在の証明を追加要求しない。
@@ -65,7 +65,9 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   if old:history.extend(json.loads(old['content_text']).get('items',[]))
  grouped={}
  for q in plan['items']:grouped.setdefault(q['subject'],[]).append(q)
- compact_plan={k:v for k,v in plan.items() if k!='items'}
+ # Reviewers need editorial scope, not policy hashes or past repair bookkeeping.
+ scope={k:plan[k] for k in ('candidate_services','scope_reason') if k in plan}
+ compact_plan=dict(scope)
  compact_plan['items']=[{k:q[k] for k in ('id','subject','question','priority')} for q in plan['items']]
  items=[];inputs=outputs=0
  for index,(subject,questions) in sorted(enumerate(grouped.items(),1),key=lambda entry:entry[1][0]=='共通'):
@@ -81,9 +83,10 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   selected=subject_sources(pages,urls) if urls else pages
   packed=packed_sources(selected,hints)
   model_sources,source_index=indexed_sources(packed)
-  payload={'article_plan':compact_plan,'plan':{**plan,'items':questions},'sources':model_sources,
+  payload={'article_plan':{**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in ids]},
+           'plan':{**scope,'items':questions},'sources':model_sources,
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
-  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY,output_config=span_schema(MATRIX_SCHEMA),
+  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
   print('[tiered] Screen '+subject,flush=True)
   value,usage=checked_request(job_id,f'tiered_screen_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
@@ -93,9 +96,10 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   pending=[i for i in value['items'] if needs_adjudication(i,planned[i['id']])]
   if pending:
    pending_ids={i['id'] for i in pending}
-   payload['plan']={**plan,'items':[q for q in questions if q['id'] in pending_ids]}
+   payload['plan']={**scope,'items':[q for q in questions if q['id'] in pending_ids]}
+   payload['article_plan']={**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in pending_ids]}
    payload['candidate_answers']=pending
-   request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。回答対象はplan.itemsのみ。')
+   request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。回答対象はplan.itemsのみ。')
    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
    print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
    second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens

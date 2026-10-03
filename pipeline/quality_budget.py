@@ -3,7 +3,7 @@
 The experimental mode requires an explicit persistent directory. Not a
 cross-host spending lock; enable on one executor per job until deployment.
 """
-import contextvars,fcntl,hashlib,json,os,time
+import contextvars,fcntl,hashlib,json,os,time,math
 from contextlib import contextmanager
 from pathlib import Path
 from functools import wraps
@@ -62,7 +62,23 @@ def completion_evaluation(value):
  return True
 
 
-def reserve(payload):
+def guard_total(value, amount):
+ """Optional stricter total cap for a bounded evaluation, never a budget reset."""
+ from .content_quality import ContentQualityError
+ configured=os.getenv('QUALITY_TOTAL_LIMIT_USD')
+ saved=value.get('total_limit_usd')
+ if configured is not None:
+  try:limit=float(configured)
+  except ValueError:raise ContentQualityError('全体予算上限が不正です。') from None
+  if not math.isfinite(limit) or limit<=0:raise ContentQualityError('全体予算上限が不正です。')
+  if saved is not None and saved!=limit:raise ContentQualityError('保存済み全体予算上限を変更できません。')
+  value['total_limit_usd']=limit;saved=limit
+ if saved is not None:
+  used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
+  if used+amount>saved:raise ContentQualityError('生成を含むテスト全体の予算上限に達するため、送信前に停止しました。')
+
+
+def reserve(payload, input_counter=None):
  from .content_quality import ContentQualityError
  model=payload['model']
  if model not in RATES:raise ContentQualityError('予算対象外のモデルへ自動変更しません。')
@@ -71,8 +87,30 @@ def reserve(payload):
  amount=(size*RATES[model][0]*(2 if size>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if size>272000 else 1))/1e6
  with ledger() as value:
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
-  if not completion_evaluation(value) and used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
-  index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get()})
+  evaluation=completion_evaluation(value)
+  # Bytes are a safe initial bound, but Japanese JSON can greatly overstate
+  # token usage. Refine only rejected requests; never relax either budget.
+  guard_total(value,0)
+  total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
+  remaining=min(float('inf') if evaluation else LIMIT-used,
+                value.get('total_limit_usd',float('inf'))-total_used)
+  counted=None
+  output_floor=payload['max_output_tokens']*RATES[model][1]/1e6
+  if amount>remaining and input_counter is not None and output_floor<remaining:
+   fingerprint=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+   counts=value.setdefault('input_counts',{})
+   record=counts.get(fingerprint)
+   if record is None:
+    counts[fingerprint]={'status':'attempted'}
+    counted=input_counter(payload)
+    if type(counted) is not int or counted<=0:raise ContentQualityError('入力トークン数を安全に確認できませんでした。')
+    record=counts[fingerprint]={'status':'counted','input_token_bound':counted}
+   if record['status']!='counted':raise ContentQualityError('入力トークン数の確認が未完了です。自動再試行しません。')
+   counted=record['input_token_bound']
+   amount=(counted*RATES[model][0]*(2 if counted>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if counted>272000 else 1))/1e6
+  guard_total(value,amount)
+  if not evaluation and used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
+  index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get(),**({'input_token_bound':counted} if counted is not None else {})})
  return index
 
 def settle(index,usage=None):
@@ -114,6 +152,7 @@ def reserve_claude(payload):
  ir,orr=CLAUDE_RATES[model]
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
+  guard_total(value,amount)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   evaluation=completion_evaluation(value)
   if not evaluation and category=='quality' and used+amount>LIMIT:
@@ -132,6 +171,7 @@ def reserve_search(query):
  from .content_quality import ContentQualityError
  amount=.001
  with ledger() as value:
+  guard_total(value,amount)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   category='generation' if STAGE.get() in GENERATION_STAGES else 'quality'
   if not completion_evaluation(value) and category=='quality' and used+amount>LIMIT:

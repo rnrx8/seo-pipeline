@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from pipeline import quality_budget as budget
 from pipeline.ai import create_with_retry, get_step_config, validate_model_credentials
 from pipeline.content_quality import ContentQualityError
-from pipeline.openai_review import create_review_response
+from pipeline.openai_review import create_review_response, count_review_input
 from pipeline.research_requirements import validate_matrix, matrix_policy
 from pipeline.tiered_research import checked_request, needs_adjudication, validate_visible_matrix
 from test_evidence_policy import fixture
@@ -48,6 +48,49 @@ class TieredReviewTests(unittest.TestCase):
     def test_missing_budget_setting_stops_before_generation(self):
         with patch.dict(os.environ,{'QUALITY_BUDGET_DIR':''}):
             with self.assertRaises(ContentQualityError):validate_model_credentials({})
+
+    def test_rejected_byte_bound_uses_count_without_raising_cap(self):
+        payload={'model':'gpt-6.1-sol','max_output_tokens':1000,'input':'あ'*100000}
+        counter=Mock(return_value=20000)
+        index=budget.reserve(payload,input_counter=counter)
+        row=self.ledger()['calls'][index]
+        self.assertAlmostEqual(row['reserved_usd'],.06)
+        self.assertEqual(row['input_token_bound'],20000)
+        self.assertEqual(self.ledger()['limit_usd'],1.25)
+        budget.settle(index,{'input_tokens':20000,'output_tokens':100})
+        budget.reserve(payload,input_counter=counter)
+        counter.assert_called_once()
+        budget.reserve({**payload,'input':payload['input']+'変更'},input_counter=counter)
+        self.assertEqual(counter.call_count,2)
+
+    def test_count_failure_is_not_repeated_and_does_not_reserve_generation(self):
+        payload={'model':'gpt-6.1-sol','max_output_tokens':1000,'input':'あ'*100000}
+        counter=Mock(side_effect=ContentQualityError('unavailable'))
+        for _ in range(2):
+            with self.assertRaises(ContentQualityError):budget.reserve(payload,input_counter=counter)
+        counter.assert_called_once()
+        self.assertEqual(self.ledger()['calls'],[])
+
+    def test_counted_long_context_and_total_cap_still_stop(self):
+        payload={'model':'gpt-6.1-sol','max_output_tokens':1000,'input':'あ'*100000}
+        with self.assertRaises(ContentQualityError):budget.reserve(payload,input_counter=Mock(return_value=280000))
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'.04'}):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve({**payload,'input':payload['input']+'別'},input_counter=Mock(return_value=20000))
+        self.assertEqual(self.ledger()['calls'],[])
+
+    def test_count_request_preserves_messages_and_reserves_schema_overhead(self):
+        payload={'model':'gpt-6.1-sol','instructions':'指示','input':[{'role':'user','content':'料金'}],
+                 'text':{'format':{'schema':{'type':'object'}}},'max_output_tokens':1000}
+        response=Mock(status_code=200);response.json.return_value={'object':'response.input_tokens','input_tokens':1234}
+        with patch('pipeline.openai_review.requests.post',return_value=response) as post:
+            bound=count_review_input(payload)
+        self.assertGreater(bound,1234+4096)
+        self.assertEqual(post.call_args.args[0],'https://api.openai.com/v1/responses/input_tokens')
+        self.assertEqual(post.call_args.kwargs['json'],{k:payload[k] for k in ('model','instructions','input')})
+        with patch('pipeline.openai_review.requests.post') as post:
+            with self.assertRaises(ContentQualityError):count_review_input({**payload,'tools':[{}]})
+            post.assert_not_called()
 
     def test_generation_costs_do_not_consume_quality_budget_but_corrections_do(self):
         payload={'model':'claude-opus-5-5','max_tokens':24000,'messages':[]}
@@ -156,12 +199,19 @@ class TieredReviewTests(unittest.TestCase):
         q['id']=next('simple'+str(i) for i in range(100) if not needs_adjudication({'verified':True,'basis':'primary'},{**q,'id':'simple'+str(i)}))
         item['id']=q['id']
         plan['items'].append({**q,'id':'unresolved'})
+        plan.update(policy_sha256='runtime-only',plan_retirements=[{'reason':'old bookkeeping'}])
         answer={**copy.deepcopy(item),'id':'unresolved'}
         value['items'].append({**copy.deepcopy(answer),'status':'unresearched','basis':'unresolved'})
         saved={};calls=[]
         def generate(*args,**request):
             calls.append(request)
             payload=json.loads(request['messages'][0]['content'])
+            if 'article_plan' in payload:
+                self.assertNotIn('policy_sha256',payload['article_plan'])
+                self.assertNotIn('plan_retirements',payload['plan'])
+                union=payload['article_plan']['items']+payload['plan']['items']
+                self.assertEqual(len(union),len(plan['items']))
+                self.assertEqual({i['id'] for i in union},{i['id'] for i in plan['items']})
             if request['model']=='gpt-6-luna':result=value
             elif 'decisions' in payload:result={'coverage_sufficient':True,'coverage_reason':'主要項目を確認','coverage_issues':[]}
             else:

@@ -7,6 +7,35 @@ from types import SimpleNamespace
 import requests
 
 
+def count_review_input(payload):
+    """Count text messages/instructions; reserve schema/settings as bytes + slack.
+
+    Only supports this adapter's self-contained text requests. The count API
+    generates no answer. No silent dropping of future tools or history inputs.
+    """
+    from .content_quality import ContentQualityError
+    allowed = {'model','instructions','input','max_output_tokens','reasoning','store','stream','text','service_tier'}
+    if set(payload)-allowed or any(not isinstance(m.get('content'),str) for m in payload['input']):
+        raise ContentQualityError('この入力形式の事前トークン計測には対応していません。')
+    body = {k:payload[k] for k in ('model','instructions','input')}
+    response = None
+    try:
+        response = requests.post('https://api.openai.com/v1/responses/input_tokens',
+            headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
+            json=body, timeout=(15,60))
+        if response.status_code != 200:
+            raise ContentQualityError(f'入力トークン数の確認に失敗しました（HTTP {response.status_code}）。生成は送信していません。')
+        data=response.json();count=data.get('input_tokens')
+        if data.get('object')!='response.input_tokens' or type(count) is not int or count<=0:
+            raise ContentQualityError('入力トークン数の応答が不正です。')
+        extra={k:v for k,v in payload.items() if k not in body}
+        return count+len(json.dumps(extra,ensure_ascii=False).encode())+4096
+    except (requests.RequestException, ValueError):
+        raise ContentQualityError('入力トークン数を確認できませんでした。生成は送信していません。') from None
+    finally:
+        if response is not None:response.close()
+
+
 def _completed_response(response, started):
     """Consume SSE privately; partial JSON is never accepted or published."""
     from .content_quality import ContentQualityError
@@ -69,7 +98,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
         try:
             if tiered:
                 from .quality_budget import reserve, settle
-                reservation = reserve(payload)
+                reservation = reserve(payload, input_counter=count_review_input)
             print('[review '+model+'] Starting streamed review/repair request', flush=True)
             response = requests.post("https://api.openai.com/v1/responses",
                 headers={"Authorization": "Bearer " + key}, json=payload,

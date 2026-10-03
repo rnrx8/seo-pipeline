@@ -1,0 +1,149 @@
+{
+  "external_api_calls": 0,
+  "source_text_and_metadata_preserved": true,
+  "sol_before_bytes": 1620904,
+  "sol_after_bytes": 1409865,
+  "sol_input_byte_reduction": 0.130198333769304,
+  "quality_revalidated": false,
+  "article_cost_verified": false,
+  "requests": [
+    {
+      "step": "tiered_screen_1",
+      "model": "gpt-6-luna",
+      "before_bytes": 180223,
+      "after_bytes": 151801
+    },
+    {
+      "step": "tiered_adjudication_1",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 195878,
+      "after_bytes": 167456
+    },
+    {
+      "step": "tiered_screen_2",
+      "model": "gpt-6-luna",
+      "before_bytes": 182408,
+      "after_bytes": 151638
+    },
+    {
+      "step": "tiered_adjudication_2",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 200121,
+      "after_bytes": 169351
+    },
+    {
+      "step": "tiered_screen_3",
+      "model": "gpt-6-luna",
+      "before_bytes": 174413,
+      "after_bytes": 149216
+    },
+    {
+      "step": "tiered_adjudication_3",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 188707,
+      "after_bytes": 163510
+    },
+    {
+      "step": "tiered_screen_4",
+      "model": "gpt-6-luna",
+      "before_bytes": 206301,
+      "after_bytes": 166338
+    },
+    {
+      "step": "tiered_adjudication_4",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 217425,
+      "after_bytes": 177462
+    },
+    {
+      "step": "tiered_screen_5",
+      "model": "gpt-6-luna",
+      "before_bytes": 126072,
+      "after_bytes": 105110
+    },
+    {
+      "step": "tiered_adjudication_5",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 135612,
+      "after_bytes": 114650
+    },
+    {
+      "step": "tiered_screen_6",
+      "model": "gpt-6-luna",
+      "before_bytes": 123253,
+      "after_bytes": 103307
+    },
+    {
+      "step": "tiered_adjudication_6",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 129615,
+      "after_bytes": 109669
+    },
+    {
+      "step": "tiered_screen_8",
+      "model": "gpt-6-luna",
+      "before_bytes": 79938,
+      "after_bytes": 70204
+    },
+    {
+      "step": "tiered_adjudication_8",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 83518,
+      "after_bytes": 73784
+    },
+    {
+      "step": "tiered_screen_9",
+      "model": "gpt-6-luna",
+      "before_bytes": 48850,
+      "after_bytes": 47246
+    },
+    {
+      "step": "tiered_screen_10",
+      "model": "gpt-6-luna",
+      "before_bytes": 98120,
+      "after_bytes": 82830
+    },
+    {
+      "step": "tiered_screen_11",
+      "model": "gpt-6-luna",
+      "before_bytes": 42186,
+      "after_bytes": 42186
+    },
+    {
+      "step": "tiered_adjudication_11",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 43348,
+      "after_bytes": 43348
+    },
+    {
+      "step": "tiered_screen_12",
+      "model": "gpt-6-luna",
+      "before_bytes": 52192,
+      "after_bytes": 49672
+    },
+    {
+      "step": "tiered_adjudication_12",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 55574,
+      "after_bytes": 53054
+    },
+    {
+      "step": "tiered_screen_7",
+      "model": "gpt-6-luna",
+      "before_bytes": 264959,
+      "after_bytes": 231434
+    },
+    {
+      "step": "tiered_adjudication_7",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 274592,
+      "after_bytes": 241067
+    },
+    {
+      "step": "tiered_coverage",
+      "model": "gpt-6.1-sol",
+      "before_bytes": 96514,
+      "after_bytes": 96514
+    }
+  ]
+}

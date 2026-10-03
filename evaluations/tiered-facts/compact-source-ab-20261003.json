@@ -1,0 +1,51 @@
+{
+  "cases": 12,
+  "dataset": "holdout.json",
+  "previously_tested_cases": true,
+  "claim_labels_hidden_from_model": true,
+  "article_quality_verified": false,
+  "results": [
+    {
+      "format": "baseline",
+      "model": "gpt-6-luna",
+      "matched": 12,
+      "total": 12,
+      "false_passes": 0,
+      "references_valid": true,
+      "input_tokens": 22037,
+      "output_tokens": 768
+    },
+    {
+      "format": "baseline",
+      "model": "gpt-6.1-sol",
+      "matched": 12,
+      "total": 12,
+      "false_passes": 0,
+      "references_valid": true,
+      "input_tokens": 22037,
+      "output_tokens": 1156
+    },
+    {
+      "format": "compact",
+      "model": "gpt-6-luna",
+      "matched": 12,
+      "total": 12,
+      "false_passes": 0,
+      "references_valid": true,
+      "input_tokens": 15991,
+      "output_tokens": 595
+    },
+    {
+      "format": "compact",
+      "model": "gpt-6.1-sol",
+      "matched": 12,
+      "total": 12,
+      "false_passes": 0,
+      "references_valid": true,
+      "input_tokens": 15991,
+      "output_tokens": 896
+    }
+  ],
+  "additional_cost_usd": 0.12102500000000005,
+  "yen_at_budget_assumption_200": 24.20500000000001
+}

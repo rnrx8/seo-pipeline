@@ -1,10 +1,10 @@
 """Select immutable source spans instead of asking a model to copy quotations."""
 import copy
-import hashlib
 
 SPAN_POLICY = '''
 【今回の出典指定形式：quoteを文字列で返す指示より優先】
 sources.excerptsに原文とsource_refがある。evidenceにはsource_refを返す。URLもシステムが対応する原文から取得する。
+source_refは今回の要求内だけで有効なID。別要求のIDを流用しない。条件や文章が隣の抜粋へ続く場合は隣接抜粋も読み、必要なら複数IDを選ぶ。
 主張を直接支える原文のIDを選ぶ。IDは内容を確認せず選んではいけない。
 引用文はシステムが原文から取り出すため、quoteを自分で書き直さない。
 専門家の氏名・資格・関与の根拠もexpert_source_refで同じURLの原文IDを指定する。不要なら空文字。
@@ -20,10 +20,11 @@ def indexed_sources(pages):
         excerpts=[]
         # Never form a quotation across the adapter's omission boundary.
         for part in page.get('text','').split('\n[中略：取得本文の抜粋]\n'):
-            for start in range(0,len(part),192):
+            for start in range(0,len(part),256):
                 text=part[start:start+256]
                 if not text.strip():continue
-                key='src-'+hashlib.sha256((page['url']+'\0'+text).encode()).hexdigest()[:24]
+                # IDs are scoped to this complete request, whose fingerprint binds cached answers.
+                key='s'+str(len(index)+1)
                 ref={'url':page['url'],'quote':text}
                 if key in index and index[key]!=ref:raise ValueError('Source reference collision')
                 index[key]=ref
