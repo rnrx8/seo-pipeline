@@ -69,6 +69,22 @@ class CompactQualityFlowTests(unittest.TestCase):
             self.assertEqual(data['requirements']['custom_prompt'],self.requirements['custom_prompt'])
             if step!='tiered_article_evidence_screen':self.assertNotIn('source_documents',data)
 
+    def test_canonical_answers_appear_once_without_removing_original_fact_sources(self):
+        facts='CANONICAL_FACT_TEXT'
+        self.requirements['research_decisions'].update(valid=True,facts_sha256=cq.digest(facts))
+        seen=[]
+        def send(job,step,request):
+            seen.append(json.loads(request['messages'][0]['content']))
+            return self.reply(request)
+        with patch('pipeline.tiered_research.checked_request',side_effect=send):
+            fq.audit_article(None,text=self.text,facts=facts,outline='',contract={},requirements=self.requirements,sources=self.sources)
+        for payload in seen:
+            if 'confirmed_facts' in payload:
+                self.assertNotEqual(payload['confirmed_facts'],facts)
+                self.assertEqual(payload['requirements']['research_decisions']['items'][0]['answer'],'男性・年契約。')
+        self.assertEqual(seen[0]['source_documents'],self.pages)
+        self.assertEqual(len(seen),5)
+
     def test_outline_preserves_all_checks_but_sol_receives_no_source_bodies(self):
         calls=[]
         def send(job,step,request):

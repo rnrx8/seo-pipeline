@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v2-item-source-needs'
+VERSION = 'focused-research-v3-compact-factual-scope'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -72,7 +72,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
                 row['properties']['additional_sources_needed']={'type':'boolean'}
                 row['required'].append('additional_sources_needed')
         payload = {'plan':{**scope, 'items':[q for q in questions if q['id'] in ids]},
-                   'article_plan':{**compact_plan, 'items':[q for q in compact_plan['items'] if q['id'] not in ids]},
+                   'article_scope':{**scope,'other_question_ids':[q['id'] for q in compact_plan['items'] if q['id'] not in ids]},
                    'candidate_answers':candidates, 'related_verified_answers':related_answers or [],
                    'sources':sources, 'source_catalog':catalog,
                    'source_revision':source_revision, 'sources_complete':complete, 'searches':searches}

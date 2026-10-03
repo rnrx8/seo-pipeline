@@ -2,7 +2,7 @@
 import copy
 import json
 
-CONTEXT_POLICY = 'role-input-v1-brief-decisions'
+CONTEXT_POLICY = 'role-input-v2-no-candidate-quotes'
 
 
 def compact_enabled():
@@ -23,7 +23,7 @@ def decision_brief(requirements):
             if refs:
                 item['evidence_sources']=[{k:v for k,v in r.items()
                     if k not in ('quote','expert_qualification_quote')} for r in refs]
-            for key in ('official_checked_urls','exploration_reason','omission_source_review','omission_candidate_from'):
+            for key in ('official_checked_urls','exploration_reason','omission_source_review','omission_candidate_from','unresolved_candidate'):
                 item.pop(key,None)
     return result
 
@@ -78,3 +78,25 @@ def repair_context(requirements, sources, failed_checks, structural_issues, repo
             except (ValueError,TypeError,KeyError):
                 pass  # A malformed or changed receipt never permits narrowing.
     return review_requirements(requirements,'evidence'),sources
+
+
+def review_facts(facts, requirements):
+    """Keep one authoritative copy of canonical answers and omit quote duplication."""
+    if not compact_enabled():return facts
+    from .content_quality import digest
+    decisions=requirements.get('research_decisions')
+    if (isinstance(decisions,dict) and decisions.get('valid') is True
+        and decisions.get('items') and decisions.get('facts_sha256')==digest(facts)):
+        return '確認済み回答・条件・出典と省略状態は requirements.research_decisions に一度だけ掲載。omitted の内容を本文で断定しない。'
+    # Noncanonical or additional fact-review evidence must never disappear.
+    # Remove only parseable source-quotation annotations, retaining their URL.
+    import re
+    lines=[]
+    for line in facts.splitlines():
+        match=re.fullmatch(r'(出典：https?://[^\s｜]+)｜確認箇所：(.*)',line)
+        if match:
+            try:
+                if isinstance(json.loads(match[2]),str):line=match[1]
+            except ValueError:pass
+        lines.append(line)
+    return '\n'.join(lines)

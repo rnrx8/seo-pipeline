@@ -5,6 +5,7 @@ to step_structure_guard so an LLM placement decision cannot append duplicate H2s
 """
 from .fresh_sources import WRITING_POLICY
 from .content_quality import source_evidence, writing_evidence
+from .generation_context import generation_evidence
 import json
 import re as _re
 import anthropic
@@ -207,7 +208,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {
                 "role": "user",
                 "content": USER_TEMPLATE.format(
-                    outline_text=outline_text + "\n## 今回の確認済み事実\n" + writing_evidence(get_artifact(job_id, "fact_sheet")["content_text"], source_evidence(get_artifact(job_id, "fresh_sources"))),
+                    outline_text=outline_text + "\n## 今回の確認済み事実\n" + generation_evidence(job_id,get_artifact(job_id, "fact_sheet")["content_text"], source_evidence(get_artifact(job_id, "fresh_sources")),quotes=False),
                     service_info=service_info,
                     cta_info=cta_info,
                     article_purpose=article_purpose,

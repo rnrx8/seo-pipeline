@@ -1,0 +1,20 @@
+{
+  "api_calls": 0,
+  "quality_validated": false,
+  "article_completed": false,
+  "scope": "Same already-verified subset, source material only; not a whole-run request or cost estimate. Unverified questions are excluded from BOTH sides. Production matrix is unchanged and remains failed.",
+  "questions_in_saved_plan": 102,
+  "questions_in_both_sizing_fixtures": 94,
+  "outline_and_service_map_source_tokens": {
+    "before_outline": 279608,
+    "before_service_map": 205463,
+    "after": 28745,
+    "reduction_percent": 89.7
+  },
+  "article_source_tokens_per_part": {
+    "before": 205463,
+    "after": 54739,
+    "reduction_percent": 73.4
+  },
+  "omitted_from_measurement": "system/user style prompts, article/outline/history, future resolved answers and their evidence, retries, final-review source reading"
+}
