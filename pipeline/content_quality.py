@@ -12,7 +12,7 @@ from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY
 
-POLICY_VERSION = 'content-quality-v10-intent-evidence'
+POLICY_VERSION = 'content-quality-v11-role-context'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -353,12 +353,18 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         return audit_article(client, text=text, facts=facts, outline=outline, contract=contract, requirements=requirements, sources=sources, checkpoint=checkpoint)
     model, configured_budget = get_step_config('content_audit' if stage == 'article' else 'review')
     prices, price_issues = comparison_evidence(text, contract)
-    message = create_with_retry(client, model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
-        messages=[{'role': 'user', 'content': json.dumps({
-            'current_date': datetime.now(timezone.utc).date().isoformat(), 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources, 'outline': outline,
-            'contract': contract, 'requirements': requirements,
+    from .quality_context import review_requirements
+    payload = {
+            'current_date': datetime.now(timezone.utc).date().isoformat(), 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources,
+            'contract': contract, 'requirements':review_requirements(requirements, 'research'),
             'calculated_price_minima': prices, 'price_contradictions': price_issues,
-            'conditional_facts': conditional_facts(facts), 'scope_issues': scope_issues(text, facts)}, ensure_ascii=False)}])
+            'conditional_facts': conditional_facts(facts), 'scope_issues': scope_issues(text, facts)}
+    if outline != text:
+        payload['outline'] = outline
+    else:
+        payload['outline_is_document'] = True
+    message = create_with_retry(client, model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
+        messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}])
     report = parse_audit(response_text(message))
     if stage == 'article' and any(c['status'] == 'not_applicable' and c['key'] in ('prose_quality', 'redundancy') for c in report['checks']):
         raise ContentQualityError('完成本文の文章検査が省略されています。')

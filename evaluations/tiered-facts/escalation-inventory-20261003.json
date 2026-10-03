@@ -1,0 +1,1025 @@
+{
+  "api_calls": 0,
+  "rows": [
+    {
+      "id": "q01",
+      "subject": "既婚者クラブ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）と、その料金が適用される決済方法は何か",
+      "escalated": false
+    },
+    {
+      "id": "q02",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q03",
+      "subject": "既婚者クラブ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブで男性が無料会員のまま使える機能の範囲（プロフィール登録・検索・いいね送信・マッチング・メッセージ送受信）はどこまでか",
+      "escalated": false
+    },
+    {
+      "id": "q04",
+      "subject": "既婚者クラブ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブで女性が利用する場合の料金は無料か、有料になる機能はあるか",
+      "escalated": false
+    },
+    {
+      "id": "q05",
+      "subject": "既婚者クラブ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブは、アプリをインストールせずにスマートフォンのWebブラウザから利用できるか",
+      "escalated": false
+    },
+    {
+      "id": "q06",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの有料プラン決済時、クレジットカード明細にはどのような名称が表示されるか",
+      "escalated": false
+    },
+    {
+      "id": "q07",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブにはプロフィール写真をぼかす（モザイク加工する）機能があるか",
+      "escalated": false
+    },
+    {
+      "id": "q08",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブには特定の電話番号の持ち主に自分を表示しない（知人とのマッチングを避ける）機能があるか",
+      "escalated": false
+    },
+    {
+      "id": "q09",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": false,
+      "basis": "omitted",
+      "source_requirement": "standard",
+      "question": "既婚者クラブで通知内容を細かく設定・非表示にできる機能はあるか",
+      "escalated": true
+    },
+    {
+      "id": "q10",
+      "subject": "既婚者クラブ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブでは公的書類による年齢確認・本人確認が必須か、どの段階で求められるか",
+      "escalated": false
+    },
+    {
+      "id": "q11",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブでは本人確認書類が確認後にどのように扱われるか（保存の有無）",
+      "escalated": false
+    },
+    {
+      "id": "q12",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの公式公表の累計会員数はいくつで、その集計時点はいつか",
+      "escalated": false
+    },
+    {
+      "id": "q13",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": false,
+      "basis": "omitted",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの会員の年代分布（男女別）について公式に公表されたデータはあるか、その内容と時点は",
+      "escalated": true
+    },
+    {
+      "id": "q14",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブでは利用状況の監視・違反ユーザーの排除・通報やブロック機能をどのように提供しているか",
+      "escalated": false
+    },
+    {
+      "id": "q15",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの有料プランは自動更新か、解約・退会の手続き方法と解約後の扱いはどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q16",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブを退会した後、メッセージやプロフィールなどの情報はどう扱われるか",
+      "escalated": false
+    },
+    {
+      "id": "q17",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの個人情報保護の取り組み（プライバシーマーク等の第三者認証、通信暗号化）は何か",
+      "escalated": false
+    },
+    {
+      "id": "q18",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの利用目的として公式が示す位置づけ（趣味・悩み相談などの交流）と、規約上の禁止事項は何か",
+      "escalated": false
+    },
+    {
+      "id": "q19",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの登録から相手とメッセージするまでの手順はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q98",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "既婚者クラブの国内の利用対象地域について、地方在住者の登録・利用を制限する地域条件は公式に示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q99",
+      "subject": "既婚者クラブ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "既婚者クラブで居住地域を条件に相手を探せるか、地域の指定単位と、無料会員のまま近隣の相手を確認できる範囲はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q20",
+      "subject": "ヒールメイト",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイト（Healmate）の男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q21",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q22",
+      "subject": "ヒールメイト",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトで男性が無料会員のまま使える機能の範囲（検索・いいね・マッチング・メッセージ）はどこまでか",
+      "escalated": false
+    },
+    {
+      "id": "q23",
+      "subject": "ヒールメイト",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトで女性が利用する場合の料金は無料か、有料になる機能はあるか",
+      "escalated": false
+    },
+    {
+      "id": "q24",
+      "subject": "ヒールメイト",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトは、アプリをインストールせずにスマートフォンのWebブラウザから利用できるか",
+      "escalated": true
+    },
+    {
+      "id": "q25",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの有料プラン決済時、クレジットカード明細にはどのような名称が表示されるか",
+      "escalated": false
+    },
+    {
+      "id": "q26",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトにはプロフィール写真をぼかす機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q27",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "ヒールメイトには特定の電話番号の相手に自分を表示しない機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q28",
+      "subject": "ヒールメイト",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトでは公的書類による年齢確認・本人確認が必須か",
+      "escalated": false
+    },
+    {
+      "id": "q29",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの公式公表の会員数と男女比はいくつで、その集計時点はいつか",
+      "escalated": false
+    },
+    {
+      "id": "q30",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの会員の年代分布（男女別）について公式に公表されたデータの内容と時点は",
+      "escalated": false
+    },
+    {
+      "id": "q31",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトでは利用状況の監視・通報・ブロックなど不正ユーザー対策をどのように行っているか",
+      "escalated": false
+    },
+    {
+      "id": "q32",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの有料プランは自動更新か、解約方法はどうなっているか",
+      "escalated": false
+    },
+    {
+      "id": "q33",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "ヒールメイトにある匿名掲示板やグループチャットなど、1対1以外の交流機能は何か",
+      "escalated": false
+    },
+    {
+      "id": "q101",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "ヒールメイトの国内の利用対象地域について、地方在住者の登録・利用を制限する地域条件は公式に示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q102",
+      "subject": "ヒールメイト",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "ヒールメイトで居住地域を条件に相手を探せるか、地域の指定単位と、無料会員のまま近隣の相手を確認できる範囲はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q34",
+      "subject": "カドル",
+      "required": true,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドル（Cuddle）の男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）はいくらか",
+      "escalated": true
+    },
+    {
+      "id": "q35",
+      "subject": "カドル",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q36",
+      "subject": "カドル",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルで男性が無料会員のまま使える機能の範囲（検索・いいね・マッチング・メッセージ）はどこまでか",
+      "escalated": false
+    },
+    {
+      "id": "q37",
+      "subject": "カドル",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルで女性が利用する場合の料金は無料か、有料になる機能はあるか",
+      "escalated": false
+    },
+    {
+      "id": "q38",
+      "subject": "カドル",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルは、アプリをインストールせずにスマートフォンのWebブラウザから利用できるか",
+      "escalated": false
+    },
+    {
+      "id": "q39",
+      "subject": "カドル",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルの有料プラン決済時、クレジットカード明細にはどのような名称が表示されるか",
+      "escalated": false
+    },
+    {
+      "id": "q40",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルにはプロフィール写真をぼかす機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q41",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルには特定の電話番号の相手に自分を表示しない機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q42",
+      "subject": "カドル",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルでは公的書類による年齢確認・本人確認が必須か",
+      "escalated": false
+    },
+    {
+      "id": "q43",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルの公式公表の会員数はいくつで、その集計時点はいつか",
+      "escalated": true
+    },
+    {
+      "id": "q44",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルの会員の年代分布（男女別）について公式に公表されたデータの内容と時点は",
+      "escalated": true
+    },
+    {
+      "id": "q45",
+      "subject": "カドル",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルでは利用状況の監視・通報・ブロックなど不正ユーザー対策をどのように行っているか",
+      "escalated": false
+    },
+    {
+      "id": "q46",
+      "subject": "カドル",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "カドルの有料プランは自動更新か、解約方法はどうなっているか",
+      "escalated": false
+    },
+    {
+      "id": "q47",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "競合記事が記載するカドルの「既婚者マッチングアプリ利用率No.1」等の表示について、公式にどの調査（実施者・対象・時点）に基づくと示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q104",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルの国内の利用対象地域について、地方在住者の登録・利用を制限する地域条件は公式に示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q105",
+      "subject": "カドル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "カドルで居住地域を条件に相手を探せるか、地域の指定単位と、無料会員のまま近隣の相手を確認できる範囲はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q48",
+      "subject": "マリーゴー",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴー（MarriedGo）の男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q49",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q50",
+      "subject": "マリーゴー",
+      "required": true,
+      "verified": true,
+      "basis": "corroborated",
+      "source_requirement": "standard",
+      "question": "マリーゴーで男性が無料会員のまま使える機能の範囲（検索・いいね・マッチング・メッセージ）はどこまでか",
+      "escalated": true
+    },
+    {
+      "id": "q51",
+      "subject": "マリーゴー",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーで女性が利用する場合の料金は無料か、有料になる機能はあるか",
+      "escalated": false
+    },
+    {
+      "id": "q52",
+      "subject": "マリーゴー",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーは、アプリをインストールせずにスマートフォンのWebブラウザから利用できるか",
+      "escalated": false
+    },
+    {
+      "id": "q53",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "corroborated",
+      "source_requirement": "standard",
+      "question": "マリーゴーの有料プラン決済時、クレジットカード明細にはどのような名称が表示されるか",
+      "escalated": true
+    },
+    {
+      "id": "q54",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "corroborated",
+      "source_requirement": "standard",
+      "question": "マリーゴーにはプロフィール写真をぼかす機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q55",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "マリーゴーには特定の電話番号の相手に自分を表示しない機能があるか",
+      "escalated": true
+    },
+    {
+      "id": "q56",
+      "subject": "マリーゴー",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーでは公的書類による年齢確認・本人確認が必須か",
+      "escalated": false
+    },
+    {
+      "id": "q57",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "マリーゴーの公式公表の会員数はいくつで、その集計時点はいつか",
+      "escalated": true
+    },
+    {
+      "id": "q58",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "マリーゴーの会員の年代分布（男女別）について公式に公表されたデータの内容と時点は",
+      "escalated": true
+    },
+    {
+      "id": "q59",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーでは利用状況の監視・通報・ブロックなど不正ユーザー対策をどのように行っているか",
+      "escalated": false
+    },
+    {
+      "id": "q60",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーの有料プランは自動更新か、解約方法はどうなっているか",
+      "escalated": false
+    },
+    {
+      "id": "q107",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "マリーゴーの国内の利用対象地域について、地方在住者の登録・利用を制限する地域条件は公式に示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q108",
+      "subject": "マリーゴー",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "マリーゴーで居住地域を条件に相手を探せるか、地域の指定単位と、無料会員のまま近隣の相手を確認できる範囲はどうなっているか",
+      "escalated": false
+    },
+    {
+      "id": "q61",
+      "subject": "アネモネ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネ（Anemone）の男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q62",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q63",
+      "subject": "アネモネ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネで男性が無料会員のまま使える機能の範囲はどこまでか",
+      "escalated": false
+    },
+    {
+      "id": "q64",
+      "subject": "アネモネ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネで女性が利用する場合の料金は無料か、有料になる機能はあるか",
+      "escalated": false
+    },
+    {
+      "id": "q65",
+      "subject": "アネモネ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネはWebブラウザから利用できるか、またはインストール型アプリのみか",
+      "escalated": false
+    },
+    {
+      "id": "q66",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "アネモネの有料プラン決済時、クレジットカード明細にはどのような名称が表示されるか",
+      "escalated": true
+    },
+    {
+      "id": "q67",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネにはプロフィール写真をぼかす機能があるか",
+      "escalated": false
+    },
+    {
+      "id": "q68",
+      "subject": "アネモネ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネでは公的書類による年齢確認・本人確認が必須か",
+      "escalated": false
+    },
+    {
+      "id": "q69",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネの入会審査制度はどのような内容か（審査の有無と対象）",
+      "escalated": false
+    },
+    {
+      "id": "q70",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": false,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネの公式公表の会員数と年代分布はどうなっているか、その時点は",
+      "escalated": true
+    },
+    {
+      "id": "q71",
+      "subject": "アネモネ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "アネモネの有料プランは自動更新か、解約方法はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q72",
+      "subject": "既婚マッチ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチの男性向け代表的な有料プランについて、1ヶ月契約の月額料金（税込）はいくらか",
+      "escalated": true
+    },
+    {
+      "id": "q73",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチの男性向け3ヶ月以上の長期プランについて、契約期間ごとの総額と月あたり料金はいくらか",
+      "escalated": false
+    },
+    {
+      "id": "q74",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "既婚マッチの「業界最安値」表示は、どのサービス・プラン・時点と比較した根拠が公式に示されているか",
+      "escalated": true
+    },
+    {
+      "id": "q75",
+      "subject": "既婚マッチ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチで男性が期間限定の無料トライアルを利用せず、通常の無料会員のまま使える機能の範囲（プロフィール登録・検索・いいね送信・マッチング・メッセージ送受信）はどこまでか",
+      "escalated": false
+    },
+    {
+      "id": "q76",
+      "subject": "既婚マッチ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチで女性が利用する場合の料金は無料か",
+      "escalated": false
+    },
+    {
+      "id": "q77",
+      "subject": "既婚マッチ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチはアプリのインストールなしでWebブラウザから利用できるか",
+      "escalated": false
+    },
+    {
+      "id": "q78",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチの有料プラン決済時、支払い明細にはどのような名称が表示されるか",
+      "escalated": false
+    },
+    {
+      "id": "q79",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチにはプロフィール写真をモザイク加工する機能があるか",
+      "escalated": false
+    },
+    {
+      "id": "q80",
+      "subject": "既婚マッチ",
+      "required": true,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチでは公的書類（eKYC等）による年齢確認・本人確認が必須か",
+      "escalated": false
+    },
+    {
+      "id": "q81",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "既婚マッチの主な利用エリア（公式が「東京中心」とする範囲）と会員数の公表値・時点はどうなっているか",
+      "escalated": true
+    },
+    {
+      "id": "q82",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "既婚マッチの有料プランは自動更新か、解約方法はどうなっているか",
+      "escalated": false
+    },
+    {
+      "id": "q93",
+      "subject": "既婚マッチ",
+      "required": false,
+      "verified": true,
+      "basis": "historical",
+      "source_requirement": "standard",
+      "question": "既婚マッチの男性向け無料トライアルについて、公式に案内された実施の有無と、実施される場合の対象者・申込期間・無料利用期間・対象機能・終了後の課金移行条件は何か",
+      "escalated": true
+    },
+    {
+      "id": "q86",
+      "subject": "Pairs",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "Pairsの利用規約は既婚者の利用を禁止しているか",
+      "escalated": true
+    },
+    {
+      "id": "q87",
+      "subject": "Omiai",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "Omiaiの利用規約は既婚者の利用を禁止しているか",
+      "escalated": false
+    },
+    {
+      "id": "q88",
+      "subject": "with",
+      "required": false,
+      "verified": true,
+      "basis": "primary",
+      "source_requirement": "standard",
+      "question": "withの利用規約は既婚者の利用を禁止しているか",
+      "escalated": false
+    },
+    {
+      "id": "q89",
+      "subject": "タップル",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "タップルの利用規約は既婚者の利用を禁止しているか",
+      "escalated": true
+    },
+    {
+      "id": "q92",
+      "subject": "Layer",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "Layer（レイヤー）は現在もサービスを提供しているか、終了している場合いつ終了したか",
+      "escalated": true
+    },
+    {
+      "id": "q83",
+      "subject": "共通",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "candidate_services（既婚者クラブ・ヒールメイト・カドル・マリーゴー・アネモネ・既婚マッチ）のうち、男性が無料のままメッセージ送受信まで行えるサービスはあるか",
+      "escalated": true
+    },
+    {
+      "id": "q84",
+      "subject": "共通",
+      "required": false,
+      "verified": true,
+      "basis": "expert",
+      "source_requirement": "expert_allowed",
+      "question": "既婚者専用マッチングアプリに登録・利用すること自体は不貞行為や違法にあたるか、また一般にどのような行為から不貞行為と評価されうるか",
+      "escalated": true
+    },
+    {
+      "id": "q85",
+      "subject": "共通",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "expert_allowed",
+      "question": "不貞行為があった場合に配偶者や相手の配偶者から慰謝料を請求されうるという一般的な仕組みと、その金額の目安はどの程度と専門家が解説しているか",
+      "escalated": true
+    },
+    {
+      "id": "q90",
+      "subject": "共通",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "expert_allowed",
+      "question": "マッチングアプリで既婚者を狙う美人局・勧誘業者・なりすましの典型的な手口と、利用者ができる一般的な回避策は何か",
+      "escalated": true
+    },
+    {
+      "id": "q91",
+      "subject": "共通",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "expert_allowed",
+      "question": "「セカンドパートナー」とは一般にどのような関係を指す言葉として説明されているか",
+      "escalated": true
+    },
+    {
+      "id": "q110",
+      "subject": "共通",
+      "required": false,
+      "verified": false,
+      "basis": "unresolved",
+      "source_requirement": "standard",
+      "question": "candidate_services（既婚者クラブ・ヒールメイト・カドル・マリーゴー・アネモネ・既婚マッチ）のブラウザ利用に共通する操作として、スマートフォンのホーム画面への追加操作の有無でアイコン・ショートカットの表示はどう変わるか。iPhoneのSafariとAndroidのChromeを代表例に、表示に関わる端末・ブラウザの操作条件を確認する。",
+      "escalated": true
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "design_only": true,
+  "runtime_enabled": false,
+  "quality_validated": false,
+  "generation_excluded": true,
+  "usd_to_jpy_budget_assumption": 200,
+  "source": "pipeline/quality_budget.py existing conservative rate constants; not a fresh provider price quote",
+  "stage_token_allowances_unvalidated": [
+    {
+      "stage": "調査一次確認",
+      "model": "luna",
+      "input_token_allowance": 600000,
+      "output_token_allowance": 70000,
+      "usd": 0.11
+    },
+    {
+      "stage": "調査の例外判定",
+      "model": "sol",
+      "input_token_allowance": 60000,
+      "output_token_allowance": 10000,
+      "usd": 0.25
+    },
+    {
+      "stage": "調査の全体網羅性",
+      "model": "sol",
+      "input_token_allowance": 35000,
+      "output_token_allowance": 3000,
+      "usd": 0.1175
+    },
+    {
+      "stage": "構成の確認",
+      "model": "sol",
+      "input_token_allowance": 30000,
+      "output_token_allowance": 3000,
+      "usd": 0.105
+    },
+    {
+      "stage": "完成記事の根拠",
+      "model": "luna",
+      "input_token_allowance": 80000,
+      "output_token_allowance": 6000,
+      "usd": 0.013
+    },
+    {
+      "stage": "完成記事の網羅性",
+      "model": "luna",
+      "input_token_allowance": 30000,
+      "output_token_allowance": 3000,
+      "usd": 0.00525
+    },
+    {
+      "stage": "文章",
+      "model": "sol",
+      "input_token_allowance": 20000,
+      "output_token_allowance": 3000,
+      "usd": 0.08
+    },
+    {
+      "stage": "全体整合性",
+      "model": "sol",
+      "input_token_allowance": 20000,
+      "output_token_allowance": 3000,
+      "usd": 0.08
+    },
+    {
+      "stage": "表示・情報整理",
+      "model": "luna",
+      "input_token_allowance": 20000,
+      "output_token_allowance": 3000,
+      "usd": 0.004
+    },
+    {
+      "stage": "修正1回",
+      "model": "sol",
+      "input_token_allowance": 30000,
+      "output_token_allowance": 8000,
+      "usd": 0.155
+    },
+    {
+      "stage": "追加調査枠",
+      "model": "sonnet",
+      "input_token_allowance": 10000,
+      "output_token_allowance": 2000,
+      "usd": 0.09
+    }
+  ],
+  "full_final_reaudit_usd": 0.18225000000000002,
+  "search_three_requests_usd": 0.003,
+  "total_usd": 1.4549999999999998,
+  "total_jpy": 291.0,
+  "headroom_to_300_jpy": 9.0,
+  "does_not_fit_existing_1_25_usd_guard": true,
+  "outline_repair_usd": 0.155,
+  "outline_reaudit_usd": 0.105,
+  "required_unimplemented_changes": [
+    "Shared checked-fact ledger instead of broad raw-source repetition",
+    "Bounded cross-subject Sol exception packets",
+    "Role-specific model routing validated on defects",
+    "One bounded outline patch instead of full regeneration"
+  ],
+  "not_a_forecast": "Token allowances are engineering targets, not demonstrated request sizes or quality outcomes."
+}

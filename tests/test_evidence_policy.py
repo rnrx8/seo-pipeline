@@ -56,6 +56,28 @@ class EvidencePolicyTests(unittest.TestCase):
         propose_optional_omissions(value['items'],plan,pages)
         self.assertEqual(value['items'],original)
 
+    def test_subject_main_source_can_support_omission_without_per_item_search(self):
+        plan,pages,value=fixture()
+        donor=value['items'][0]
+        donor.update(basis='primary',answer='公式に確認済み',evidence=[{
+            'url':pages[0]['url'],'quote':pages[0]['text'],'source_kind':'primary'}])
+        plan['items'].append({**plan['items'][0],'id':'q2','required':False,'priority':'supporting','question':'補助的な属性'})
+        optional={**copy.deepcopy(donor),'id':'q2','status':'unresearched','basis':'unresolved',
+                  'official_checked_urls':[],'exploration_reason':'','exploration_complete':False,'evidence':[]}
+        value['items'].append(optional)
+        validate_matrix(value,plan,pages)
+        original=copy.deepcopy(value)
+        propose_optional_omissions(value['items'],plan,pages)
+        self.assertEqual(optional['basis'],'omitted')
+        self.assertEqual(optional['omission_source_review']['source_question_ids'],['q1'])
+        self.assertFalse(optional['exploration_complete'])
+        self.assertFalse(validate_matrix(value,plan,pages))
+        for subject in ('B','共通'):
+            different=copy.deepcopy(plan);different['items'][1]['subject']=subject
+            v=copy.deepcopy(original)
+            propose_optional_omissions(v['items'],different,pages)
+            self.assertEqual(v['items'][1]['basis'],'unresolved')
+
     def test_overall_contradictions_are_routed_even_with_other_local_gaps(self):
         plan,pages,value=fixture()
         plan['items'].append({**plan['items'][0],'id':'q2'})

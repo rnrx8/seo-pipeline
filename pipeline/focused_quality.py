@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from .ai import create_with_retry, get_step_config
 from .content_edits import content_blocks
 from .readability import READABILITY_POLICY, readability_issues
+from .quality_context import review_requirements
 
 ROLES = {
     'evidence': ('evidence_support', 'comparison_conditions', 'metric_scope', 'unsupported_guarantees'),
@@ -45,7 +46,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
     phases = {}
     for role, keys in ROLES.items():
         # Source-heavy context is restricted to the roles that actually need it.
-        payload = {'current_date':datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements':requirements}
+        payload = {'current_date':datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
         if role in ('evidence','coverage'):
             payload.update(confirmed_facts=facts, outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources

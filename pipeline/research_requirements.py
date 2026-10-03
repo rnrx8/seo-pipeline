@@ -117,7 +117,7 @@ def matrix_policy():
     from .tiered_research import VERSION, POLICY
     from .source_spans import SPAN_POLICY
     extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
-    return digest(json.dumps(['research-matrix-v4-optional-coverage', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
+    return digest(json.dumps(['research-matrix-v5-subject-source-omission', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
 def load_plan(job_id):
@@ -283,12 +283,28 @@ def propose_optional_omissions(items, plan, pages):
     reject any proposal, including a mistaken priority in the original plan.
     """
     planned={q['id']:q for q in plan['items']}
+    reviewed={}
+    successful={p['url'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
+    for item in items:
+        if not item.get('verified') or item.get('basis')=='omitted':continue
+        subject=planned[item['id']].get('subject')
+        if not subject or subject=='共通':continue
+        for ref in item.get('evidence',[]):
+            if ref.get('source_kind')=='primary' and ref.get('url') in successful:
+                reviewed.setdefault(subject,{})[ref['url']]=item['id']
     for item in items:
         q=planned[item['id']]
         if (item.get('verified') or q.get('required') is not False
-            or q.get('priority') not in ('important','supporting')
-            or not major_sources_checked(item,pages)):
+            or q.get('priority') not in ('important','supporting')):
             continue
+        if not major_sources_checked(item,pages):
+            shared=reviewed.get(q.get('subject'))
+            if not shared:continue
+            # The approved prerequisite is subject-level main-source review,
+            # not separate exhaustive discovery for every optional question.
+            item['omission_source_review']={'subject':q['subject'],'source_question_ids':sorted(set(shared.values()))}
+            item['official_checked_urls']=sorted(shared)
+            item['exploration_reason']='同じ対象の確認済み回答で関連公式本文を照合済み。補助項目固有の探索完了・非公表を意味しない。'
         item['omission_candidate_from']={k:item.get(k) for k in ('status','basis','reason')}
         item.update(basis='omitted',status='searched_not_found',answer='',evidence=[],
             supports_current_conclusion=False,
