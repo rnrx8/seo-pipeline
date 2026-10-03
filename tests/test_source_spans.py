@@ -67,3 +67,18 @@ class CompactSpanTests(unittest.TestCase):
         self.assertEqual(len(index),2)
         for page in visible:
             self.assertEqual(index[page['excerpts'][0]['source_ref']]['url'],page['url'])
+
+class ScopedSchemaTests(unittest.TestCase):
+    def test_schema_only_allows_requested_ids_and_exact_count(self):
+        from pipeline.research_requirements import MATRIX_SCHEMA
+        original=copy.deepcopy(MATRIX_SCHEMA)
+        schema=span_schema(MATRIX_SCHEMA,['q01','q02'])
+        rows=schema['format']['schema']['properties']['items']
+        self.assertEqual(rows['required'],['q01','q02'])
+        self.assertEqual(set(rows['properties']),{'q01','q02'})
+        self.assertFalse(rows['additionalProperties'])
+        converted=expand_references({'items':{'q01':{'answer':'A','evidence':[]},'q02':{'answer':'B','evidence':[]}}},{})
+        self.assertEqual([row['id'] for row in converted['items']],['q01','q02'])
+        self.assertEqual(MATRIX_SCHEMA,original)
+        with self.assertRaises(ValueError):span_schema(MATRIX_SCHEMA,[])
+        with self.assertRaises(ValueError):span_schema(MATRIX_SCHEMA,['q01','q01'])

@@ -35,6 +35,23 @@ def resumable_pages(artifact, fresh, checked_on):
     return pages
 
 
+def restore_resume_sources(fresh, artifact, checked_on):
+    """Keep today's bodies and refresh older URLs before replacing the source set."""
+    pages = json.loads(artifact['content_text']) if artifact else []
+    restore_research_sources(fresh, resumable_pages(artifact, fresh, checked_on))
+    fresh.max_urls = min(200, max(fresh.max_urls, len(pages) + 40))
+    for page in pages:
+        url = page.get('url', '')
+        try:
+            fresh.check_allowed(url)
+        except (ValueError, TypeError):
+            continue
+        if url not in fresh.pages:
+            # Never relabel yesterday's body as freshly verified. Failed refreshes
+            # remain explicit source records instead of silently losing the URL.
+            fresh.fetch(url)
+
+
 SYSTEM_PROMPT = SOURCE_FRESHNESS_POLICY + "\n" + """\
 あなたは記事の根拠を収集する調査担当です。
 与えられた対象と質問に必要な資料だけを検索・直接取得する。無関係な求人・統計・トレンドを機械的に調べない。
@@ -193,7 +210,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     checked_on = current_check_date()
     previous=get_optional_artifact(job_id,'fresh_sources')
     if previous:
-        restore_research_sources(fresh,resumable_pages(previous,fresh,checked_on))
+        upsert_artifact(job_id=job_id,step='research_sources_before_resume',
+            content_type='application/json',content_text=previous['content_text'],meta=previous.get('meta',{}))
+        restore_resume_sources(fresh,previous,checked_on)
     fresh.prefetch()
     fresh.save(job_id)
 

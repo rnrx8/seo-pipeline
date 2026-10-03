@@ -20,6 +20,41 @@ class SimplifiedFlowTests(unittest.TestCase):
                {'url':'https://unknown.example','text':'no date'}]
         self.assertEqual(resumable_pages({'content_text':json.dumps(pages)},fresh,'2026-10-03'),[pages[0]])
 
+    def test_date_rollover_refreshes_old_source_without_restamping_old_text(self):
+        from pipeline.step_fact_sheet import restore_resume_sources
+        fresh=FreshSources({'never_reference_urls':'https://blocked.example'},[])
+        today={'url':'https://today.example','fetched_at':'2026-10-02T20:00:00+00:00','status':'success','text':'today'}
+        old={'url':'https://old.example','fetched_at':'2026-10-01T20:00:00+00:00','status':'success','text':'old price'}
+        blocked={**old,'url':'https://blocked.example'}
+        failed={'url':old['url'],'status':'failed','reason':'unavailable'}
+        def fetch(url):
+            fresh.pages[url]=failed
+            return failed
+        with patch.object(fresh,'fetch',side_effect=fetch) as read:
+            restore_resume_sources(fresh,{'content_text':json.dumps([today,old,blocked])},'2026-10-03')
+        read.assert_called_once_with(old['url'])
+        self.assertEqual(fresh.pages[today['url']],today)
+        self.assertEqual(fresh.pages[old['url']],failed)
+        self.assertNotIn(blocked['url'],fresh.pages)
+
+    def test_official_visit_matching_uses_fetch_url_normalization(self):
+        from pipeline.research_requirements import major_sources_checked
+        pages=[{'url':'https://example.com','status':'success','text':'official body'}]
+        item={'official_checked_urls':['https://example.com/'],'exploration_reason':'Read official page'}
+        self.assertTrue(major_sources_checked(item,pages))
+        item['official_checked_urls']=['https://different.example/']
+        self.assertFalse(major_sources_checked(item,pages))
+        item['official_checked_urls']=['invalid']
+        self.assertFalse(major_sources_checked(item,pages))
+
+    def test_corroboration_accepts_official_url_with_trailing_slash(self):
+        plan,pages,value=fixture()
+        pages[0]['url']='https://official.example'
+        value['items'][0]['official_checked_urls']=['https://official.example/']
+        self.assertEqual(requirements.validate_matrix(value,plan,pages),[])
+        value['items'][0]['official_checked_urls']=['https://other.example/']
+        self.assertTrue(requirements.validate_matrix(value,plan,pages))
+
     def test_many_questions_share_one_subject_collection(self):
         plan, _, _ = fixture()
         plan['items'] = [{**plan['items'][0], 'id':f'q{i}'} for i in range(23)]

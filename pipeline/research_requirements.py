@@ -3,6 +3,7 @@ import json
 import re
 from urllib.parse import urlsplit
 from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION
+from .fresh_sources import normalize_url
 import anthropic
 from .ai import create_with_retry, get_step_config, is_openai_model
 from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact, get_service_by_id, get_company_settings
@@ -271,10 +272,10 @@ def major_sources_checked(item, pages):
     This is a prerequisite for proposing omission, not evidence of absence.
     It does not require item-specific exhaustive search certification.
     """
-    attempted=item.get('official_checked_urls',[])
-    bodies={p['url'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
-    visited={p['url'] for p in pages}
-    return (bool(attempted) and all(u in visited for u in attempted)
+    attempted=[normalize_url(u) for u in item.get('official_checked_urls',[])]
+    bodies={normalize_url(p['url']) for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
+    visited={normalize_url(p['url']) for p in pages}
+    return (bool(attempted) and all(u and u in visited for u in attempted)
             and any(u in bodies for u in attempted)
             and bool(item.get('exploration_reason','').strip()))
 
@@ -340,9 +341,9 @@ def validate_matrix(value, plan_value, pages):
         planned = required[item['id']]
         if 'priority' in planned:
             basis = item.get('basis')
-            attempted = item.get('official_checked_urls', [])
-            visited = {p['url'] for p in pages}
-            explored = bool(attempted) and all(u in visited for u in attempted) and item.get('exploration_complete') is True and bool(item.get('exploration_reason','').strip())
+            attempted = [normalize_url(u) for u in item.get('official_checked_urls', [])]
+            visited = {normalize_url(p['url']) for p in pages}
+            explored = bool(attempted) and all(u and u in visited for u in attempted) and item.get('exploration_complete') is True and bool(item.get('exploration_reason','').strip())
             primary = any(r.get('source_kind') == 'primary' for r in refs)
             expert = (planned['source_requirement'] == 'expert_allowed' and any(
                 r.get('source_kind') == 'secondary' and r.get('expert_name','').strip()

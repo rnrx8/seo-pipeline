@@ -34,20 +34,33 @@ def indexed_sources(pages):
     return result,index
 
 
-def span_schema(matrix_schema):
+def span_schema(matrix_schema, question_ids=None):
     result=copy.deepcopy(matrix_schema)
+    if question_ids is not None:
+        ids=list(question_ids)
+        if not ids or len(set(ids))!=len(ids):raise ValueError('Question IDs must be nonempty and unique')
+        # Assigned below after converting evidence fields.
     evidence=result['format']['schema']['properties']['items']['items']['properties']['evidence']['items']
     evidence['properties'].pop('url')
     evidence['required'].remove('url')
     for original,replacement in [('quote','source_ref'),('expert_qualification_quote','expert_source_ref')]:
         evidence['properties'][replacement]=evidence['properties'].pop(original)
         evidence['required']=[replacement if key==original else key for key in evidence['required']]
+    if question_ids is not None:
+        row=result['format']['schema']['properties']['items']['items']
+        row['properties'].pop('id')
+        row['required'].remove('id')
+        result['format']['schema']['properties']['items']={
+            'type':'object','properties':{key:copy.deepcopy(row) for key in ids},
+            'required':ids,'additionalProperties':False}
     return result
 
 
 def expand_references(value,index):
     """Invalid IDs fail closed; source selection is not a semantic approval."""
     result=copy.deepcopy(value)
+    if isinstance(result.get('items'),dict):
+        result['items']=[{**row,'id':key} for key,row in result['items'].items()]
     for item in result['items']:
         bad=False
         for ref in item['evidence']:

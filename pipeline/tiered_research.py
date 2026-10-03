@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v3-compact-context'
+VERSION='tiered-research-v4-keyed-question-responses'
 POLICY='''
 各質問は記事の検索意図に必要な範囲で回答する。質問文に複数の細目があっても、非必須項目の細部を際限なく追わない。確認できた範囲に回答を限定し、その限定で主要な判断が成立するなら採用する。条件や数値を捏造しない。
 存在するかという質問は該当例と条件を示せれば回答可能。全対象の不存在の証明を追加要求しない。
@@ -93,7 +93,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   payload={'article_plan':{**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in ids]},
            'plan':{**scope,'items':questions},'sources':model_sources,
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
-  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA),
+  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions]),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
   print('[tiered] Screen '+subject,flush=True)
   value,usage=checked_request(job_id,f'tiered_screen_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
@@ -107,6 +107,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    payload['article_plan']={**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in pending_ids]}
    payload['candidate_answers']=pending
    request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。回答対象はplan.itemsのみ。')
+   request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
@@ -126,6 +127,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
      request['max_tokens']=min(10000,2000+len(pending)*900)
      request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
     if pending:
+     request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
      print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
      second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
      second=expand_references(second,source_index)
