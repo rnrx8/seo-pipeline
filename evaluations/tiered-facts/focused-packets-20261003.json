@@ -1,0 +1,234 @@
+{
+  "api_calls": 0,
+  "runtime_enabled": false,
+  "quality_validated": false,
+  "all_questions_preserved": true,
+  "original_sol_questions": 19,
+  "routing": {
+    "sample": 5,
+    "complex_evidence": 5,
+    "required_lookup": 1,
+    "optional_resolution": 8
+  },
+  "initial_sol_input_local_tokens": 56350,
+  "initial_sol_input_with_20_percent_margin": 67620,
+  "fits_60000_initial_input_with_margin": false,
+  "initial_sol_cost_scenario_usd": 0.26905,
+  "initial_sol_output_cap_scenario": 10000,
+  "pricing_basis": "Existing conservative repository constants, not current invoice or provider quote",
+  "source_records_in_store": 202,
+  "source_records_in_initial_audit": 15,
+  "all_previously_visible_source_records_retained": true,
+  "no_full_source_claim": "Sources preserve prior excerpt/truncation boundaries. Not necessarily complete fetched web pages.",
+  "expansion_requests_unmeasured": true,
+  "lookup_cost_unmeasured": true,
+  "model_quality_unmeasured": true,
+  "entire_300_yen_budget_proven": false,
+  "saved_lookup_scenarios": [
+    {
+      "origin": "tiered_adjudication_3",
+      "questions": [
+        "q34"
+      ],
+      "sources": 1,
+      "input_local_tokens": 7926,
+      "input_with_margin": 9512,
+      "output_cap": 6000,
+      "luna_scenario_usd": 0.004189
+    },
+    {
+      "origin": "tiered_adjudication_8",
+      "questions": [
+        "q86"
+      ],
+      "sources": 2,
+      "input_local_tokens": 12735,
+      "input_with_margin": 15282,
+      "output_cap": 6000,
+      "luna_scenario_usd": 0.00491025
+    },
+    {
+      "origin": "tiered_adjudication_11",
+      "questions": [
+        "q89"
+      ],
+      "sources": 0,
+      "input_local_tokens": 3796,
+      "input_with_margin": 4556,
+      "output_cap": 6000,
+      "luna_scenario_usd": 0.0035695
+    },
+    {
+      "origin": "tiered_adjudication_12",
+      "questions": [
+        "q92"
+      ],
+      "sources": 2,
+      "input_local_tokens": 6843,
+      "input_with_margin": 8212,
+      "output_cap": 6000,
+      "luna_scenario_usd": 0.0040265
+    },
+    {
+      "origin": "tiered_adjudication_7",
+      "questions": [
+        "q83",
+        "q85",
+        "q90",
+        "q91",
+        "q110"
+      ],
+      "sources": 2,
+      "input_local_tokens": 8655,
+      "input_with_margin": 10386,
+      "output_cap": 6000,
+      "luna_scenario_usd": 0.00429825
+    }
+  ],
+  "saved_lookup_scenario_usd": 0.0209935,
+  "lookup_scenario_excludes_new_search_or_sol_fallback": true,
+  "missing_price_excerpt_proof": {
+    "recorded_screen_request_exactly_matched": true,
+    "stored_body_chars": 5576,
+    "original_model_view_contains_price_and_tax": true,
+    "equal_allocation_contains_price_and_tax": true,
+    "redistributed_allocation_contains_price_and_tax": true,
+    "full_saved_body_contains_month_and_tax": true,
+    "automatic_fact_verdict_produced": false
+  },
+  "queues": [
+    {
+      "id": "q15",
+      "subject": "既婚者クラブ",
+      "route": "sample",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q24",
+      "subject": "ヒールメイト",
+      "route": "sample",
+      "required": true,
+      "approved": false
+    },
+    {
+      "id": "q26",
+      "subject": "ヒールメイト",
+      "route": "sample",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q50",
+      "subject": "マリーゴー",
+      "route": "complex_evidence",
+      "required": true,
+      "approved": false
+    },
+    {
+      "id": "q53",
+      "subject": "マリーゴー",
+      "route": "complex_evidence",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q54",
+      "subject": "マリーゴー",
+      "route": "complex_evidence",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q71",
+      "subject": "アネモネ",
+      "route": "sample",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q72",
+      "subject": "既婚マッチ",
+      "route": "sample",
+      "required": true,
+      "approved": false
+    },
+    {
+      "id": "q93",
+      "subject": "既婚マッチ",
+      "route": "complex_evidence",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q84",
+      "subject": "共通",
+      "route": "complex_evidence",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q34",
+      "subject": "カドル",
+      "route": "required_lookup",
+      "required": true,
+      "approved": false
+    },
+    {
+      "id": "q86",
+      "subject": "Pairs",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q89",
+      "subject": "タップル",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q92",
+      "subject": "Layer",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q83",
+      "subject": "共通",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q85",
+      "subject": "共通",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q90",
+      "subject": "共通",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q91",
+      "subject": "共通",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    },
+    {
+      "id": "q110",
+      "subject": "共通",
+      "route": "optional_resolution",
+      "required": false,
+      "approved": false
+    }
+  ]
+}

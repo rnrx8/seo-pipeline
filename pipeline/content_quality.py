@@ -61,6 +61,19 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def source_body_limits(pages: dict, max_chars: int) -> dict:
+    """Share unused short-page capacity before clipping longer documents.
+
+    No page gets less space than equal division. Preserve the existing minimum
+    one-character convention when the requested budget is smaller than page count.
+    """
+    remaining=max(len(pages),max_chars);count=len(pages);limits={}
+    for url,page in sorted(pages.items(),key=lambda p:(len(p[1]['text']),p[0])):
+        limit=min(len(page['text']),max(1,remaining//count))
+        limits[url]=limit;remaining-=limit;count-=1
+    return limits
+
+
 def source_evidence(*artifacts: dict, max_chars: int = 180000) -> str:
     """Keep current fetched bodies available to auditors, not just AI summaries.
 
@@ -74,9 +87,11 @@ def source_evidence(*artifacts: dict, max_chars: int = 180000) -> str:
                 pages[page['url']] = page
     if not pages:
         raise ContentQualityError('内容検査に必要な直接取得本文がありません。')
-    limit = max(1, max_chars // len(pages))
+    limits = source_body_limits(pages,max_chars)
+    previous_share=max(1,max_chars//len(pages))
     result = []
     for url, page in sorted(pages.items()):
+        limit=limits[url]
         text = page['text']
         clipped = len(text) > limit
         if clipped:
@@ -92,7 +107,10 @@ def source_evidence(*artifacts: dict, max_chars: int = 180000) -> str:
                 if start<0:continue
                 piece=text[max(0,positions[start]-120):min(len(text),positions[start+len(needle)-1]+121)]
                 if any(piece in prior for prior in snippets):continue
-                if used+len(piece)+24>limit:continue
+                # Retain the former quote selection before expanding head/tail.
+                # Newly fitting quotes must not displace previously visible
+                # headers or conditions when short-page capacity is redistributed.
+                if used+len(piece)+24>min(limit,previous_share):continue
                 snippets.append(piece);used+=len(piece)+24
             half=max(0,(limit-used)//2)
             text = '\n[中略：取得本文の抜粋]\n'.join(snippets + ([text[:half],text[-half:]] if half else []))
