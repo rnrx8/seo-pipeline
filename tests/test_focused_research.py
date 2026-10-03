@@ -33,6 +33,8 @@ class FocusedResearchTests(unittest.TestCase):
             self.calls.append((request,payload))
             result=copy.deepcopy(responder(request,payload))
             for item in result.get('items',[]):
+                if 'candidate_answers' in payload:
+                    item.setdefault('additional_sources_needed',result.get('needs_more_sources',False))
                 for ref in item['evidence']:
                     page=next(p for p in payload['sources'] if p['url']==ref['url'])
                     ref['source_ref']=next(e['source_ref'] for e in page['excerpts'] if ref['quote'] in e['text'])
@@ -119,7 +121,7 @@ class FocusedResearchTests(unittest.TestCase):
 
     def test_bad_source_id_cannot_be_promoted_by_full_source_validation(self):
         with patch.object(tiered,'checked_request',return_value=({**self.answer,'needs_more_sources':False,'items':[
-            {**self.answer['items'][0],'evidence':[{'source_ref':'invented','expert_source_ref':'','source_kind':'primary'}]}]},NS(input_tokens=0,output_tokens=0))):
+            {**self.answer['items'][0],'additional_sources_needed':False,'evidence':[{'source_ref':'invented','expert_source_ref':'','source_kind':'primary'}]}]},NS(input_tokens=0,output_tokens=0))):
             result,_=focused.review_pending('same-job',1,self.unknown(),self.plan['items'],self.plan,{},self.pages,self.pages,[])
         self.assertFalse(result['items'][0]['verified'])
         self.assertTrue(validate_matrix(result,self.plan,self.pages))
@@ -171,6 +173,7 @@ class FocusedResearchTests(unittest.TestCase):
             ref=next(e['source_ref'] for e in official['excerpts'] if '新しく見える料金' in e['text'])
             result['items'][0]['evidence'][0]['source_ref']=ref
             result['needs_more_sources']=False
+            for item in result['items']:item['additional_sources_needed']=False
             return result,NS(input_tokens=0,output_tokens=0)
         with patch.object(tiered,'checked_request',side_effect=request):
             result,_=focused.review_pending('same-job',1,self.unknown(),self.plan['items'],self.plan,{},self.pages,original,[])
@@ -189,3 +192,47 @@ class FocusedResearchTests(unittest.TestCase):
                     focused.review_pending('same-job',1,self.unknown(),self.plan['items'],self.plan,{},self.pages,self.pages,[])
                 post.assert_not_called()
             with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),1)
+
+    def test_one_unresolved_question_does_not_erase_verified_neighbor(self):
+        self.plan['items'][0]['source_requirement']='primary_only'
+        self.plan['items'].append({**self.plan['items'][0],'id':'q2'})
+        good=copy.deepcopy(self.answer['items'][0])
+        good.update(basis='primary',answer='公式の記載',evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text'],'source_kind':'primary'}])
+        def respond(request,payload):
+            if 'decisions' in payload:
+                return dict(coverage_sufficient=False,coverage_reason='q2 still required',coverage_issues=[{'id':'q2','reason':'missing'}])
+            ids=[q['id'] for q in payload['plan']['items']]
+            rows=[{**copy.deepcopy(good),'id':key,'additional_sources_needed':key=='q2'} for key in ids]
+            if 'candidate_answers' not in payload:
+                for row in rows:row['additional_sources_needed']=False
+            return {'items':rows,'coverage_sufficient':True,'coverage_reason':'fixture'}
+        result,_=self.run_flow(respond)
+        self.assertTrue(result['items'][0]['verified'])
+        self.assertEqual(result['items'][0]['answer'],'公式の記載')
+        self.assertFalse(result['items'][1]['verified'])
+        self.assertEqual(result['items'][1]['answer'],'')
+        self.assertEqual(result['items'][1]['unresolved_candidate']['answer'],'公式の記載')
+        audits=[p for r,p in self.calls if 'candidate_answers' in p]
+        self.assertEqual([[q['id'] for q in p['plan']['items']] for p in audits],[['q1','q2'],['q2']])
+        self.assertEqual(len(self.calls),4)
+
+    def test_missing_per_question_source_decision_is_rejected(self):
+        with patch.object(tiered,'checked_request',return_value=(self.answer,NS(input_tokens=0,output_tokens=0))):
+            with self.assertRaisesRegex(ContentQualityError,'質問別'):
+                focused.review_pending('same-job',1,self.unknown(),self.plan['items'],self.plan,{},self.pages,self.pages,[])
+
+    def test_common_question_receives_verified_answers_with_conditions(self):
+        self.plan['items'].append({**self.plan['items'][0],'id':'q2','subject':'共通','question':'Aの料金を条件付きで比較'})
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            ids=[q['id'] for q in payload['plan']['items']]
+            return {**self.answer,'items':[{**copy.deepcopy(self.answer['items'][0]),'id':key} for key in ids],'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        common=[p for r,p in self.calls if p.get('plan',{}).get('items',[{}])[0].get('id')=='q2']
+        self.assertTrue(common)
+        for p in common:
+            prior=p['related_verified_answers'][0]
+            self.assertEqual(prior['id'],'q1')
+            self.assertEqual(prior['applicable_at'],'2025年1月')
+            self.assertFalse(prior['supports_current_conclusion'])
+            self.assertTrue(prior['evidence'])

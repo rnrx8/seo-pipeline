@@ -308,6 +308,8 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
     for turn in range(max_rounds):
         # Reserve the final response for an honest result, not another tool loop.
         final_turn={'tool_choice':{'type':'none'}} if turn==max_rounds-1 else {}
+        if final_turn:
+            messages.append({'role':'user','content':'調査の取得工程はここで終了です。これまで取得した本文だけを使い、担当質問ごとの回答・出典・条件を本文として出力してください。不明な項目は未確認と理由を明記し、空の応答や追加のツール要求では終えないでください。'})
         resp = create(client, model=model, max_tokens=max_tokens, system=system + DIRECT_POLICY,
                       tools=[search_tool, FETCH_TOOL], messages=messages,
                       **({'extra_headers':{'anthropic-beta': 'web-search-2025-03-05'}} if search_handler is None else {}), **caching, **final_turn)
@@ -351,5 +353,7 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
             raise ValueError('出典確認の応答が完了しませんでした。再実行してください。')
         resp.usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
         raw = '\n\n'.join(b.text for b in resp.content if getattr(b, 'type', '') == 'text')
+        if not raw.strip():
+            raise ValueError('調査の最終回答が空です。調査完了として保存しません。')
         return resp, raw, queries, observed
     raise ValueError('出典確認の回数上限に達しました。再実行してください。')

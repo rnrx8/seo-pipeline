@@ -9,6 +9,10 @@ from .fresh_sources import extract_urls
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
 VERSION='tiered-research-v4-keyed-question-responses'
 POLICY='''
+previous_findingsは前回の全体確認で指摘された具体的な不足。previous_candidates・omission_candidate_from・unresolved_candidateは未採用の参考情報であり、確認済み事実ではない。資料から再確認し、根拠のある部分と未確認部分を分ける。参考情報だけで合格にしない。
+related_verified_answersは他の対象で確認できた回答と条件。横断質問では該当例をこの情報と提示原文で照合し、回答範囲を限定する。別の質問へ合格を自動転記せず、出典は今回のsourcesから選ぶ。
+複数の細目を含む質問は、主要な判断に十分な確認済み部分と未確認の細目を区別する。補助的な会員数が不明だから確認済みの利用エリアまで削除するなど、一括省略しない。
+
 各質問は記事の検索意図に必要な範囲で回答する。質問文に複数の細目があっても、非必須項目の細部を際限なく追わない。確認できた範囲に回答を限定し、その限定で主要な判断が成立するなら採用する。条件や数値を捏造しない。
 存在するかという質問は該当例と条件を示せれば回答可能。全対象の不存在の証明を追加要求しない。
 関連公式と補助資料を探索済みの非必須情報は、なお不明なら本稿で使わない理由を記録して省略する。資料抜粋の欠落を非公表・不存在としない。別対象の確認済みの強みは残す。
@@ -66,10 +70,12 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
  from .research_requirements import MATRIX_SYSTEM,MATRIX_SCHEMA,validate_matrix,propose_optional_omissions
  from .research_verification import COVERAGE_SYSTEM,subject_sources
  records=collection_records(job_id,get_optional_artifact)
- history=[]
+ history=[];previous_issues=[]
  for n in range(1,4):
   old=get_optional_artifact(job_id,f'research_matrix_{n}')
-  if old:history.extend(json.loads(old['content_text']).get('items',[]))
+  if old:
+   prior=json.loads(old['content_text'])
+   history.extend(prior.get('items',[]));previous_issues.extend(prior.get('coverage_issues',[]))
  grouped={}
  for q in plan['items']:grouped.setdefault(q['subject'],[]).append(q)
  # Reviewers need editorial scope, not policy hashes or past repair bookkeeping.
@@ -85,13 +91,21 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   if subject=='共通':
    related={q['id'] for name,qs in grouped.items() if name!='共通' and any(name in q['question'] for q in questions) for q in qs}
    hints.extend(i for i in items if i['id'] in related)
-  for h in hints:
+  related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','supports_current_conclusion')} |
+                   {'evidence':[{k:r.get(k) for k in ('url','source_kind')} for r in i.get('evidence',[])]}
+                   for i in items if subject=='共通' and i['id'] in related and i.get('verified') and i.get('basis')!='omitted']
+  evidence_hints=[row for h in hints for row in (h,h.get('omission_candidate_from'),h.get('unresolved_candidate')) if isinstance(row,dict)]
+  for h in evidence_hints:
    urls.update(r['url'] for r in h.get('evidence',[]));urls.update(h.get('official_checked_urls',[]))
+  issue_ids={i.get('id') for i in previous_issues}
+  previous_candidates=list({i['id']:i for i in hints if i.get('id') in ids and (i['id'] in issue_ids or not i.get('verified'))}.values())
   selected=subject_sources(pages,urls) if urls else pages
-  packed=packed_sources(selected,hints)
+  packed=packed_sources(selected,evidence_hints)
   model_sources,source_index=indexed_sources(packed)
   payload={'article_plan':{**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in ids]},
-           'plan':{**scope,'items':questions},'sources':model_sources,
+           'plan':{**scope,'items':questions},'sources':model_sources,'related_verified_answers':related_answers,
+           'previous_findings':[i for i in previous_issues if i.get('id') in ids],
+           'previous_candidates':[{k:i.get(k) for k in ('id','answer','reason','omission_candidate_from','unresolved_candidate')} for i in previous_candidates],
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
   request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions]),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
@@ -112,7 +126,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
    if focused_enabled() and paid_legacy is None:
-    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'])
+    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'],related_answers=related_answers)
     inputs+=usage.input_tokens;outputs+=usage.output_tokens
    else:
     # Keep already-paid identical factual checks. For new work, offer eligible
@@ -139,7 +153,9 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
  schema={'format':{'type':'json_schema','schema':{'type':'object','properties':{
   'coverage_sufficient':{'type':'boolean'},'coverage_reason':{'type':'string'},'coverage_issues':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},'required':['coverage_sufficient','coverage_reason','coverage_issues'],'additionalProperties':False}}}
  propose_optional_omissions(items,plan,pages)
- decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason')} for i in items]
+ # Recompute item status before coverage reads it, including omission candidates.
+ validate_matrix({'items':items,'coverage_sufficient':True,'coverage_reason':'item validation only'},plan,pages)
+ decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
  overall,usage=checked_request(job_id,'tiered_coverage',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens

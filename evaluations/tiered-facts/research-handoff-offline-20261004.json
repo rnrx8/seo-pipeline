@@ -1,0 +1,56 @@
+{
+  "api_calls_this_work": 0,
+  "article_completed": false,
+  "live_quality_validated": false,
+  "normal_steps": [
+    "serp",
+    "search_intent",
+    "research_plan",
+    "fact_sheet",
+    "research_completeness",
+    "reference_structure",
+    "content_contract",
+    "outline",
+    "structure_guard",
+    "research_validation",
+    "service_map",
+    "article",
+    "cta_inject",
+    "content_audit",
+    "final_structure_validation"
+  ],
+  "five_roles": [
+    "evidence",
+    "coverage",
+    "language",
+    "consistency",
+    "organization"
+  ],
+  "planned_questions": 102,
+  "subjects": 12,
+  "all_subject_schemas_keep_exact_ids": true,
+  "saved_global_flag_cases": [
+    {
+      "artifact": "tiered_focused_7_reread_expanded.json",
+      "sha256": "1f7a6efc4dda667267c3f1da5639cf0119e6d0bb4837488525b45ad363203aa7",
+      "global_more_sources": true,
+      "questions": 4,
+      "nonempty_candidate_answers": 2,
+      "new_model_verdict_inferred": false
+    },
+    {
+      "artifact": "tiered_focused_1_reread_expanded.json",
+      "sha256": "449260d079eef8038a417ee715e2d77eb6bb866206975f2caae11fd2107003f2",
+      "global_more_sources": true,
+      "questions": 1,
+      "nonempty_candidate_answers": 0,
+      "new_model_verdict_inferred": false
+    }
+  ],
+  "ledger_calls": 100,
+  "ledger_cost_with_unknown_reservations_usd": 3.6860410250000006,
+  "ledger_total_limit_usd": 10.0,
+  "ledger_sha256": "b77d445fdd5d6d784a414d9f2819fffe6c8c26a12896275777ad70b1d0fee684",
+  "unresolved_previous_gap_count": 12,
+  "tests_passed": 352
+}

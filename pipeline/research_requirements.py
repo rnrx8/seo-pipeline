@@ -309,7 +309,7 @@ def propose_optional_omissions(items, plan, pages):
             item['omission_source_review']={'subject':q['subject'],'source_question_ids':sorted(set(shared.values()))}
             item['official_checked_urls']=sorted(shared)
             item['exploration_reason']='同じ対象の確認済み回答で関連公式本文を照合済み。補助項目固有の探索完了・非公表を意味しない。'
-        item['omission_candidate_from']={k:item.get(k) for k in ('status','basis','reason')}
+        item.setdefault('omission_candidate_from',{k:item.get(k) for k in ('status','basis','reason','answer','evidence','applicable_at','supports_current_conclusion')})
         item.update(basis='omitted',status='searched_not_found',answer='',evidence=[],
             supports_current_conclusion=False,
             omission_reason='主要な関連公式資料を確認済みだが、この補助情報は未確認のため本文に使用しない。'
@@ -459,7 +459,9 @@ def verify(job_id, keyword, api_key=None):
     previous=get_optional_artifact(job_id,'research_matrix')
     pending=resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
-    first_attempt=0
+    supplement=get_optional_artifact(job_id,'research_supplement')
+    # A policy update invalidates verdicts, not the already-used retrieval budget.
+    first_attempt=1 if supplement and json.loads(supplement['content_text']).get('status')=='completed' else 0
     if pending:
         first_attempt,pending_gaps=pending
         if first_attempt>=2:raise ContentQualityError('追加調査の上限まで確認済みです。同じ不合格を自動再試行しません。')

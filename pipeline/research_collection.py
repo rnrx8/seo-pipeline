@@ -74,7 +74,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             'gaps':gap_rows,'system':system+DIRECT_POLICY,'prompt':prompt,'model':model,
             'search_tool':tool,'fetch_tool':FETCH_TOOL,'max_rounds':rounds,'max_tokens':tokens},ensure_ascii=False,sort_keys=True))
         receipt=get_optional_artifact(job_id,'collection_receipt_'+request_key)
-        if receipt and receipt.get('meta',{}).get('result_sha256')==digest(receipt.get('content_text','')):
+        if receipt and receipt.get('content_text','').strip() and receipt.get('meta',{}).get('result_sha256')==digest(receipt.get('content_text','')):
             if receipt['meta'].get('sources_sha256')==source_fingerprint(fresh.pages,receipt['meta'].get('source_urls',[])):
                 upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',
                     content_text=receipt['content_text'],meta=receipt['meta'])
@@ -100,6 +100,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             fresh.fetch_confirmed_citations(note)
         finally:
             fresh.save(job_id)
+        if not note.strip():raise ContentQualityError('調査回答が空のため完了記録を作成しません。')
         used_urls = set(extract_urls(note)) | (set(fresh.pages)-prior_urls)
         for old_subject in prior_subject:
             # A focused retry may omit previously answered questions from its note.

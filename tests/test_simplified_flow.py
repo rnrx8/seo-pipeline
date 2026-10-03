@@ -55,6 +55,30 @@ class SimplifiedFlowTests(unittest.TestCase):
         value['items'][0]['official_checked_urls']=['https://other.example/']
         self.assertTrue(requirements.validate_matrix(value,plan,pages))
 
+    def test_empty_final_research_response_is_not_a_completed_collection(self):
+        fresh=FreshSources({},[])
+        resp=NS(content=[],stop_reason='end_turn',usage=NS(input_tokens=3,output_tokens=0))
+        create=Mock(return_value=resp)
+        with self.assertRaisesRegex(ValueError,'最終回答が空'):
+            run_with_fetch(None,create=create,model='fixture',max_tokens=10,system='',prompt='',
+                           search_tool={},fresh=fresh,max_rounds=1)
+        self.assertEqual(create.call_count,1)
+        self.assertEqual(create.call_args.kwargs['tool_choice'],{'type':'none'})
+        self.assertIn('担当質問',create.call_args.kwargs['messages'][-1]['content'])
+
+    def test_omission_keeps_unverified_candidate_for_coverage_but_not_publication(self):
+        plan,pages,value=fixture('supporting')
+        item=value['items'][0]
+        item.update(verified=False,status='unresearched',basis='unresolved')
+        prior=copy.deepcopy(item)
+        requirements.propose_optional_omissions(value['items'],plan,pages)
+        self.assertEqual(item['omission_candidate_from']['answer'],prior['answer'])
+        self.assertEqual(item['omission_candidate_from']['evidence'],prior['evidence'])
+        self.assertEqual(item['answer'],'')
+        requirements.propose_optional_omissions(value['items'],plan,pages)
+        self.assertEqual(item['omission_candidate_from']['answer'],prior['answer'])
+        self.assertNotIn(prior['answer'],requirements.accepted_facts(value,plan))
+
     def test_many_questions_share_one_subject_collection(self):
         plan, _, _ = fixture()
         plan['items'] = [{**plan['items'][0], 'id':f'q{i}'} for i in range(23)]
@@ -148,6 +172,6 @@ class SimplifiedFlowTests(unittest.TestCase):
             run_with_fetch(None,create=create,model='test',max_tokens=100,system='',prompt='',search_tool={},fresh=fresh,max_rounds=3)
         self.assertEqual(len(calls),3)
         self.assertEqual(calls[-1]['tool_choice'],{'type':'none'})
-        repeated=json.loads(calls[-1]['messages'][-1]['content'][0]['content'])
+        repeated=json.loads(calls[-1]['messages'][-2]['content'][0]['content'])
         self.assertTrue(repeated['already_in_context'])
         self.assertNotIn(page['text'],repeated['text'])

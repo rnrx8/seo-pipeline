@@ -37,6 +37,27 @@ class ResearchResumeTests(unittest.TestCase):
         self.assertTrue(saved['meta']['valid'])
         self.assertEqual(json.loads(saved['content_text'])['attempt'],2)
 
+    def test_policy_change_does_not_reset_completed_supplement(self):
+        from pipeline import research_requirements as req
+        plan,pages,result=fixture()
+        result['items'][0].update(status='unresearched',basis='unresolved')
+        records={'research_matrix':{'content_text':json.dumps({'valid':False,'attempt':1,'policy_sha256':'old'})},
+                 'research_supplement':{'content_text':json.dumps({'status':'completed','request_sha256':'old'})}}
+        artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
+        with patch.object(req,'load_plan',return_value=plan), \
+             patch.object(req,'get_optional_artifact',side_effect=lambda j,s:records.get(s)), \
+             patch.object(req,'refresh_dynamic_sources'), \
+             patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:records.update({kw['step']:kw}) or kw), \
+             patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
+             patch.object(req,'supplement_once') as supplement, \
+             patch.object(r,'audit_matrix',return_value=(result,SimpleNamespace(input_tokens=0,output_tokens=0))) as audit:
+            with self.assertRaises(req.ContentQualityError):req.verify('j','query')
+        supplement.assert_not_called()
+        self.assertEqual(audit.call_count,1)
+        self.assertEqual(json.loads(records['research_matrix']['content_text'])['attempt'],2)
+        self.assertFalse(records['research_matrix']['meta']['valid'])
+
     def run_case(self, change=None, unresolved=False):
         plan,pages,result=fixture()
         if unresolved:result['items'][0].update(status='unresearched',basis='unresolved')

@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v1'
+VERSION = 'focused-research-v2-item-source-needs'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -13,7 +13,8 @@ READ_POLICY = '''
 FOCUS_POLICY = '''
 候補回答の全主張を原文で独立確認する。資料は引用先・確認済みURLを優先提示している。
 source_catalogには本文を今回提示していない資料も含む。反証や別条件の確認に追加資料が
-必要ならneeds_more_sources=trueを返す。その場合、今回の合格判定は採用されない。
+必要なら該当する質問のadditional_sources_needed=trueを返す。その質問だけ未確認として扱う。
+他の質問に不足があることを理由に、根拠が揃った回答まで未確認に戻さない。
 sources_complete=trueは保存済み対象ページの集合を提示済みという意味。各本文はtruncatedなら抜粋であり、全文の提示やウェブ全体の探索完了ではない。
 それでも不足なら未確認を返す。全体の網羅性は別工程で検査する。
 '''
@@ -24,9 +25,10 @@ def enabled():
 
 
 def related_pages(pages, candidates):
-    urls = {u for i in candidates for u in i.get('official_checked_urls', [])}
-    urls.update(r['url'] for i in candidates for r in i.get('evidence', []))
-    selected = [p for p in pages if p['url'] in urls]
+    from .fresh_sources import normalize_url
+    urls = {normalize_url(u) for i in candidates for u in i.get('official_checked_urls', [])}
+    urls.update(normalize_url(r['url']) for i in candidates for r in i.get('evidence', []))
+    selected = [p for p in pages if normalize_url(p['url']) in urls]
     # An unavailable official body is not a reason to hide saved secondary sources.
     return selected if any(p.get('text') and p.get('status', 'success') == 'success' for p in selected) else pages
 
@@ -46,7 +48,7 @@ def merge_visible_sources(original, reread):
     return result
 
 
-def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches):
+def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches, related_answers=None):
     from .research_requirements import MATRIX_SCHEMA, MATRIX_SYSTEM, propose_optional_omissions
     from .source_spans import indexed_sources, span_schema, expand_references, SPAN_POLICY
     from .tiered_research import checked_request, needs_adjudication, packed_sources, validate_visible_matrix, POLICY
@@ -66,11 +68,13 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         schema = span_schema(MATRIX_SCHEMA, [q['id'] for q in questions if q['id'] in ids])
         if expandable:
             root = schema['format']['schema']
-            root['properties']['needs_more_sources'] = {'type':'boolean'}
-            root['required'].append('needs_more_sources')
+            for row in root['properties']['items']['properties'].values():
+                row['properties']['additional_sources_needed']={'type':'boolean'}
+                row['required'].append('additional_sources_needed')
         payload = {'plan':{**scope, 'items':[q for q in questions if q['id'] in ids]},
                    'article_plan':{**compact_plan, 'items':[q for q in compact_plan['items'] if q['id'] not in ids]},
-                   'candidate_answers':candidates, 'sources':sources, 'source_catalog':catalog,
+                   'candidate_answers':candidates, 'related_verified_answers':related_answers or [],
+                   'sources':sources, 'source_catalog':catalog,
                    'source_revision':source_revision, 'sources_complete':complete, 'searches':searches}
         request = dict(model=model, max_tokens=min(6000 if model == 'gpt-6-luna' else 10000, 2000+len(ids)*900),
                        system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+policy+'\n回答対象はplan.itemsのみ。',
@@ -78,9 +82,11 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         result, usage = checked_request(job_id, f'tiered_focused_{index}_{step}', request)
         inputs += usage.input_tokens
         outputs += usage.output_tokens
-        if expandable and type(result.get('needs_more_sources')) is not bool:
-            raise ContentQualityError('資料追加の要否が不正です。')
         result = expand_references(result, source_index)
+        if expandable:
+            if any(type(i.get('additional_sources_needed')) is not bool for i in result['items']):
+                raise ContentQualityError('質問別の資料追加の要否が不正です。')
+            result['needs_more_sources']=any(i['additional_sources_needed'] for i in result['items'])
         validate_visible_matrix(result, payload['plan'], pages)
         return result
 
@@ -89,10 +95,19 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         value['items'] = [replacements.get(i['id'], i) for i in value['items']]
 
     def require_enough_sources(result):
-        if result['needs_more_sources']:
-            for item in result['items']:
+        for item in result['items']:
+            if item.get('additional_sources_needed'):
+                item['unresolved_candidate']={k:copy.deepcopy(item.get(k)) for k in ('answer','evidence','reason','applicable_at','supports_current_conclusion')}
                 item.update(status='unresearched', verified=False, basis='unresolved', answer='', evidence=[],
                             reason='保存済み資料の追加提示後も必要な根拠を確認できません。')
+        return result
+
+    def expand_pending(result, pages, model, step, policy):
+        pending=[i for i in result['items'] if i.get('additional_sources_needed')]
+        expanded=ask(pending,pages,model,step,policy,True,True)
+        replacements={i['id']:i for i in expanded['items']}
+        result['items']=[replacements.get(i['id'],i) for i in result['items']]
+        result['needs_more_sources']=any(i.get('additional_sources_needed') for i in result['items'])
         return result
 
     # Optional omissions still require whole-article coverage approval.
@@ -106,7 +121,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         result = ask(unknown, bodies, 'gpt-6-luna', 'reread', READ_POLICY+FOCUS_POLICY, True, complete)
         if result['needs_more_sources'] and not complete:
             bodies = packed_sources(selected, unknown)
-            result = ask(unknown, bodies, 'gpt-6-luna', 'reread_expanded', READ_POLICY+FOCUS_POLICY, True, True)
+            result = expand_pending(result, bodies, 'gpt-6-luna', 'reread_expanded', READ_POLICY+FOCUS_POLICY)
         replace(require_enough_sources(result))
         propose_optional_omissions(value['items'], {'items':questions}, bodies)
         packed = merge_visible_sources(packed, bodies)
@@ -120,6 +135,6 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         result = ask(pending, focused, 'gpt-6.1-sol', 'audit', FOCUS_POLICY, True, complete)
         if result['needs_more_sources'] and not complete:
             # At most one expansion. No search, recursive escalation, or new budget.
-            result = ask(pending, packed, 'gpt-6.1-sol', 'expanded', FOCUS_POLICY, True, True)
+            result = expand_pending(result, packed, 'gpt-6.1-sol', 'expanded', FOCUS_POLICY)
         replace(require_enough_sources(result))
     return value, SimpleNamespace(input_tokens=inputs, output_tokens=outputs)
