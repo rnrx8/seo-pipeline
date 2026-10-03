@@ -135,9 +135,16 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
         # Invalid or mechanically incomplete patches never touch the article. Retry once,
         # against the same audited original, independently of semantic repairs.
         for encoding_attempt in range(2):
-            result = create_with_retry(client, model=model, max_tokens=max_tokens,
-                                       system=repair_system, messages=messages, output_config=REPAIR_OUTPUT_CONFIG)
-            raw = response_text(result).strip()
+            request = dict(model=model, max_tokens=max_tokens,
+                           system=repair_system, messages=messages, output_config=REPAIR_OUTPUT_CONFIG)
+            from .ai import tiered_review_enabled
+            if tiered_review_enabled():
+                from .tiered_research import checked_request
+                value, _ = checked_request(job_id, f'tiered_content_repair_{attempt + 1}_{encoding_attempt}', request)
+                raw = json.dumps(value, ensure_ascii=False)
+            else:
+                result = create_with_retry(client, **request)
+                raw = response_text(result).strip()
             response_step = f'content_repair_response_{attempt + 1}'
             if encoding_attempt:
                 response_step += f'_retry_{encoding_attempt}'

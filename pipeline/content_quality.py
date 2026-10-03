@@ -381,9 +381,18 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         payload['outline'] = outline
     else:
         payload['outline_is_document'] = True
-    message = create_with_retry(client, model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
+    request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}])
-    report = parse_audit(response_text(message))
+    from .ai import tiered_review_enabled
+    if tiered_review_enabled():
+        from .quality_budget import JOB
+        from .tiered_research import checked_request
+        value, usage = checked_request(JOB.get(), 'tiered_audit_'+stage, request)
+        raw = json.dumps(value, ensure_ascii=False)
+    else:
+        message = create_with_retry(client, **request)
+        raw, usage = response_text(message), message.usage
+    report = parse_audit(raw)
     if stage == 'article' and any(c['status'] == 'not_applicable' and c['key'] in ('prose_quality', 'redundancy') for c in report['checks']):
         raise ContentQualityError('完成本文の文章検査が省略されています。')
     if price_issues:
@@ -407,7 +416,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
                   snapshot=snapshot(text, facts, outline, contract, requirements, sources),
-                  input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens)
+                  input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
     return report
 
 

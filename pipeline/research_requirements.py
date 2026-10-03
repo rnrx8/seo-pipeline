@@ -117,6 +117,9 @@ def matrix_policy():
     from .tiered_research import VERSION, POLICY
     from .source_spans import SPAN_POLICY
     extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
+    from .focused_research import enabled as focused_enabled, VERSION as FOCUSED_VERSION, READ_POLICY, FOCUS_POLICY
+    if tiered_review_enabled() and focused_enabled():
+        extra += [FOCUSED_VERSION, READ_POLICY, FOCUS_POLICY]
     return digest(json.dumps(['research-matrix-v5-subject-source-omission', *extra, COVERAGE_SYSTEM, VERIFICATION_VERSION, MATRIX_SYSTEM, MATRIX_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))
 
 
