@@ -43,13 +43,14 @@ def summarize(result):
     comparisons=[]
     for stages in (['tiered_article_evidence'],['tiered_article_evidence','tiered_audit_research']):
         selected=[r for r in result['rows'] if r['scenario']=='downstream' and r['stage'] in stages]
+        if len(selected)!=len(stages):continue
         cheaper=base-sum(r['cost_usd'] for r in selected)+sum(cost(r['input_local_tokens'],r['output_cap'],'gpt-6-luna') for r in selected)
         comparisons.append({'hypothetical_luna_stages':stages,'quality_no_repair_usd':cheaper,'quality_validated':False})
     summary['same_input_lower_model_price_only_comparisons']=comparisons
     return summary
 
 
-def run(research,article):
+def run(research,article,force_evidence=False):
     enc=tiktoken.get_encoding('o200k_base')
     count=lambda v:len(enc.encode(json.dumps(v,ensure_ascii=False),disallowed_special=()))
     load=lambda path:{p.stem:json.loads(p.read_text()) for p in path.glob('*.json')}
@@ -143,18 +144,29 @@ def run(research,article):
     facts=old_article['fact_sheet']['content_text'];contract=json.loads(old_article['content_contract']['content_text'])
     sources=cq.source_evidence(records['fresh_sources'])
     class Captured(Exception):pass
+    def downstream_capture(job_id,stage,request):
+        record(stage,request,'downstream')
+        root=request['output_config']['format']['schema']
+        fields=root['properties']['checks']['items']['properties']
+        keys=fields['key']['enum']
+        result={'checks':[{'key':k,'status':'pass','reason':'OFFLINE SIZE SCENARIO, NOT A VERDICT',
+                           **({'affected_blocks':[]} if 'affected_blocks' in fields else {})} for k in keys]}
+        if force_evidence and stage=='tiered_audit_research':
+            for check in result['checks']:
+                if check['key'] in fq.ROLES['evidence']:check['status']='fail'
+        if 'review' in root['properties']:
+            result['review']={'needed':False,'block_ids':[],'source_urls':[],'reason':'OFFLINE: no escalation price scenario'}
+            if force_evidence and request['model']=='gpt-6-luna':
+                data=json.loads(request['messages'][0]['content'])
+                result['review']={'needed':True,'block_ids':[b['id'] for b in data['article_blocks']],
+                                  'source_urls':[p['url'] for p in data['source_documents']],
+                                  'reason':'OFFLINE: all-source independent-review price scenario'}
+        return result,NS(input_tokens=0,output_tokens=0)
+    with patch.object(tr,'checked_request',side_effect=downstream_capture):
+        cq.audit(None,stage='research',text=outline,facts=facts,outline=outline,contract=contract,requirements=req,sources=sources)
+        fq.audit_article(None,text=text,facts=facts,outline=outline,contract=contract,requirements=req,sources=sources)
     def stop_capture(job_id,stage,request):
         record(stage,request,'downstream');raise Captured()
-    with patch.object(tr,'checked_request',side_effect=stop_capture):
-        try:cq.audit(None,stage='research',text=outline,facts=facts,outline=outline,contract=contract,requirements=req,sources=sources)
-        except Captured:pass
-    def final_capture(job_id,stage,request):
-        record(stage,request,'downstream')
-        keys=fq.ROLES[stage.removeprefix('tiered_article_')]
-        return {'checks':[{'key':k,'status':'fail','reason':'OFFLINE SIZE ONLY',
-                          'affected_blocks':[{'id':fq.content_blocks(text)[0]['id'],'reason':'OFFLINE'}]} for k in keys]},NS(input_tokens=0,output_tokens=0)
-    with patch.object(tr,'checked_request',side_effect=final_capture):
-        fq.audit_article(None,text=text,facts=facts,outline=outline,contract=contract,requirements=req,sources=sources)
     artifacts={**old_article,'fresh_sources':records['fresh_sources']}
     def failed(*args,**kwargs):
         return {'valid':False,'checks':[{'key':k,'status':'fail' if k=='prose_quality' else 'pass',
@@ -184,6 +196,7 @@ def run(research,article):
             'downstream_matrix_question_count':len(reconstructed['items']),
             'downstream_matrix_matches_current_plan':True,
             'learned_style_rules_missing':True,'whole_research_coverage_fixture_usd':coverage_usd,
+            'downstream_model_outcomes':('Synthetic full-source escalation sizing only.' if force_evidence else 'Synthetic no-escalation sizing only; deterministic sampling still runs.')+' Not quality validation.',
             'downstream_no_repair_usd':sum(r['cost_usd'] for r in initial),
             'downstream_input_only_usd_without_margin':sum(r['input_only_usd_without_margin'] for r in initial),
             'downstream_with_one_repair_and_full_reaudit_usd':sum(r['cost_usd'] for r in initial+repair+final),
@@ -197,6 +210,8 @@ if __name__=='__main__':
          patch.object(socket,'create_connection',side_effect=AssertionError('No network')), \
          patch.object(tr,'create_with_retry',side_effect=AssertionError('No model calls')):
         result=run(Path(sys.argv[1]),Path(sys.argv[2]))
+        escalation=run(Path(sys.argv[1]),Path(sys.argv[2]),force_evidence=True)
+    result['forced_downstream_escalation']={k:escalation[k] for k in ('downstream_no_repair_usd','downstream_with_one_repair_and_full_reaudit_usd','scenarios','downstream_model_outcomes')}
     if len(sys.argv)>4:Path(sys.argv[4]).write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
     summary=summarize(result)
     Path(sys.argv[3]).write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')

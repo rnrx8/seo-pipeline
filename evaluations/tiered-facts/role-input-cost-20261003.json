@@ -1,0 +1,131 @@
+{
+  "api_calls": 0,
+  "quality_validated": false,
+  "article_completed": false,
+  "safety_multiplier": 1.2,
+  "jpy_per_usd": 200,
+  "pricing_basis": "Existing conservative repository constants, not a current provider quote or invoice",
+  "scope": "Measured quality stages only. Generation, planning reviews outside these stages, new search, outline repair, encoding retry and any second research round excluded.",
+  "fixture_warning": "Archived screen outcomes + current request builders + old article volume. Not a normal-flow completion.",
+  "archived_screen_requests_exactly_verified": 12,
+  "article_chars": 13408,
+  "downstream_matrix_question_count": 102,
+  "downstream_matrix_matches_current_plan": true,
+  "learned_style_rules_missing": true,
+  "whole_research_coverage_fixture_usd": 0.1866225,
+  "downstream_model_outcomes": "Synthetic no-escalation sizing only; deterministic sampling still runs. Not quality validation.",
+  "downstream_no_repair_usd": 1.6580104999999998,
+  "downstream_input_only_usd_without_margin": 1.079171625,
+  "downstream_with_one_repair_and_full_reaudit_usd": 3.197476,
+  "unknown_reread_success_followup_cost_not_included": true,
+  "full_article_300_yen_proven": false,
+  "may_authorize_paid_test": false,
+  "scenarios": {
+    "saved_outcomes_no_expansion": {
+      "requests": 23,
+      "usd": 0.827469875,
+      "quality_pass": false,
+      "unresolved_after_simulation": 42,
+      "quality_no_article_repair_usd": 2.6721028749999998,
+      "quality_one_repair_and_full_reaudit_usd": 4.211568375
+    },
+    "saved_outcomes_with_expansion": {
+      "requests": 33,
+      "usd": 2.0111960000000004,
+      "quality_pass": false,
+      "unresolved_after_simulation": 42,
+      "quality_no_article_repair_usd": 3.855829,
+      "quality_one_repair_and_full_reaudit_usd": 5.3952945
+    }
+  },
+  "forced_downstream_escalation": {
+    "downstream_no_repair_usd": 2.427127875,
+    "downstream_with_one_repair_and_full_reaudit_usd": 3.995118375,
+    "scenarios": {
+      "saved_outcomes_no_expansion": {
+        "requests": 23,
+        "usd": 0.827469875,
+        "quality_pass": false,
+        "unresolved_after_simulation": 42,
+        "quality_no_article_repair_usd": 3.4412202499999998,
+        "quality_one_repair_and_full_reaudit_usd": 5.009210749999999
+      },
+      "saved_outcomes_with_expansion": {
+        "requests": 33,
+        "usd": 2.0111960000000004,
+        "quality_pass": false,
+        "unresolved_after_simulation": 42,
+        "quality_no_article_repair_usd": 4.624946375,
+        "quality_one_repair_and_full_reaudit_usd": 6.192936875
+      }
+    },
+    "downstream_model_outcomes": "Synthetic full-source escalation sizing only. Not quality validation."
+  },
+  "downstream_rows": [
+    {
+      "stage": "tiered_audit_research",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 74580,
+      "input_with_margin": 89496,
+      "output_cap": 6000,
+      "cost_usd": 0.28374
+    },
+    {
+      "stage": "tiered_article_evidence_screen",
+      "model": "gpt-6-luna",
+      "input_local_tokens": 216753,
+      "input_with_margin": 260104,
+      "output_cap": 6000,
+      "cost_usd": 0.035513
+    },
+    {
+      "stage": "tiered_article_evidence_adjudicate",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 216728,
+      "input_with_margin": 260074,
+      "output_cap": 6000,
+      "cost_usd": 0.710185
+    },
+    {
+      "stage": "tiered_article_coverage",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 76162,
+      "input_with_margin": 91395,
+      "output_cap": 6000,
+      "cost_usd": 0.2884875
+    },
+    {
+      "stage": "tiered_article_language",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17724,
+      "input_with_margin": 21269,
+      "output_cap": 6000,
+      "cost_usd": 0.1131725
+    },
+    {
+      "stage": "tiered_article_consistency",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17732,
+      "input_with_margin": 21279,
+      "output_cap": 6000,
+      "cost_usd": 0.1131975
+    },
+    {
+      "stage": "tiered_article_organization",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 17905,
+      "input_with_margin": 21486,
+      "output_cap": 6000,
+      "cost_usd": 0.113715
+    },
+    {
+      "stage": "tiered_content_repair_1_0",
+      "model": "gpt-6.1-sol",
+      "input_local_tokens": 21731,
+      "input_with_margin": 26078,
+      "output_cap": 10000,
+      "cost_usd": 0.165195
+    }
+  ],
+  "same_input_lower_model_price_only_comparisons": []
+}

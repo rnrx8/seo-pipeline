@@ -12,7 +12,7 @@ from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY
 
-POLICY_VERSION = 'content-quality-v11-role-context'
+POLICY_VERSION = 'content-quality-v12-tiered-evidence'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -56,7 +56,9 @@ def response_text(message) -> str:
 def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: dict, sources: str = "") -> str:
     from .focused_quality import ROLE_INSTRUCTIONS
     from .readability import READABILITY_POLICY
-    value = json.dumps([ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .quality_context import compact_enabled, CONTEXT_POLICY
+    from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
+    value = json.dumps([compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -381,7 +383,17 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         payload['outline'] = outline
     else:
         payload['outline_is_document'] = True
-    request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=AUDIT_SYSTEM, output_config=audit_output_config(CHECKS),
+    from .quality_context import compact_enabled
+    compact=compact_enabled()
+    evidence_trace=[]
+    keys=CHECKS;system=AUDIT_SYSTEM
+    if compact:
+        from .focused_quality import ROLES
+        evidence_keys=ROLES['evidence']
+        payload.pop('source_documents')
+        payload['source_revision']=digest(sources)
+        system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。原文の再照合は問題がある場合の独立担当が実施する。未確認や省略情報の復活、新しい根拠のない主張、条件を外した比較は該当する事実項目でfailを返す。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
+    request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=audit_output_config(keys),
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}])
     from .ai import tiered_review_enabled
     if tiered_review_enabled():
@@ -393,6 +405,16 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         message = create_with_retry(client, **request)
         raw, usage = response_text(message), message.usage
     report = parse_audit(raw)
+    if compact and any(c['status']=='fail' and c['key'] in evidence_keys for c in report['checks']):
+        from .tiered_evidence import evidence_audit
+        from types import SimpleNamespace
+        evidence_payload={'current_date':payload['current_date'],'article_blocks':content_blocks(text),
+                          'requirements':payload['requirements'],'confirmed_facts':facts,'content_contract':contract,
+                          'source_documents':sources,'candidate_checks':report['checks']}
+        checks,extra,evidence_trace=evidence_audit(stage,evidence_payload,AUDIT_SYSTEM,evidence_keys,text)
+        report=parse_audit(json.dumps({'checks':[c for c in report['checks'] if c['key'] not in evidence_keys]+checks},ensure_ascii=False))
+        usage=SimpleNamespace(input_tokens=usage.input_tokens+extra.input_tokens,output_tokens=usage.output_tokens+extra.output_tokens)
+    if evidence_trace:report['evidence_routing']=evidence_trace
     if stage == 'article' and any(c['status'] == 'not_applicable' and c['key'] in ('prose_quality', 'redundancy') for c in report['checks']):
         raise ContentQualityError('完成本文の文章検査が省略されています。')
     if price_issues:

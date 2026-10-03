@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from .ai import create_with_retry, get_step_config
 from .content_edits import content_blocks
 from .readability import READABILITY_POLICY, readability_issues
-from .quality_context import review_requirements
+from .quality_context import review_requirements, compact_enabled
 
 ROLES = {
     'evidence': ('evidence_support', 'comparison_conditions', 'metric_scope', 'unsupported_guarantees'),
@@ -61,7 +61,11 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                        output_config=audit_output_config(keys, locations=True),
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
         from .ai import tiered_review_enabled
-        if tiered_review_enabled():
+        trace=[]
+        if role=='evidence' and compact_enabled():
+            from .tiered_evidence import evidence_audit
+            checks,usage,trace=evidence_audit('article',payload,system,keys,text)
+        elif tiered_review_enabled():
             from .quality_budget import JOB
             from .tiered_research import checked_request
             value, usage = checked_request(JOB.get(), 'tiered_article_'+role, request)
@@ -69,9 +73,10 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         else:
             msg = create_with_retry(client, **request)
             raw, usage = response_text(msg), msg.usage
-        checks = parse_focus(raw, keys, text)
-        phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':model,
+        if not trace:checks = parse_focus(raw, keys, text)
+        phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
+        if trace:phase['evidence_routing']=trace
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)
     combined=[]
