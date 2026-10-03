@@ -98,5 +98,8 @@
     "Role-specific model routing validated on defects",
     "One bounded outline patch instead of full regeneration"
   ],
-  "not_a_forecast": "Token allowances are engineering targets, not demonstrated request sizes or quality outcomes."
+  "not_a_forecast": "Token allowances are engineering targets, not demonstrated request sizes or quality outcomes.",
+  "feasibility_status": "Not supported: lossless shared-context experiment still needs 237641 local input tokens before headroom",
+  "may_authorize_paid_test": false,
+  "superseded_by": "shared-context-20261003.json"
 }

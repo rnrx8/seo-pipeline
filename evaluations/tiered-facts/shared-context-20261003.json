@@ -1,0 +1,94 @@
+{
+  "api_calls": 0,
+  "production_enabled": false,
+  "quality_validated": false,
+  "format_only_not_a_runtime_pipeline": true,
+  "exact_request_reconstruction": true,
+  "original_requests_sha256": "60fa05ebff308005260bb07c387e3f1d9e2728c3e88c2feb6d5b452d27593f1b",
+  "restored_requests_sha256": "60fa05ebff308005260bb07c387e3f1d9e2728c3e88c2feb6d5b452d27593f1b",
+  "request_count": 10,
+  "question_count": 19,
+  "tokenizer": "local o200k_base, not provider billing tokens",
+  "original_input_tokens": 323475,
+  "structured_before_sharing_tokens": 302926,
+  "shared_input_tokens": 237641,
+  "input_reduction_fraction": 0.2653497179071026,
+  "shared_with_20_percent_margin": 285170,
+  "target_input_tokens": 60000,
+  "fits_target_with_margin": false,
+  "old_sum_of_output_caps": 37100,
+  "proposed_output_allowance": 10000,
+  "output_capacity_validated": false,
+  "roundtrips_and_exception_expansion_included": false,
+  "stages": [
+    {
+      "stage": "tiered_adjudication_1",
+      "question_ids": [
+        "q15"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_2",
+      "question_ids": [
+        "q24",
+        "q26"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_3",
+      "question_ids": [
+        "q34"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_4",
+      "question_ids": [
+        "q50",
+        "q53",
+        "q54"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_5",
+      "question_ids": [
+        "q71"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_6",
+      "question_ids": [
+        "q72",
+        "q93"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_8",
+      "question_ids": [
+        "q86"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_11",
+      "question_ids": [
+        "q89"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_12",
+      "question_ids": [
+        "q92"
+      ]
+    },
+    {
+      "stage": "tiered_adjudication_7",
+      "question_ids": [
+        "q83",
+        "q84",
+        "q85",
+        "q90",
+        "q91",
+        "q110"
+      ]
+    }
+  ]
+}

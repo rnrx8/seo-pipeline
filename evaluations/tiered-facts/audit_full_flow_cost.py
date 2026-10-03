@@ -13,7 +13,7 @@ from pipeline import content_quality as cq,focused_quality as fq,tiered_research
 from pipeline.quality_budget import RATES
 
 
-def run(research,article):
+def run(research,article,capture=None):
  enc=tiktoken.get_encoding('o200k_base')
  load=lambda d:{p.stem:json.loads(p.read_text()) for p in d.glob('*.json')}
  r,a=load(research),load(article)
@@ -30,6 +30,7 @@ def run(research,article):
  def size(request):
   return len(enc.encode(json.dumps(request,ensure_ascii=False),disallowed_special=()))
  def row(stage,request,before=None,actual=None):
+  if capture:capture(stage,copy.deepcopy(request))
   n=size(request);old=size(before or request)
   rows.append({'stage':stage,'model':request['model'],'before_local_input_tokens':old,
                'after_local_input_tokens':n,'output_token_cap':request['max_tokens'],
