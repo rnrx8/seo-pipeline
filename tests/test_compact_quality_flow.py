@@ -117,8 +117,23 @@ class CompactQualityFlowTests(unittest.TestCase):
         self.assertEqual(checks['coverage'],'fail')
 
     def run_evidence(self,send):
-        with patch('pipeline.tiered_research.checked_request',side_effect=send):
+        with patch('pipeline.tiered_research.checked_request',side_effect=send), \
+             patch('pipeline.db.get_optional_artifact',return_value=None):
             return te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources},'',fq.ROLES['evidence'],self.text)
+
+    def test_restore_only_requested_saved_source_without_another_fetch(self):
+        pages=[{'url':'https://a.example','text':'head\n[中略：取得本文の抜粋]\ntail','truncated':True,'fetched_at':'today'},
+               {'url':'https://b.example','text':'other','truncated':True,'fetched_at':'today'}]
+        raw=[{**pages[0],'text':'head important billing condition tail','status':'success','truncated':False},
+             {**pages[1],'text':'other full body','status':'success','truncated':False}]
+        with patch('pipeline.db.get_optional_artifact',return_value={'content_text':json.dumps(raw)}):
+            result=te.restore_requested_bodies(pages,['https://a.example/'],'j')
+        self.assertEqual(result[0]['text'],raw[0]['text'])
+        self.assertFalse(result[0]['truncated'])
+        self.assertEqual(result[1],pages[1])
+        raw[0]['fetched_at']='different fetch'
+        with patch('pipeline.db.get_optional_artifact',return_value={'content_text':json.dumps(raw)}):
+            self.assertEqual(te.restore_requested_bodies(pages,['https://a.example'],'j'),pages)
 
     def test_known_outline_condition_error_goes_to_repair_without_rereading_sources(self):
         calls=[]

@@ -19,6 +19,30 @@ source_urlsは今回提供された資料から選ぶ。本文全文や資料中
 '''
 
 
+def restore_requested_bodies(pages, requested_urls, job_id):
+    """Expand only already-fetched requested pages; never perform another fetch."""
+    from .db import get_optional_artifact
+    from .fresh_sources import normalize_url
+    requested={normalize_url(u) for u in requested_urls}
+    originals={}
+    for step in ('fresh_sources','fresh_sources_review'):
+        artifact=get_optional_artifact(job_id,step)
+        if artifact:
+            for page in json.loads(artifact['content_text']):
+                if page.get('status')=='success' and page.get('text'):
+                    originals[normalize_url(page['url'])]=page
+    result=[]
+    for page in pages:
+        original=originals.get(normalize_url(page['url']))
+        # A different fetch cannot silently replace the audited collection.
+        if (original and normalize_url(page['url']) in requested and page.get('truncated')
+                and original.get('fetched_at')==page.get('fetched_at')
+                and all(piece.strip() in original['text'] for piece in page['text'].split('[中略：取得本文の抜粋]') if piece.strip())):
+            result.append({**page,'text':original['text'],'truncated':bool(original.get('truncated'))})
+        else:result.append(page)
+    return result
+
+
 def evidence_audit(stage, payload, system, keys, text):
     from .content_quality import audit_output_config, ContentQualityError, digest
     from .focused_quality import parse_focus
@@ -95,8 +119,11 @@ def evidence_audit(stage, payload, system, keys, text):
                 'source_revision':revision,'source_catalog':[{k:p[k] for k in ('url','title','truncated','fetched_at') if k in p} for p in pages],
                 'source_selection_complete':selected==pages}
         second,more=ask('adjudicate','gpt-6.1-sol',detail)
-        if more['needed'] and selected!=pages:
-            second,more=ask('expanded','gpt-6.1-sol',{**detail,'source_documents':pages,'source_selection_complete':True})
+        if more['needed']:
+            expanded=restore_requested_bodies(pages,more['source_urls'],JOB.get())
+            if selected!=expanded:
+                second,more=ask('expanded','gpt-6.1-sol',{**detail,'source_documents':expanded,
+                    'source_selection_complete':True})
         if more['needed']:
             second=[{**c,'status':'fail','reason':'追加確認が未完了：'+more['reason'],
                      'affected_blocks':[{'id':i,'reason':more['reason']} for i in more['block_ids']]}
