@@ -16,6 +16,87 @@ CLAUDE_USAGE_RATES={'claude-opus-5-5':(4.,5.,8.,.2,20.),'claude-opus-4-8':(5.,6.
 RATES={'gpt-6-luna':(.125,.5),'gpt-6.1-sol':(2.5,10.)} # cache-write input ceiling
 LIMIT=1.25 # <=250 JPY at conservative 200 JPY/USD allowance, 50 JPY headroom
 
+REQUEST=contextvars.ContextVar('quality_review_request',default=None)
+# These ceilings divide the existing quality allowance; they do not raise it.
+REVIEW_PHASE_LIMITS={'outline':.5,'article':.75}
+
+
+def review_operation(step):
+ if step=='tiered_audit_research':return 'outline','audit',2
+ if step=='outline_local_repair_response':return 'outline','repair',1
+ if step.startswith('tiered_research_evidence_'):return 'outline',step.removeprefix('tiered_research_evidence_'),2
+ if step.startswith('tiered_article_'):return 'article',step.removeprefix('tiered_article_'),2
+ if step.startswith('tiered_content_repair_'):return 'article','repair',2
+ return None
+
+
+@contextmanager
+def request_scope(job_id,step,fingerprint,request):
+ """Bind direct helper calls to the same durable limits as normal execution."""
+ operation=review_operation(step)
+ if operation is None:
+  yield
+  return
+ try:data=json.loads(request['messages'][0]['content'])
+ except (ValueError,KeyError,TypeError):data={}
+ phase,role,limit=operation
+ meta={'phase':phase,'role':role,'call_limit':limit,'step':step,'request_sha256':fingerprint,
+       'target_block_ids':data.get('target_block_ids',[]),
+       'shown_block_ids':[b['id'] for b in data.get('article_blocks',data.get('outline_blocks',[]))],
+       'research_ids':sorted({q for c in data.get('candidate_checks',data.get('failed_checks',[])) for q in c.get('research_ids',[])}),
+       'source_urls':[p['url'] for p in data.get('source_documents',[]) if isinstance(p,dict) and 'url' in p],
+       'reasons':[c.get('reason','') for c in data.get('candidate_checks',data.get('failed_checks',[]))]}
+ token=REQUEST.set(meta)
+ try:
+  with scope(job_id,'research_validation' if phase=='outline' else 'content_audit'):yield
+ finally:REQUEST.reset(token)
+
+
+def guard_review(value,amount):
+ """A restarted process never resets the per-stage limits or pending requests."""
+ from .content_quality import ContentQualityError
+ meta=REQUEST.get()
+ if not meta:
+  if STAGE.get() in ('research_validation','content_audit','outline_local_repair'):
+   raise ContentQualityError('確認処理の種別・対象が記録されていません。送信しません。')
+  return
+ calls=value['calls']
+ # An old unscoped review cannot silently receive a fresh allowance on upgrade.
+ legacy=[c for c in calls if not c.get('review_operation') and c.get('stage') in
+         (('research_validation','outline_local_repair') if meta['phase']=='outline' else ('content_audit',))]
+ if legacy:raise ContentQualityError('旧方式の確認履歴があります。通算予算・回数の移行確認前には再開しません。')
+ policy={'version':'bounded-review-v1','phase_limits_usd':REVIEW_PHASE_LIMITS,
+         'outline_audits':2,'outline_repairs':1,'article_role_checks':2,'article_repairs_including_encoding':2}
+ saved=value.setdefault('review_policy',policy)
+ if saved!=policy:
+  raise ContentQualityError('保存済みの確認回数・費用配分が現在の設定と異なります。自動変更しません。')
+ previous=[c for c in calls if c.get('review_operation',{}).get('phase')==meta['phase']]
+ same=[c for c in previous if c['review_operation']['role']==meta['role']]
+ if meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
+  allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
+  allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}
+  if not same or not set(meta['source_urls'])<=allowed_urls or not set(meta['research_ids'])<=allowed_questions:
+   raise ContentQualityError('修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。')
+ if any(c['review_operation']['request_sha256']==meta['request_sha256'] for c in same):
+  raise ContentQualityError('同じ確認要求の送信記録があります。保存応答または未確定費用を確認するまで再送しません。')
+ if len(same)>=meta['call_limit']:
+  raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
+ used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)
+ if used+amount>REVIEW_PHASE_LIMITS[meta['phase']]:
+  raise ContentQualityError('この確認段階の費用枠を超えます。後工程の予算を消費せず送信前に停止しました。')
+
+
+def review_remaining(value):
+ meta=REQUEST.get()
+ if not meta:return float('inf')
+ used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls']
+          if c.get('review_operation',{}).get('phase')==meta['phase'])
+ return REVIEW_PHASE_LIMITS[meta['phase']]-used
+
+
+def review_metadata():
+ return {'review_operation':REQUEST.get()} if REQUEST.get() else {}
+
 @contextmanager
 def scope(job_id,stage=None):
  token=JOB.set(str(job_id))
@@ -89,13 +170,14 @@ def reserve(payload, input_counter=None):
  if size>1000000:raise ContentQualityError('確認資料が大きすぎます。資料範囲を見直してください。')
  amount=(size*RATES[model][0]*(2 if size>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if size>272000 else 1))/1e6
  with ledger() as value:
+  guard_review(value,0)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   evaluation=completion_evaluation(value)
   # Bytes are a safe initial bound, but Japanese JSON can greatly overstate
   # token usage. Refine only rejected requests; never relax either budget.
   guard_total(value,0)
   total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
-  remaining=min(float('inf') if evaluation else LIMIT-used,
+  remaining=min(review_remaining(value),float('inf') if evaluation else LIMIT-used,
                 value.get('total_limit_usd',float('inf'))-total_used)
   counted=None
   output_floor=payload['max_output_tokens']*RATES[model][1]/1e6
@@ -112,8 +194,9 @@ def reserve(payload, input_counter=None):
    counted=record['input_token_bound']
    amount=(counted*RATES[model][0]*(2 if counted>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if counted>272000 else 1))/1e6
   guard_total(value,amount)
+  guard_review(value,amount)
   if not evaluation and used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
-  index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get(),**({'input_token_bound':counted} if counted is not None else {})})
+  index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get(),**review_metadata(),**({'input_token_bound':counted} if counted is not None else {})})
  return index
 
 def settle(index,usage=None):
@@ -155,11 +238,12 @@ def reserve_claude(payload, input_counter=None):
  ir,orr=CLAUDE_RATES[model]
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
+  guard_review(value,0)
   guard_total(value,0)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   evaluation=completion_evaluation(value)
   total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
-  remaining=min(value.get('total_limit_usd',float('inf'))-total_used,
+  remaining=min(review_remaining(value),value.get('total_limit_usd',float('inf'))-total_used,
                 LIMIT-used if category=='quality' and not evaluation else float('inf'))
   if amount>remaining and input_counter is not None and not payload.get('tools'):
    key=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,default=lambda v:v.model_dump(mode='json')).encode()).hexdigest()
@@ -172,11 +256,12 @@ def reserve_claude(payload, input_counter=None):
    if record['status']!='counted':raise ContentQualityError('入力トークン数の確認が未完了です。自動再試行しません。')
    amount=(record['input_token_bound']*ir+payload['max_tokens']*orr)/1e6
   guard_total(value,amount)
+  guard_review(value,amount)
   if not evaluation and category=='quality' and used+amount>LIMIT:
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),
-    'reserved_usd':amount,'status':'pending','started_at':time.time()})
+    'reserved_usd':amount,'status':'pending','started_at':time.time(),**review_metadata()})
  return index
 
 

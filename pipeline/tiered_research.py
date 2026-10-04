@@ -52,8 +52,13 @@ def needs_adjudication(item,question):
 
 def cached_result(job_id,step,request):
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True));old=get_optional_artifact(job_id,step)
- if old and old.get('meta',{}).get('request_sha256')==fingerprint and old.get('meta',{}).get('result_sha256')==digest(old['content_text']):
+ if not old:return None
+ meta=old.get('meta',{})
+ if meta.get('request_sha256')==fingerprint and meta.get('result_sha256')==digest(old['content_text']):
   return json.loads(old['content_text'])
+ saved=meta.get('request_history',{}).get(fingerprint)
+ if saved and saved.get('result_sha256')==digest(saved['content_text']):
+  return json.loads(saved['content_text'])
  return None
 
 def checked_request(job_id,step,request):
@@ -62,9 +67,18 @@ def checked_request(job_id,step,request):
  if old is not None:
   print('[tiered] Reuse '+step,flush=True)
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
- msg=create_with_retry(None,**request);value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
- upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=text,
-  meta={'request_sha256':fingerprint,'result_sha256':digest(text),'model':request['model'],'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+ from .quality_budget import request_scope
+ with request_scope(job_id,step,fingerprint,request):
+  msg=create_with_retry(None,**request)
+ value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
+ previous=get_optional_artifact(job_id,step)
+ meta=copy.deepcopy((previous or {}).get('meta',{}))
+ if previous and meta.get('request_sha256') and meta.get('result_sha256')==digest(previous['content_text']):
+  meta.setdefault('request_history',{})[meta['request_sha256']]={
+   'content_text':previous['content_text'],'result_sha256':meta['result_sha256']}
+ meta.update(request_sha256=fingerprint,result_sha256=digest(text),model=request['model'],
+             input_tokens=msg.usage.input_tokens,output_tokens=msg.usage.output_tokens)
+ upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=text,meta=meta)
  return value,msg.usage
 
 def validate_visible_matrix(value,plan,pages):

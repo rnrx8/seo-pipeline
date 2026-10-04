@@ -1,0 +1,271 @@
+{
+  "scope": "Latest approved additional 1000 JPY test only; not all historical API bills",
+  "job_id": "2c6cd05c-fd82-47ac-a582-31d57df4e436",
+  "commit": "02bee5eb18ccb6cbffe5a9879352492f24cf4640",
+  "ledger_sha256": "c1d4055e9349b12b75de4b545a5163cc217371a6d1f7dd067f4bd43a05b773f8",
+  "ledger_path": "/Users/ryoka/seo-saas/tmp/quality-compact-through-20261003/budget/bc1f362ac3ae9637068543581c99e41c11ed4a05939789e9e1a85b1bc86fe007.json",
+  "currency_note": "Token-usage accounting at existing code rates, converted at 200 JPY/USD; not a provider invoice",
+  "classification_note": "Stage labels combine repairs and audits under research_validation; roles reconstructed from execution history, not available from stage field alone",
+  "rows": [
+    {
+      "ledger_index": 187,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.172265,
+      "yen_at_200": 34.453,
+      "input_tokens": 61222,
+      "output_tokens": 1921
+    },
+    {
+      "ledger_index": 188,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.243465,
+      "yen_at_200": 48.693,
+      "input_tokens": 85846,
+      "output_tokens": 2885
+    },
+    {
+      "ledger_index": 189,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.17326,
+      "yen_at_200": 34.652,
+      "input_tokens": 61632,
+      "output_tokens": 1918
+    },
+    {
+      "ledger_index": 190,
+      "stage": "research_validation",
+      "model": "gpt-6-luna",
+      "status": "accounted",
+      "cost_usd": 0.025581625,
+      "yen_at_200": 5.116325,
+      "input_tokens": 199369,
+      "output_tokens": 1321
+    },
+    {
+      "ledger_index": 191,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.2557,
+      "yen_at_200": 51.13999999999999,
+      "input_tokens": 97104,
+      "output_tokens": 1294
+    },
+    {
+      "ledger_index": 192,
+      "stage": "outline_local_repair",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.2219025,
+      "yen_at_200": 44.3805,
+      "input_tokens": 86245,
+      "output_tokens": 629
+    },
+    {
+      "ledger_index": 193,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.1779175,
+      "yen_at_200": 35.5835,
+      "input_tokens": 61711,
+      "output_tokens": 2364
+    },
+    {
+      "ledger_index": 194,
+      "stage": "research_validation",
+      "model": "gpt-6-luna",
+      "status": "accounted",
+      "cost_usd": 0.025869375,
+      "yen_at_200": 5.173875,
+      "input_tokens": 199419,
+      "output_tokens": 1884
+    },
+    {
+      "ledger_index": 195,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.53529,
+      "yen_at_200": 107.058,
+      "input_tokens": 204216,
+      "output_tokens": 2475
+    },
+    {
+      "ledger_index": 196,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.2718625,
+      "yen_at_200": 54.3725,
+      "input_tokens": 87193,
+      "output_tokens": 5388
+    },
+    {
+      "ledger_index": 197,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.17644,
+      "yen_at_200": 35.288000000000004,
+      "input_tokens": 62396,
+      "output_tokens": 2045
+    },
+    {
+      "ledger_index": 198,
+      "stage": "research_validation",
+      "model": "gpt-6-luna",
+      "status": "accounted",
+      "cost_usd": 0.025787125,
+      "yen_at_200": 5.157425,
+      "input_tokens": 200357,
+      "output_tokens": 1485
+    },
+    {
+      "ledger_index": 199,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.2395075,
+      "yen_at_200": 47.901500000000006,
+      "input_tokens": 87735,
+      "output_tokens": 2017
+    },
+    {
+      "ledger_index": 200,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.4983675,
+      "yen_at_200": 99.6735,
+      "input_tokens": 193283,
+      "output_tokens": 1516
+    },
+    {
+      "ledger_index": 201,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.27585,
+      "yen_at_200": 55.169999999999995,
+      "input_tokens": 87256,
+      "output_tokens": 5771
+    },
+    {
+      "ledger_index": 202,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.17838,
+      "yen_at_200": 35.676,
+      "input_tokens": 63292,
+      "output_tokens": 2015
+    },
+    {
+      "ledger_index": 203,
+      "stage": "research_validation",
+      "model": "gpt-6-luna",
+      "status": "accounted",
+      "cost_usd": 0.025857,
+      "yen_at_200": 5.1714,
+      "input_tokens": 201280,
+      "output_tokens": 1394
+    },
+    {
+      "ledger_index": 204,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.5278775,
+      "yen_at_200": 105.5755,
+      "input_tokens": 205719,
+      "output_tokens": 1358
+    },
+    {
+      "ledger_index": 205,
+      "stage": "research_validation",
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.556345,
+      "yen_at_200": 111.26899999999999,
+      "input_tokens": 217282,
+      "output_tokens": 1314
+    },
+    {
+      "ledger_index": 206,
+      "stage": "service_map",
+      "model": "claude-sonnet-4-6",
+      "status": "accounted",
+      "cost_usd": 0.209679,
+      "yen_at_200": 41.9358,
+      "input_tokens": 63308,
+      "output_tokens": 1317
+    }
+  ],
+  "groups": {
+    "outline_check": {
+      "calls": 5,
+      "yen_at_200": 175.65250000000003,
+      "input_tokens": 310253,
+      "indices": [
+        187,
+        189,
+        193,
+        197,
+        202
+      ]
+    },
+    "outline_repair": {
+      "calls": 4,
+      "yen_at_200": 202.61599999999999,
+      "input_tokens": 346540,
+      "indices": [
+        188,
+        192,
+        196,
+        201
+      ]
+    },
+    "luna_source_screen": {
+      "calls": 4,
+      "yen_at_200": 20.619025,
+      "input_tokens": 800425,
+      "indices": [
+        190,
+        194,
+        198,
+        203
+      ]
+    },
+    "sol_source_review": {
+      "calls": 6,
+      "yen_at_200": 522.6175000000001,
+      "input_tokens": 1005339,
+      "indices": [
+        191,
+        195,
+        199,
+        200,
+        204,
+        205
+      ]
+    },
+    "service_map": {
+      "calls": 1,
+      "yen_at_200": 41.9358,
+      "input_tokens": 63308,
+      "indices": [
+        206
+      ]
+    }
+  },
+  "new_yen": 963.440825,
+  "new_input_tokens": 2525865,
+  "no_paid_calls_this_audit": true
+}

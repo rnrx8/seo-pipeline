@@ -121,8 +121,8 @@ class TieredReviewTests(unittest.TestCase):
         row=self.ledger()['calls'][0]
         self.assertEqual(row['category'],'generation')
         self.assertAlmostEqual(row['cost_usd'],.01484)
-        with budget.scope('test-job','research_validation'):
-            i=budget.reserve_claude(payload);budget.settle(i)
+        with budget.request_scope('test-job','outline_local_repair_response','repair',{'messages':[{'content':'{}'}]}):
+            i=budget.reserve_claude({**payload,'max_tokens':6000});budget.settle(i)
         self.assertEqual(self.ledger()['calls'][1]['category'],'quality')
         self.assertEqual(self.ledger()['calls'][1]['status'],'unknown_cost_reserved')
 

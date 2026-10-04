@@ -130,14 +130,20 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
 見出し階層・必要項目は維持するが、誤った比較結論を含む見出しは正しい根拠に沿って改題する。元の構成の誤りを温存しない。
 既存見出しの削除・移動・階層変更は禁止する。既存H3内の話題整理に限りH4を追加してよい。表・リスト・H4は内容に合う形式を選び、空行だけで長文を分割したことにしない。
 指摘箇所だけでなく、同じ結論を含むリード・箇条書き・比較表・見出し・まとめをすべて照合し、一度の修正で揃える。関係のない内容や反復で文字数を水増ししない。'''
-        from .quality_context import repair_context, review_facts
-        repair_requirements,repair_sources=repair_context(requirements,sources,
-            [c for c in report['checks'] if c['status']=='fail'],issues,report)
-        messages=[{'role': 'user', 'content': json.dumps({
-                'confirmed_facts': review_facts(facts,repair_requirements), 'source_documents': repair_sources,
-                'requirements': repair_requirements, 'content_contract': contract, 'conditional_facts': conditional_facts(facts),
-                'failed_checks': [c for c in report['checks'] if c['status'] == 'fail'],
-                'structural_issues': issues, 'article_blocks': content_blocks(text)}, ensure_ascii=False)}]
+        from .quality_context import compact_enabled, review_requirements
+        packet=None
+        if compact_enabled():
+            from .review_scope import repair_packet
+            packet=repair_packet(text,review_requirements(requirements,'evidence'),sources,report)
+            packet['content_contract']=contract
+            repair_data=packet
+        else:
+            repair_data={
+                'confirmed_facts':facts,'source_documents':sources,'requirements':requirements,
+                'content_contract':contract,'conditional_facts':conditional_facts(facts),
+                'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
+                'structural_issues':issues,'article_blocks':content_blocks(text)}
+        messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]
         # Invalid or mechanically incomplete patches never touch the article. Retry once,
         # against the same audited original, independently of semantic repairs.
         for encoding_attempt in range(2):
@@ -157,6 +163,9 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             upsert_artifact(job_id=job_id, step=response_step,
                             content_type='application/json', content_text=raw, meta={'audited': False})
             try:
+                if packet is not None:
+                    from .review_scope import validate_edits
+                    validate_edits(raw,packet)
                 candidate = apply_block_edits(text, raw)
                 required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
                                 for loc in check.get('affected_blocks', [])}

@@ -1,0 +1,72 @@
+{
+  "kind": "offline_request_construction_not_model_validation",
+  "paid_calls": 0,
+  "source_job_id": "2c6cd05c-fd82-47ac-a582-31d57df4e436",
+  "scope": "Saved research/outline only; article not yet generated. No full completion cost forecast.",
+  "source_pages_before": 68,
+  "source_chars_before": 179835,
+  "calls": [
+    {
+      "operation": "tiered_audit_research",
+      "model": "gpt-6.1-sol",
+      "json_input_bytes_with_slack": 229134,
+      "output_token_limit": 6000,
+      "conservative_request_ceiling_yen_at_200": 126.57,
+      "shown_blocks": 88,
+      "target_block_ids": [],
+      "source_count": 0,
+      "source_characters": 0,
+      "research_items": 102
+    },
+    {
+      "operation": "tiered_research_evidence_screen",
+      "model": "gpt-6-luna",
+      "json_input_bytes_with_slack": 47744,
+      "output_token_limit": 6000,
+      "conservative_request_ceiling_yen_at_200": 1.79,
+      "shown_blocks": 6,
+      "target_block_ids": [
+        "block-0032",
+        "block-0074"
+      ],
+      "source_count": 2,
+      "source_characters": 4330,
+      "research_items": 1
+    },
+    {
+      "operation": "tiered_research_evidence_adjudicate",
+      "model": "gpt-6.1-sol",
+      "json_input_bytes_with_slack": 47972,
+      "output_token_limit": 6000,
+      "conservative_request_ceiling_yen_at_200": 35.99,
+      "shown_blocks": 6,
+      "target_block_ids": [
+        "block-0032",
+        "block-0074"
+      ],
+      "source_count": 2,
+      "source_characters": 4330,
+      "research_items": 1
+    },
+    {
+      "operation": "outline_local_repair_response",
+      "model": "gpt-6.1-sol",
+      "json_input_bytes_with_slack": 30158,
+      "output_token_limit": 6000,
+      "conservative_request_ceiling_yen_at_200": 27.08,
+      "shown_blocks": 6,
+      "target_block_ids": [
+        "block-0032",
+        "block-0074"
+      ],
+      "source_count": 2,
+      "source_characters": 4330,
+      "research_items": 1
+    }
+  ],
+  "phase_limits_usd": {
+    "outline": 0.5,
+    "article": 0.75
+  },
+  "warning": "Ceilings use UTF-8 bytes as a conservative token bound. They are not expected charges. Output uncertainty and actual article requests remain untested."
+}

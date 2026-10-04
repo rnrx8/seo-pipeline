@@ -12,7 +12,7 @@ from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 
-POLICY_VERSION = 'content-quality-v13-proportionate-resolution'
+POLICY_VERSION = 'content-quality-v14-scoped-resolution'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -58,7 +58,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .readability import READABILITY_POLICY
     from .quality_context import compact_enabled, CONTEXT_POLICY
     from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
-    value = json.dumps([compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
+    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -340,7 +341,11 @@ def audit_output_config(keys, *, locations=False, source_routing=False):
             'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},
             'required':['id','reason'],'additionalProperties':False}}
     if source_routing:
-        properties['requires_source_check'] = {'type':'boolean'}
+        properties.update(requires_source_check={'type':'boolean'},
+            affected_blocks={'type':'array','items':{'type':'object','properties':{
+                'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}},
+            research_ids={'type':'array','items':{'type':'string'}},
+            source_urls={'type':'array','items':{'type':'string'}})
     return {'format':{'type':'json_schema','schema':{
         'type':'object','properties':{'checks':{'type':'array','items':{
             'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}}},
@@ -398,6 +403,11 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         payload['conditional_facts']=review_conditions(facts,requirements)
         payload.pop('source_documents')
         payload['source_revision']=digest(sources)
+        from .review_scope import source_resolutions, ROUTING_POLICY
+        payload['article_blocks']=content_blocks(text)
+        payload.pop('document')
+        payload['requirements']['source_resolutions']=source_resolutions(stage,content_blocks(text),sources,payload['requirements'])
+        system+=ROUTING_POLICY
         system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。各checkにrequires_source_checkを返す。提示された採用回答から誤りと修正内容が確定する場合はfail、requires_source_check=falseとして局所修正へ渡す。要約が短い等の理由で原文を見ないと主張の正誤が判断できない事実項目だけfail、requires_source_check=trueとし、reasonに主張と必要な資料を明示する。pass/not_applicableはfalse。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
     request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=audit_output_config(keys, source_routing=compact),
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}])
@@ -412,10 +422,8 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         raw, usage = response_text(message), message.usage
     report = parse_audit(raw)
     if compact:
-        for c in report['checks']:
-            if 'requires_source_check' in c and (type(c['requires_source_check']) is not bool
-                    or (c['requires_source_check'] and (c['status']!='fail' or c['key'] not in evidence_keys))):
-                raise ContentQualityError('追加照合の対象指定が不正です。')
+        from .review_scope import validate_routes, pages_from
+        validate_routes(report['checks'],content_blocks(text),payload['requirements'],pages_from(sources),evidence_keys)
     if compact and any(c['status']=='fail' and c['key'] in evidence_keys and c.get('requires_source_check', True) for c in report['checks']):
         from .tiered_evidence import evidence_audit
         from types import SimpleNamespace
@@ -423,9 +431,9 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
                           'requirements':payload['requirements'],'confirmed_facts':payload['confirmed_facts'],'content_contract':contract,
                           'source_documents':sources,'candidate_checks':report['checks']}
         checks,extra,evidence_trace=evidence_audit(stage,evidence_payload,AUDIT_SYSTEM,evidence_keys,text)
-        local_failures={c['key']:c for c in report['checks'] if c['status']=='fail' and c.get('requires_source_check') is False}
-        report=parse_audit(json.dumps({'checks':[c for c in report['checks'] if c['key'] not in evidence_keys]
-                                     +[local_failures.get(c['key'],c) for c in checks]},ensure_ascii=False))
+        replacements={c['key']:c for c in checks}
+        report=parse_audit(json.dumps({'checks':[replacements[c['key']] if c.get('requires_source_check')
+                                     else c for c in report['checks']]},ensure_ascii=False))
         usage=SimpleNamespace(input_tokens=usage.input_tokens+extra.input_tokens,output_tokens=usage.output_tokens+extra.output_tokens)
     if evidence_trace:
         report['evidence_routing']=evidence_trace

@@ -7,7 +7,8 @@ from types import SimpleNamespace as NS
 from unittest.mock import patch
 
 from pipeline import content_quality as cq, focused_quality as fq, tiered_evidence as te
-from pipeline.quality_context import review_requirements, repair_context
+from pipeline.quality_context import review_requirements
+from pipeline.review_scope import repair_packet
 from pipeline.content_edits import content_blocks
 
 
@@ -35,6 +36,9 @@ class CompactQualityFlowTests(unittest.TestCase):
         result={'checks':[{'key':k,'status':'fail' if fail else 'pass','reason':'fixture',
             **({'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'契約期間'}] if fail else []}
                if 'affected_blocks' in fields else {})} for k in fields['key']['enum']]}
+        if 'requires_source_check' in fields:
+            for c in result['checks']:
+                c.update(requires_source_check=False,source_urls=[self.pages[0]['url']],research_ids=['q1'])
         if 'review' in root['properties']:
             result['review']={'needed':review,'block_ids':[self.blocks[2]['id']] if review else [],
                               'source_urls':[self.pages[0]['url']],'reason':'契約条件を確認'}
@@ -63,7 +67,7 @@ class CompactQualityFlowTests(unittest.TestCase):
         self.assertEqual(set(report['phases']),set(fq.ROLES))
         self.assertEqual(len(calls),5)
         self.assertEqual(calls[0][1]['model'],'gpt-6-luna')
-        self.assertEqual(calls[0][2]['source_documents'],self.pages)
+        self.assertNotIn('source_documents',calls[0][2])
         for step,request,data in calls:
             self.assertEqual(data['article_blocks'],self.blocks)
             self.assertEqual(data['requirements']['custom_prompt'],self.requirements['custom_prompt'])
@@ -82,7 +86,7 @@ class CompactQualityFlowTests(unittest.TestCase):
             if 'confirmed_facts' in payload:
                 self.assertNotEqual(payload['confirmed_facts'],facts)
                 self.assertEqual(payload['requirements']['research_decisions']['items'][0]['answer'],'男性・年契約。')
-        self.assertEqual(seen[0]['source_documents'],self.pages)
+        self.assertNotIn('source_documents',seen[0])
         self.assertEqual(len(seen),5)
 
     def test_outline_preserves_all_checks_but_sol_receives_no_source_bodies(self):
@@ -106,7 +110,9 @@ class CompactQualityFlowTests(unittest.TestCase):
             result,usage=self.reply(request)
             if step=='tiered_audit_research':
                 for c in result['checks']:
-                    if c['key'] in ('coverage','evidence_support'):c['status']='fail'
+                    if c['key'] in ('coverage','evidence_support'):
+                        c.update(status='fail',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'fixture'}],
+                                 requires_source_check=c['key']=='evidence_support')
             return result,usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,contract={},requirements=self.requirements,sources=self.sources)
@@ -119,7 +125,10 @@ class CompactQualityFlowTests(unittest.TestCase):
     def run_evidence(self,send):
         with patch('pipeline.tiered_research.checked_request',side_effect=send), \
              patch('pipeline.db.get_optional_artifact',return_value=None):
-            return te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources},'',fq.ROLES['evidence'],self.text)
+            return te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources,
+                'candidate_checks':[{'key':'evidence_support','status':'fail','requires_source_check':True,
+                    'reason':'条件の確認','source_urls':[self.pages[0]['url']],'research_ids':[],
+                    'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},'',fq.ROLES['evidence'],self.text)
 
     def test_restore_only_requested_saved_source_without_another_fetch(self):
         pages=[{'url':'https://a.example','text':'head\n[中略：取得本文の抜粋]\ntail','truncated':True,'fetched_at':'today'},
@@ -143,7 +152,7 @@ class CompactQualityFlowTests(unittest.TestCase):
             for c in result['checks']:
                 c['requires_source_check']=False
                 if c['key']=='evidence_support':
-                    c.update(status='fail',reason='採用済みの決済方法別条件が構成から欠落。条件を補う。')
+                    c.update(status='fail',reason='採用済みの決済方法別条件が構成から欠落。条件を補う。',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'条件'}])
             return result,usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
@@ -159,8 +168,8 @@ class CompactQualityFlowTests(unittest.TestCase):
             if step=='tiered_audit_research':
                 for c in result['checks']:
                     c['requires_source_check']=False
-                    if c['key']=='comparison_conditions':c.update(status='fail',reason='契約期間が欠落')
-                    if c['key']=='evidence_support':c.update(status='fail',requires_source_check=True,reason='機能表との対応確認が必要')
+                    if c['key']=='comparison_conditions':c.update(status='fail',reason='契約期間が欠落',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'期間'}])
+                    if c['key']=='evidence_support':c.update(status='fail',requires_source_check=True,reason='機能表との対応確認が必要',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'機能'}])
             return result,usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
@@ -198,14 +207,14 @@ class CompactQualityFlowTests(unittest.TestCase):
             if step.endswith('screen'):return self.reply(request,fail=True,review=True)
             return self.reply(request,review=True)
         checks,usage,trace=self.run_evidence(send)
-        self.assertEqual(len(calls),3)
+        self.assertEqual(len(calls),2)
         self.assertEqual([p['url'] for p in calls[1][1]['source_documents']],[self.pages[0]['url']])
-        self.assertEqual(calls[2][1]['source_documents'],self.pages)
+        self.assertTrue(all(self.pages[1] not in c[1]['source_documents'] for c in calls))
         shown={b['id'] for b in calls[1][1]['article_blocks']}
         self.assertTrue({self.blocks[n]['id'] for n in (1,2,3)}<=shown)
         self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
         self.assertTrue(all(c['status']=='pass' for c in checks if c['key']!='evidence_support'))
-        self.assertEqual(usage.input_tokens,30)
+        self.assertEqual(usage.input_tokens,20)
 
     def test_optional_sol_review_does_not_overrule_unresolved_fact_to_pass(self):
         def send(job,step,request):return self.reply(request,review=True)
@@ -213,14 +222,14 @@ class CompactQualityFlowTests(unittest.TestCase):
         self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
         self.assertTrue(all(c['status']=='pass' for c in checks if c['key']!='evidence_support'))
 
-    def test_adjudication_gets_sources_cited_by_failed_blocks_not_only_screen_selection(self):
+    def test_comparison_paragraph_links_do_not_expand_explicit_source_scope(self):
         self.text=self.text.replace('月額の対象は男性です。', '月額の対象は男性です。 https://b.example/price')
         self.blocks=content_blocks(self.text)
         calls=[]
         def send(job,step,request):
             data=json.loads(request['messages'][0]['content']);calls.append(step)
             if step.endswith('screen'):return self.reply(request,fail=True,review=True)
-            self.assertEqual(data['source_documents'],self.pages)
+            self.assertEqual(data['source_documents'],self.pages[:1])
             return self.reply(request)
         checks,_,_=self.run_evidence(send)
         self.assertEqual(len(calls),2)
@@ -248,28 +257,25 @@ class CompactQualityFlowTests(unittest.TestCase):
         self.assertEqual(len(calls),2)
         self.assertEqual(trace[0]['review']['source_urls'],[self.pages[0]['url']])
 
-    def test_passing_sample_still_receives_independent_review(self):
+    def test_document_hash_does_not_trigger_paid_sampling(self):
         calls=[]
         def send(job,step,request):calls.append(step);return self.reply(request)
         with patch.object(cq,'digest',return_value='0'*64):self.run_evidence(send)
-        self.assertEqual(len(calls),2)
+        self.assertEqual(len(calls),1)
 
-    def test_comparison_claim_cannot_bypass_sol_with_a_luna_pass(self):
+    def test_comparison_keyword_alone_does_not_trigger_another_review(self):
         self.text+='\n\nAは最安です。';self.blocks=content_blocks(self.text)
         calls=[]
         def send(job,step,request):calls.append(step);return self.reply(request)
         self.run_evidence(send)
-        self.assertEqual(len(calls),2)
+        self.assertEqual(len(calls),1)
 
-    def test_style_repair_omits_raw_sources_factual_repair_keeps_them(self):
-        req,source=repair_context(self.requirements,self.sources,[{'key':'prose_quality'}],[])
-        self.assertEqual(source,'')
-        self.assertEqual(req['custom_prompt'],self.requirements['custom_prompt'])
-        self.assertNotIn('research_decisions',req)
-        for checks,issues in (([{'key':'comparison_conditions'}],[]),([], [{'key':'missing_required_section'}]),([],[])):
-            req,source=repair_context(self.requirements,self.sources,checks,issues)
-            self.assertEqual(source,self.sources)
-            self.assertNotIn('evidence',req['research_decisions']['items'][0])
+    def test_style_repair_omits_sources_but_preserves_user_settings(self):
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':self.blocks[2]['id'],'reason':'文章'}]}]}
+        packet=repair_packet(self.text,review_requirements(self.requirements,'evidence'),self.sources,report)
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(packet['requirements']['custom_prompt'],self.requirements['custom_prompt'])
+        self.assertEqual(packet['requirements']['research_decisions']['items'],[])
 
     def test_snapshot_invalidates_when_routing_or_sources_change(self):
         args=(self.text,'','',{},self.requirements,self.sources)
@@ -277,21 +283,13 @@ class CompactQualityFlowTests(unittest.TestCase):
         with patch.dict(os.environ,{'QUALITY_RESEARCH_ROUTING':''}):self.assertNotEqual(before,cq.snapshot(*args))
         self.assertNotEqual(before,cq.snapshot(*args[:-1],self.sources+' '))
 
-    def test_factual_repair_reuses_only_independently_reviewed_matching_sources(self):
-        receipt={'model':'gpt-6.1-sol','review':{'needed':False},'reviewed_block_ids':[self.blocks[2]['id']],
-                 'visible_source_urls':[self.pages[0]['url']],
-                 'visible_sources_sha256':cq.digest(json.dumps(self.pages[:1],ensure_ascii=False,sort_keys=True))}
-        checks=[{'key':'comparison_conditions','affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]
-        report={'phases':{'evidence':{'evidence_routing':[receipt]}}}
-        _,source=repair_context(self.requirements,self.sources,checks,[],report)
-        self.assertEqual(json.loads(source),self.pages[:1])
-        for change in ('revision','block','unresolved','no_locations'):
-            r=copy.deepcopy(report);c=copy.deepcopy(checks)
-            if change=='revision':r['phases']['evidence']['evidence_routing'][0]['visible_sources_sha256']='stale'
-            elif change=='block':c[0]['affected_blocks'][0]['id']=self.blocks[4]['id']
-            elif change=='unresolved':r['phases']['evidence']['evidence_routing'][0]['review']['needed']=True
-            else:c[0]['affected_blocks']=[]
-            self.assertEqual(repair_context(self.requirements,self.sources,c,[],r)[1],self.sources)
+    def test_factual_repair_uses_explicit_sources_and_rejects_missing_locations(self):
+        check={'key':'comparison_conditions','status':'fail','research_ids':['q1'],
+               'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}
+        packet=repair_packet(self.text,review_requirements(self.requirements,'evidence'),self.sources,{'checks':[check]})
+        self.assertEqual(packet['source_documents'],self.pages[:1])
+        with self.assertRaises(cq.ContentQualityError):
+            repair_packet(self.text,self.requirements,self.sources,{'checks':[{**check,'affected_blocks':[]}]})
 
     def test_new_evidence_route_stops_on_the_existing_budget_before_any_http(self):
         from pipeline import quality_budget as budget
@@ -301,6 +299,6 @@ class CompactQualityFlowTests(unittest.TestCase):
                 ledger['calls'].append({'cost_usd':budget.LIMIT,'reserved_usd':budget.LIMIT,'category':'quality'})
             with patch('pipeline.tiered_research.get_optional_artifact',return_value=None),patch('pipeline.openai_review.requests.post') as post:
                 with self.assertRaises(cq.ContentQualityError):
-                    te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources},'',fq.ROLES['evidence'],self.text)
+                    te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources,'candidate_checks':[{'key':'evidence_support','status':'fail','requires_source_check':True,'reason':'期間','source_urls':[self.pages[0]['url']],'research_ids':[],'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},'',fq.ROLES['evidence'],self.text)
                 post.assert_not_called()
             with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),1)

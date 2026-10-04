@@ -57,14 +57,39 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                    'failは問題箇所のidとreasonを全て記す。欠落の指摘は補うべき既存段落を指定。passは空配列。'
                    '指摘は修正可能な具体的欠陥に限り、全文を書き直さずJSONだけ返す。')
         print('[quality] Checking ' + role, flush=True)
+        if role=='coverage' and compact_enabled():
+            from .review_scope import ROUTING_POLICY
+            system+=ROUTING_POLICY+'\n今回は網羅性担当。requires_source_checkはfalse。補う情報のresearch_idsを指定する。'
         request = dict(model=model, max_tokens=budget, system=system,
-                       output_config=audit_output_config(keys, locations=True),
+                       output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled()),
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
         from .ai import tiered_review_enabled
         trace=[]
+        phase_model=model
         if role=='evidence' and compact_enabled():
             from .tiered_evidence import evidence_audit
-            checks,usage,trace=evidence_audit('article',payload,system,keys,text)
+            from .review_scope import ROUTING_POLICY, validate_routes, pages_from, source_resolutions
+            from .tiered_research import checked_request
+            from .quality_budget import JOB
+            from types import SimpleNamespace
+            from .content_quality import digest
+            phase_model='gpt-6-luna'
+            brief={k:v for k,v in payload.items() if k not in ('source_documents','outline')}
+            brief['source_revision']=digest(sources)
+            brief['requirements']['source_resolutions']=source_resolutions('article',content_blocks(text),sources,brief['requirements'])
+            request.update(model='gpt-6-luna',system=system+ROUTING_POLICY,
+                output_config=audit_output_config(keys,locations=True,source_routing=True),
+                messages=[{'role':'user','content':json.dumps(brief,ensure_ascii=False)}])
+            value,usage=checked_request(JOB.get(),'tiered_article_evidence_scope',request)
+            raw=json.dumps(value,ensure_ascii=False)
+            checks=parse_focus(raw,keys,text)
+            validate_routes(checks,content_blocks(text),payload['requirements'],pages_from(sources),keys)
+            if any(c['requires_source_check'] for c in checks):
+                confirmed,extra,trace=evidence_audit('article',{**payload,'candidate_checks':checks},system,keys,text)
+                replacements={c['key']:c for c in confirmed}
+                checks=[replacements[c['key']] if c['requires_source_check'] else c for c in checks]
+                usage=SimpleNamespace(input_tokens=usage.input_tokens+extra.input_tokens,output_tokens=usage.output_tokens+extra.output_tokens)
+                raw=json.dumps({'checks':checks},ensure_ascii=False)
         elif tiered_review_enabled():
             from .quality_budget import JOB
             from .tiered_research import checked_request
@@ -74,7 +99,10 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             msg = create_with_retry(client, **request)
             raw, usage = response_text(msg), msg.usage
         if not trace:checks = parse_focus(raw, keys, text)
-        phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':model if not trace else trace[-1]['model'],
+        if role=='coverage' and compact_enabled():
+            from .review_scope import validate_routes, pages_from
+            validate_routes(checks,content_blocks(text),payload['requirements'],pages_from(sources),())
+        phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if trace:phase['evidence_routing']=trace
         phases[role] = phase
@@ -85,7 +113,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         failed=[c for c in results if c['status']=='fail']
         combined.append({'key':key,'status':'fail' if failed else 'pass',
                          'reason':'\n'.join(c['reason'] for c in failed or results),
-                         'affected_blocks':list({v['id']:v for c in failed for v in c['affected_blocks']}.values())})
+                         'affected_blocks':list({v['id']:v for c in failed for v in c['affected_blocks']}.values()),
+                         'research_ids':sorted({i for c in failed for i in c.get('research_ids',[])}),
+                         'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])})})
     from .price_comparison import comparison_evidence
     from .claim_scope import scope_issues
     from .content_quality import explicit_risk_guarantees
