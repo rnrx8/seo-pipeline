@@ -119,6 +119,35 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertEqual(result['items'][0]['basis'],'omitted')
         self.assertTrue(validate_matrix(result,self.plan,self.pages))
 
+    def test_important_partial_answer_reaches_reread_before_omission(self):
+        self.plan,self.pages,self.answer=fixture('important')
+        self.plan['items'][0]['question']='地域で探せるか。指定単位は何か'
+        self.pages[0]['text']='地域でお相手を検索できます。'
+        good=copy.deepcopy(self.answer)
+        good['items'][0].update(basis='primary',answer='地域で検索可能。指定単位は掲載しない。',
+            evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text'],'source_kind':'primary'}])
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:return self.unknown()
+            return {**good,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertIn('tiered_focused_1_reread',self.saved)
+        self.assertTrue(result['items'][0]['verified'])
+        self.assertEqual(result['items'][0]['answer'],good['items'][0]['answer'])
+        self.assertNotIn('omission_candidate_from',result['items'][0])
+
+    def test_failed_important_reread_still_needs_coverage_for_omission(self):
+        self.plan,self.pages,self.answer=fixture('important')
+        def respond(request,payload):
+            if 'decisions' in payload:
+                return dict(coverage_sufficient=False,coverage_reason='主要部分が必要',
+                            coverage_issues=[{'id':'q1','reason':'主要部分が必要'}])
+            return {**self.unknown(),'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertEqual(len(self.calls),3)
+        self.assertEqual(result['items'][0]['basis'],'omitted')
+        self.assertTrue(validate_matrix(result,self.plan,self.pages))
+
     def test_bad_source_id_cannot_be_promoted_by_full_source_validation(self):
         with patch.object(tiered,'checked_request',return_value=({**self.answer,'needs_more_sources':False,'items':[
             {**self.answer['items'][0],'additional_sources_needed':False,'evidence':[{'source_ref':'invented','expert_source_ref':'','source_kind':'primary'}]}]},NS(input_tokens=0,output_tokens=0))):

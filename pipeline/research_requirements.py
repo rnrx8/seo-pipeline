@@ -280,7 +280,7 @@ def major_sources_checked(item, pages):
             and bool(item.get('exploration_reason','').strip()))
 
 
-def propose_optional_omissions(items, plan, pages):
+def propose_optional_omissions(items, plan, pages, *, supporting_only=False):
     """Offer unverified optional facts for whole-article omission review.
 
     Called after factual checks. Never marks the article complete; coverage can
@@ -299,7 +299,7 @@ def propose_optional_omissions(items, plan, pages):
     for item in items:
         q=planned[item['id']]
         if (item.get('verified') or q.get('required') is not False
-            or q.get('priority') not in ('important','supporting')):
+            or q.get('priority') not in (('supporting',) if supporting_only else ('important','supporting'))):
             continue
         if not major_sources_checked(item,pages):
             shared=reviewed.get(q.get('subject'))
@@ -457,7 +457,9 @@ def verify(job_id, keyword, api_key=None):
     """At most one targeted retrieval retry; never drop planned questions."""
     plan_value=load_plan(job_id)
     previous=get_optional_artifact(job_id,'research_matrix')
-    pending=resume_research_gaps(previous,plan_value)
+    from .research_collection import recover_empty_collections
+    recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
+    pending=None if recovered else resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
     supplement=get_optional_artifact(job_id,'research_supplement')
     # A policy update invalidates verdicts, not the already-used retrieval budget.

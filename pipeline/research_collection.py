@@ -35,6 +35,58 @@ def collection_records(job_id, loader=None):
     return [r for step in steps if (r:=loader(job_id,step))]
 
 
+def incomplete_questions(job_id, plan, loader=None):
+    """Recover only the exact questions of an existing empty collection slot."""
+    planned = {q['id']:q for q in plan['items']}
+    plan_hash = digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))
+    missing = set()
+    for record in collection_records(job_id, loader):
+        if record.get('content_text', '').strip():
+            continue
+        meta = record.get('meta', {})
+        if meta.get('plan_sha256') and meta['plan_sha256'] != plan_hash:
+            raise ContentQualityError('空の調査記録と現在の調査計画が異なります。回復対象を自動で変更しません。')
+        ids = meta.get('question_ids')
+        if (not isinstance(ids, list) or not ids or len(set(ids)) != len(ids)
+            or any(i not in planned or planned[i]['subject'] != meta.get('subject') for i in ids)):
+            raise ContentQualityError('空の調査記録の対象質問を特定できません。全体再調査には広げません。')
+        missing.update(ids)
+    return [{**q, 'reason':'以前の対象調査が空のまま終了。未完了の同じ質問だけを回復する。'}
+            for q in plan['items'] if q['id'] in missing]
+
+
+def recover_empty_collections(job_id, keyword, plan, *, api_key=None, loader=None):
+    """One legacy-data recovery, using the existing collector and budget ledger.
+
+    This does not replenish research_supplement or accept any research verdict.
+    Failed/uncertain recovery is not retried automatically.
+    """
+    loader = loader or get_optional_artifact
+    gaps = incomplete_questions(job_id, plan, loader)
+    if not gaps:
+        return False
+    if loader(job_id, 'research_collection_recovery'):
+        raise ContentQualityError('空の調査記録の回復は実行済み、または中断されています。自動再課金しません。')
+    state = {'status':'running', 'question_ids':[q['id'] for q in gaps],
+             'plan_sha256':digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))}
+    def save():
+        upsert_artifact(job_id=job_id, step='research_collection_recovery',
+                        content_type='application/json', content_text=json.dumps(state), meta={})
+    save()
+    from . import step_fact_sheet
+    try:
+        step_fact_sheet.run(job_id, keyword, api_key=api_key, research_gaps=json.dumps(gaps, ensure_ascii=False))
+        if incomplete_questions(job_id, plan, loader):
+            raise ContentQualityError('対象調査の回復後も空の記録が残っています。')
+    except Exception:
+        state['status'] = 'failed'
+        save()
+        raise
+    state['status'] = 'completed'
+    save()
+    return True
+
+
 def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, gaps=''):
     tasks = batches(plan)
     bounded_search=tiered_review_enabled()
@@ -61,6 +113,8 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             # These are raw notes, not a passed check. A plan edit need not
             # recollect questions the current full audit did not flag.
             preserved='\n\n'.join(dict.fromkeys(r['content_text'] for r in prior_subject))
+            if not preserved.strip():
+                raise ContentQualityError('対象外の調査記録が空です。完了扱いで保存しません。')
             upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=preserved,
                 meta={'subject':task['subject'],'raw_notes_preserved':True,
                       'source_urls':sorted({u for r in prior_subject for u in r.get('meta',{}).get('source_urls',[])}),

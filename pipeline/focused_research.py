@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v3-compact-factual-scope'
+VERSION = 'focused-research-v4-omit-after-reread'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -110,8 +110,9 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         result['needs_more_sources']=any(i.get('additional_sources_needed') for i in result['items'])
         return result
 
-    # Optional omissions still require whole-article coverage approval.
-    propose_optional_omissions(value['items'], {'items':questions}, packed)
+    # Only supporting unknowns skip rereading. Important partial answers must
+    # reach the existing bounded reread before the final omission proposal.
+    propose_optional_omissions(value['items'], {'items':questions}, packed, supporting_only=True)
     unknown = [i for i in value['items'] if not i.get('verified') and not i.get('omission_candidate_from')]
     if unknown:
         # One reread per subject. Use original saved bodies, not the earlier excerpt.
@@ -123,7 +124,6 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
             bodies = packed_sources(selected, unknown)
             result = expand_pending(result, bodies, 'gpt-6-luna', 'reread_expanded', READ_POLICY+FOCUS_POLICY)
         replace(require_enough_sources(result))
-        propose_optional_omissions(value['items'], {'items':questions}, bodies)
         packed = merge_visible_sources(packed, bodies)
 
     pending = [i for i in value['items'] if i.get('verified') and i.get('basis') != 'omitted'
