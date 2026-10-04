@@ -278,3 +278,37 @@ class ScopedReviewTests(unittest.TestCase):
                 result=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(pages))
                 self.assertEqual(result['phases']['evidence']['model'],'gpt-6-luna')
         self.assertNotEqual(seen[0],seen[1])
+
+    def test_expanded_source_keeps_other_required_documents(self):
+        payload=copy.deepcopy(self.payload)
+        payload['candidate_checks'][0]['source_urls']=[self.pages[1]['url']]
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request)
+            value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
+                                   source_urls=[self.pages[1]['url']])
+            return value,NS(input_tokens=0,output_tokens=0)
+        def restore(pages,urls,job):
+            return [{**p,'text':p['text']+' additional plan conditions'} for p in pages]
+        with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=restore):
+            checks,_,trace=evidence.evidence_audit('research',payload,'',ROLES['evidence'],self.text)
+        self.assertEqual(len(seen),3)
+        self.assertEqual([p['url'] for p in seen[-1]['source_documents']],[p['url'] for p in self.pages[:2]])
+        self.assertEqual(seen[-1]['source_documents'][0],self.pages[0])
+        self.assertIn('additional plan conditions',seen[-1]['source_documents'][1]['text'])
+        self.assertFalse(trace[-1]['review']['needed'])
+
+    def test_unchanged_requested_source_does_not_buy_another_review(self):
+        payload=copy.deepcopy(self.payload)
+        payload['candidate_checks'][0]['source_urls']=[self.pages[1]['url']]
+        def send(job,step,request):
+            value=self.message(request)
+            value['review'].update(needed=True,block_ids=[self.a],source_urls=[self.pages[1]['url']])
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls, \
+             patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
+            checks,_,trace=evidence.evidence_audit('research',payload,'',ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,2)
+        self.assertTrue(trace[-1]['review']['needed'])
+        self.assertEqual(checks[0]['status'],'fail')

@@ -7,7 +7,7 @@ import copy
 import json
 from datetime import datetime, timezone
 
-POLICY_VERSION = 'scoped-review-v1'
+POLICY_VERSION = 'scoped-review-v2-preserve-source-set'
 ROUTING_POLICY = '''
 【今回の判定段階：上記の原文照合指定より優先】
 原文照合の前に、採用済み回答と条件、source_resolutionsを用いて判定する。

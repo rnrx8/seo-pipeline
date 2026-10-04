@@ -126,8 +126,13 @@ def evidence_audit(stage, payload, system, keys, text):
         second,more=ask('adjudicate','gpt-6.1-sol',detail)
         if more['needed'] and more['source_urls']:
             requested=[p for p in pages if canonical(p['url']) in {canonical(u) for u in more['source_urls']}]
-            expanded=restore_requested_bodies(requested,more['source_urls'],JOB.get())
-            if expanded != selected:
+            restored=restore_requested_bodies(requested,more['source_urls'],JOB.get())
+            if restored != requested:
+                # Expand requested bodies inside the already-scoped collection.
+                # Replacing the collection with the requested subset can drop a
+                # pricing table needed to interpret the requested FAQ.
+                replacements={canonical(p['url']):p for p in restored}
+                expanded=[replacements.get(canonical(p['url']),p) for p in selected]
                 second,more=ask('expanded','gpt-6.1-sol',{**detail,'source_documents':expanded})
         if more['needed']:
             second=[{**c,'status':'fail','reason':'追加確認が未完了：'+more['reason'],
