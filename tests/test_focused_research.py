@@ -114,7 +114,7 @@ class FocusedResearchTests(unittest.TestCase):
             if 'decisions' in payload:return self.responder(request,payload)
             if 'candidate_answers' not in payload:
                 value=self.unknown()
-                value['items'][0]['evidence']=[{'url':alternative['url'],'quote':alternative['text'],'source_kind':'secondary'}]
+                value['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])+[{'url':alternative['url'],'quote':alternative['text'],'source_kind':'secondary'}]
                 return value
             if request['model']=='gpt-6.1-sol':audits.append(payload)
             return {**self.answer,'needs_more_sources':False}
