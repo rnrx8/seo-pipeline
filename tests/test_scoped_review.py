@@ -312,3 +312,35 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(calls.call_count,2)
         self.assertTrue(trace[-1]['review']['needed'])
         self.assertEqual(checks[0]['status'],'fail')
+
+    def test_article_uses_unspent_outline_allowance_without_raising_quality_total(self):
+        with budget.ledger() as ledger:
+            ledger['calls']=[{'reserved_usd':.15,'cost_usd':.15,'category':'quality',
+                'review_operation':{'phase':'outline','role':'audit','request_sha256':'old'}}]
+        request={'messages':[{'content':'{}'}]}
+        with budget.request_scope('offline-job','tiered_article_language','article',request):
+            with budget.ledger() as ledger:
+                self.assertAlmostEqual(budget.review_remaining(ledger),1.1)
+                budget.guard_review(ledger,1.0)  # > previous .75 article ceiling
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.11)
+
+    def test_generation_allocation_preserves_quality_budget(self):
+        with budget.ledger() as ledger:
+            ledger.update(total_limit_usd=5,category_limits_usd={'generation':3.75,'quality':1.25})
+            ledger['calls']=[{'reserved_usd':3.7,'cost_usd':3.7,'category':'generation'}]
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'5'}),budget.scope('offline-job','article'):
+            with self.assertRaisesRegex(ContentQualityError,'他工程'):
+                budget.reserve_claude({'model':'claude-opus-5-5','max_tokens':6000,'messages':[]})
+        with budget.ledger() as ledger:
+            self.assertEqual(len(ledger['calls']),1)
+            self.assertEqual(budget.category_remaining(ledger,'quality'),1.25)
+
+    def test_quality_total_is_not_bypassed_by_completion_mode(self):
+        with budget.ledger() as ledger:
+            ledger.update(total_limit_usd=10,completion_evaluation={'stop_after_usd':10,'authorization':'fixture'})
+            ledger['calls']=[{'reserved_usd':1.24,'cost_usd':1.24,'category':'quality',
+                'review_operation':{'phase':'article','role':'coverage','request_sha256':'old'}}]
+        with patch.dict(os.environ,{'QUALITY_COMPLETION_EVAL':'1'}),budget.request_scope('offline-job','tiered_article_language','new',{'messages':[{'content':'{}'}]}):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000,'input':'x'})
+        with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),1)

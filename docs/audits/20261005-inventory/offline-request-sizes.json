@@ -10,6 +10,7 @@
       "operation": "tiered_audit_research",
       "model": "gpt-6.1-sol",
       "json_input_bytes_with_slack": 229134,
+      "local_o200k_proxy_tokens": 60724,
       "output_token_limit": 6000,
       "conservative_request_ceiling_yen_at_200": 126.57,
       "shown_blocks": 88,
@@ -22,6 +23,7 @@
       "operation": "tiered_research_evidence_screen",
       "model": "gpt-6-luna",
       "json_input_bytes_with_slack": 47744,
+      "local_o200k_proxy_tokens": 11692,
       "output_token_limit": 6000,
       "conservative_request_ceiling_yen_at_200": 1.79,
       "shown_blocks": 6,
@@ -37,6 +39,7 @@
       "operation": "tiered_research_evidence_adjudicate",
       "model": "gpt-6.1-sol",
       "json_input_bytes_with_slack": 47972,
+      "local_o200k_proxy_tokens": 11743,
       "output_token_limit": 6000,
       "conservative_request_ceiling_yen_at_200": 35.99,
       "shown_blocks": 6,
@@ -52,6 +55,7 @@
       "operation": "outline_local_repair_response",
       "model": "gpt-6.1-sol",
       "json_input_bytes_with_slack": 30158,
+      "local_o200k_proxy_tokens": 7032,
       "output_token_limit": 6000,
       "conservative_request_ceiling_yen_at_200": 27.08,
       "shown_blocks": 6,
@@ -66,7 +70,7 @@
   ],
   "phase_limits_usd": {
     "outline": 0.5,
-    "article": 0.75
+    "article": 1.25
   },
   "warning": "Ceilings use UTF-8 bytes as a conservative token bound. They are not expected charges. Output uncertainty and actual article requests remain untested."
 }

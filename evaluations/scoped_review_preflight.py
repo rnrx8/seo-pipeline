@@ -38,10 +38,13 @@ def run(saved_run):
               'max_output_tokens':request['max_tokens'],'reasoning':{'effort':'medium'},'store':False,'stream':True,
               'text':{'format':request['output_config']['format']},'service_tier':'default'}
         size=len(json.dumps(body,ensure_ascii=False).encode())+4096
+        # Local proxy only; o200k is not asserted to be the provider's tokenizer.
+        import tiktoken
+        local_tokens=len(tiktoken.get_encoding('o200k_base').encode(json.dumps(body,ensure_ascii=False),disallowed_special=()))
         ir,orr=RATES[request['model']]
         maximum=(size*ir*(2 if size>272000 else 1)+request['max_tokens']*orr*(1.5 if size>272000 else 1))/1e6
         captured.append({'operation':step,'model':request['model'],'json_input_bytes_with_slack':size,
-            'output_token_limit':request['max_tokens'],'conservative_request_ceiling_yen_at_200':round(maximum*200,2),
+            'local_o200k_proxy_tokens':local_tokens,'output_token_limit':request['max_tokens'],'conservative_request_ceiling_yen_at_200':round(maximum*200,2),
             'shown_blocks':len(data.get('article_blocks',data.get('outline_blocks',[]))),
             'target_block_ids':data.get('target_block_ids',[]),
             'source_count':len(data.get('source_documents',[])),

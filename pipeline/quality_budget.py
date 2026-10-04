@@ -18,7 +18,7 @@ LIMIT=1.25 # <=250 JPY at conservative 200 JPY/USD allowance, 50 JPY headroom
 
 REQUEST=contextvars.ContextVar('quality_review_request',default=None)
 # These ceilings divide the existing quality allowance; they do not raise it.
-REVIEW_PHASE_LIMITS={'outline':.5,'article':.75}
+REVIEW_PHASE_LIMITS={'outline':.5,'article':LIMIT}
 
 
 def review_operation(step):
@@ -65,7 +65,7 @@ def guard_review(value,amount):
  legacy=[c for c in calls if not c.get('review_operation') and c.get('stage') in
          (('research_validation','outline_local_repair') if meta['phase']=='outline' else ('content_audit',))]
  if legacy:raise ContentQualityError('旧方式の確認履歴があります。通算予算・回数の移行確認前には再開しません。')
- policy={'version':'bounded-review-v1','phase_limits_usd':REVIEW_PHASE_LIMITS,
+ policy={'version':'bounded-review-v2-shared-remainder','phase_limits_usd':REVIEW_PHASE_LIMITS,
          'outline_audits':2,'outline_repairs':1,'article_role_checks':2,'article_repairs_including_encoding':2}
  saved=value.setdefault('review_policy',policy)
  if saved!=policy:
@@ -82,7 +82,8 @@ def guard_review(value,amount):
  if len(same)>=meta['call_limit']:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)
- if used+amount>REVIEW_PHASE_LIMITS[meta['phase']]:
+ quality_used=sum(c.get('cost_usd',c['reserved_usd']) for c in calls if c.get('category','quality')=='quality')
+ if used+amount>REVIEW_PHASE_LIMITS[meta['phase']] or quality_used+amount>LIMIT:
   raise ContentQualityError('この確認段階の費用枠を超えます。後工程の予算を消費せず送信前に停止しました。')
 
 
@@ -91,7 +92,26 @@ def review_remaining(value):
  if not meta:return float('inf')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls']
           if c.get('review_operation',{}).get('phase')==meta['phase'])
- return REVIEW_PHASE_LIMITS[meta['phase']]-used
+ quality_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
+ return min(REVIEW_PHASE_LIMITS[meta['phase']]-used,LIMIT-quality_used)
+
+
+def category_remaining(value, category):
+ """Optional trial allocation: generation cannot consume review reserves."""
+ from .content_quality import ContentQualityError
+ caps=value.get('category_limits_usd')
+ if caps is None:return float('inf')
+ if (not isinstance(caps,dict) or set(caps)!={'generation','quality'}
+     or any(type(v) not in (int,float) or not math.isfinite(v) or v<=0 for v in caps.values())):
+  raise ContentQualityError('生成・品質確認の費用配分が不正です。')
+ used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')==category)
+ return caps[category]-used
+
+
+def guard_category(value, category, amount):
+ from .content_quality import ContentQualityError
+ if amount>category_remaining(value,category):
+  raise ContentQualityError('生成・品質確認それぞれの費用枠を超えるため、他工程の予算を使わず停止しました。')
 
 
 def review_metadata():
@@ -177,7 +197,7 @@ def reserve(payload, input_counter=None):
   # token usage. Refine only rejected requests; never relax either budget.
   guard_total(value,0)
   total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
-  remaining=min(review_remaining(value),float('inf') if evaluation else LIMIT-used,
+  remaining=min(category_remaining(value,'quality'),review_remaining(value),float('inf') if evaluation else LIMIT-used,
                 value.get('total_limit_usd',float('inf'))-total_used)
   counted=None
   output_floor=payload['max_output_tokens']*RATES[model][1]/1e6
@@ -195,6 +215,7 @@ def reserve(payload, input_counter=None):
    amount=(counted*RATES[model][0]*(2 if counted>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if counted>272000 else 1))/1e6
   guard_total(value,amount)
   guard_review(value,amount)
+  guard_category(value,'quality',amount)
   if not evaluation and used+amount>LIMIT:raise ContentQualityError('品質確認の予算上限に達するため停止しました。未確認を合格扱いしません。')
   index=len(value['calls']);value['calls'].append({'model':model,'reserved_usd':amount,'status':'pending','started_at':time.time(),'provider':'openai','category':'quality','stage':STAGE.get(),**review_metadata(),**({'input_token_bound':counted} if counted is not None else {})})
  return index
@@ -243,7 +264,7 @@ def reserve_claude(payload, input_counter=None):
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   evaluation=completion_evaluation(value)
   total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
-  remaining=min(review_remaining(value),value.get('total_limit_usd',float('inf'))-total_used,
+  remaining=min(category_remaining(value,category),review_remaining(value),value.get('total_limit_usd',float('inf'))-total_used,
                 LIMIT-used if category=='quality' and not evaluation else float('inf'))
   if amount>remaining and input_counter is not None and not payload.get('tools'):
    key=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,default=lambda v:v.model_dump(mode='json')).encode()).hexdigest()
@@ -257,6 +278,7 @@ def reserve_claude(payload, input_counter=None):
    amount=(record['input_token_bound']*ir+payload['max_tokens']*orr)/1e6
   guard_total(value,amount)
   guard_review(value,amount)
+  guard_category(value,category,amount)
   if not evaluation and category=='quality' and used+amount>LIMIT:
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
@@ -276,6 +298,7 @@ def reserve_search(query):
   guard_total(value,amount)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   category='generation' if STAGE.get() in GENERATION_STAGES else 'quality'
+  guard_category(value,category,amount)
   if not completion_evaluation(value) and category=='quality' and used+amount>LIMIT:
    raise ContentQualityError('追加検索の予算上限に達しました。')
   index=len(value['calls'])

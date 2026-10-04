@@ -1,0 +1,111 @@
+{
+  "kind": "offline_scenarios_not_provider_quote",
+  "paid_calls": 0,
+  "fx_assumption_jpy_per_usd": 200,
+  "scope": "saved research and outline -> current outline validation -> service map -> 3 writing parts -> CTA -> 5 final roles -> deterministic final checks",
+  "outline_check_yen": [
+    32.36,
+    48.43
+  ],
+  "final_role_requests": [
+    {
+      "operation": "tiered_article_evidence_scope",
+      "model": "gpt-6-luna",
+      "proxy_input_tokens_with_body_allowance": 68414,
+      "scenario_yen_low": 1.81,
+      "scenario_yen_high": 2.65
+    },
+    {
+      "operation": "tiered_article_coverage",
+      "model": "gpt-6.1-sol",
+      "proxy_input_tokens_with_body_allowance": 83586,
+      "scenario_yen_low": 43.79,
+      "scenario_yen_high": 62.15
+    },
+    {
+      "operation": "tiered_article_language",
+      "model": "gpt-6.1-sol",
+      "proxy_input_tokens_with_body_allowance": 30237,
+      "scenario_yen_low": 17.12,
+      "scenario_yen_high": 30.14
+    },
+    {
+      "operation": "tiered_article_consistency",
+      "model": "gpt-6.1-sol",
+      "proxy_input_tokens_with_body_allowance": 30245,
+      "scenario_yen_low": 17.12,
+      "scenario_yen_high": 30.15
+    },
+    {
+      "operation": "tiered_article_organization",
+      "model": "gpt-6.1-sol",
+      "proxy_input_tokens_with_body_allowance": 30418,
+      "scenario_yen_low": 17.21,
+      "scenario_yen_high": 30.25
+    }
+  ],
+  "writing_parts": [
+    {
+      "part": 1,
+      "planned_characters": 3113,
+      "output_limit_including_reasoning": 15004,
+      "scenario_input_low": 135466,
+      "scenario_input_high": 153109,
+      "scenario_yen_low": 127.05,
+      "scenario_yen_high": 182.5
+    },
+    {
+      "part": 2,
+      "planned_characters": 3161,
+      "output_limit_including_reasoning": 15112,
+      "scenario_input_low": 140136,
+      "scenario_input_high": 176305,
+      "scenario_yen_low": 131.08,
+      "scenario_yen_high": 201.49
+    },
+    {
+      "part": 3,
+      "planned_characters": 3817,
+      "output_limit_including_reasoning": 16588,
+      "scenario_input_low": 144877,
+      "scenario_input_high": 199609,
+      "scenario_yen_low": 138.81,
+      "scenario_yen_high": 226.04
+    }
+  ],
+  "service_map_prior_observed_yen": 41.94,
+  "normal_without_repair_yen": {
+    "writing_and_service": [
+      438.88,
+      651.97
+    ],
+    "quality": [
+      129.41,
+      203.77
+    ],
+    "combined": [
+      568.29,
+      855.74
+    ]
+  },
+  "incremental_scenarios": {
+    "outline_repair_recheck_and_scoped_sources_high_yen": 84.65,
+    "one_writing_part_regeneration_high_yen": 246.04,
+    "another_five_role_check_high_yen": 155.34
+  },
+  "proposed_limits_yen": {
+    "total": 1000,
+    "generation_including_service": 750,
+    "quality": 250,
+    "outline_quality": 100,
+    "article_quality": "250 minus actual outline quality spend"
+  },
+  "limitations": [
+    "No completed article or real model response is represented by these scenarios.",
+    "Generation baseline comes from the previous counted request; latest service/CTA/settings have not been remeasured.",
+    "Input estimates are a local o200k proxy, not provider billing tokens. Text/settings/source revisions can change them.",
+    "Reasoning, repairs, truncation and part regeneration can exhaust the cap before completion.",
+    "Current code rates and a fixed 200 JPY/USD are assumptions, not a new pricing or FX lookup.",
+    "Research before the saved checkpoint and historical test spending are not included in this new-run estimate."
+  ]
+}
