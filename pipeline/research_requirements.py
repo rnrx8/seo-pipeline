@@ -46,7 +46,7 @@ planの各質問に今回直接取得した原文だけで答えられるかを1
 未調査を正直に書いたことは合格理由にならない。原文の一部に記載がないことを非公表としない。
 一部サービスだけ回答できても質問が複数社を指定した場合は充足ではない。
 statusは confirmed / explicitly_undisclosed / unresearched / fetch_failed / searched_not_found。
-confirmedは必要な対象・期間・条件まで回答でき、証拠を示せる場合のみ。
+confirmedは主要な回答に必要な対象・期間・条件を満たし、その範囲の証拠を示せる場合。補助的な未確認細目は回答から省く。
 explicitly_undisclosedは非公開と公式に明記されている場合だけ。searched_not_foundは調べたが見つからない場合。
 証拠はsourcesに実在するURLと、そのページの短い連続した原文quoteを返す。省略記号や言い換えは禁止。
 複数社や複数条件の質問はそれぞれの証拠を返す。要約だけを証拠にしない。

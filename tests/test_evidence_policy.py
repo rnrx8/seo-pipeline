@@ -23,6 +23,36 @@ def fixture(priority='essential'):
 
 
 class EvidencePolicyTests(unittest.TestCase):
+    def test_current_corroboration_does_not_require_matching_start_dates(self):
+        plan,pages,value=fixture()
+        for page in pages[1:]:page['text']='男性の1ヶ月契約は月額2,000円です。'
+        item=value['items'][0]
+        item.update(answer='男性の1ヶ月契約は月額2,000円。',applicable_at='今回確認した第三者本文の掲載情報',
+                    supports_current_conclusion=True)
+        for ref,page in zip(item['evidence'],pages[1:]):ref['quote']=page['text']
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        # Two records from the same publisher are still not corroboration.
+        for ref in item['evidence']:ref['independence_group']='same-publisher'
+        self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_qualified_answer_keeps_current_use_restriction(self):
+        plan,pages,value=fixture()
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        text=accepted_facts(value,plan)
+        self.assertIn('2025年1月',text)
+        self.assertIn('現在の比較結論には使用不可',text)
+        plan['items'][0]['requires_current']=True
+        self.assertTrue(validate_matrix(value,plan,pages))
+
+    def test_all_stages_receive_the_same_acceptance_contract(self):
+        from pipeline.evidence_policy import EVIDENCE_POLICY
+        from pipeline.research_requirements import MATRIX_SYSTEM, PLAN_SYSTEM
+        from pipeline.research_verification import COVERAGE_SYSTEM
+        from pipeline.content_quality import AUDIT_SYSTEM, EDITORIAL_SYSTEM
+        from pipeline.fresh_sources import DIRECT_POLICY, WRITING_POLICY
+        for prompt in (MATRIX_SYSTEM,PLAN_SYSTEM,COVERAGE_SYSTEM,AUDIT_SYSTEM,EDITORIAL_SYSTEM,DIRECT_POLICY,WRITING_POLICY):
+            with self.subTest(prompt=prompt[:30]):self.assertIn(EVIDENCE_POLICY,prompt)
+
     def test_optional_omission_needs_major_sources_and_overall_acceptance_not_exhaustion(self):
         plan,pages,value=fixture('supporting');item=value['items'][0]
         item.update(status='unresearched',basis='unresolved',exploration_complete=False)
