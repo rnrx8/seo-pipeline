@@ -161,6 +161,7 @@ def build_content_contract(
     job: dict[str, Any],
     service: dict[str, Any] | None = None,
     reference_structure: dict[str, Any] | None = None,
+    candidate_services: list[str] | None = None,
 ) -> dict[str, Any]:
     attrs = _load_json(query_attrs_text)
     primary = _primary_line(intent_text)
@@ -179,7 +180,7 @@ def build_content_contract(
     if service_name and is_cv:
         service_treatment = "comparison_featured" if comparison_required else "integrated"
 
-    candidates = extract_service_candidates(fact_text, service_name)
+    candidates = list(dict.fromkeys(candidate_services)) if candidate_services is not None else extract_service_candidates(fact_text, service_name)
     # A named A-vs-B query must not acquire a third required competitor merely
     # because the fact sheet contains background information about other products.
     query_candidates = [name for name in candidates if name in keyword]

@@ -35,6 +35,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         except json.JSONDecodeError:
             reference = {}
 
+    candidate_services = None
+    if fact.get('meta',{}).get('canonical_research_answers'):
+        from .research_requirements import require_matrix,load_plan
+        require_matrix(job_id)
+        candidate_services = load_plan(job_id)['candidate_services']
+
     contract = build_content_contract(
         keyword=keyword,
         intent_text=intent["content_text"],
@@ -43,6 +49,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         job=job,
         service=service,
         reference_structure=reference,
+        candidate_services=candidate_services,
     )
     artifact = upsert_artifact(
         job_id=job_id,

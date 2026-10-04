@@ -25,6 +25,23 @@ FACTS = """\
 
 
 class ContentContractTests(unittest.TestCase):
+    def test_canonical_question_headings_do_not_become_service_names(self):
+        names=['既婚者クラブ','ヒールメイト','カドル']
+        contract=build_content_contract(keyword='既婚者 マッチングアプリ おすすめ',
+            intent_text='Primary: 比較',query_attrs_text=None,
+            fact_text='### 既婚者クラブで男性が無料会員のまま使える機能の範囲はどこまでか\n確認済み',
+            job={},candidate_services=names)
+        section=next(s for s in contract['required_sections'] if s['key']=='named_service_comparison')
+        self.assertEqual(section['candidate_services'],names)
+        outline='### H2：おすすめのサービスを比較\n'+''.join('#### H3：'+name+'の特徴\n' for name in names)
+        self.assertEqual(validate_structure(outline,contract,outline=True),[])
+
+    def test_level_two_volume_heading_does_not_create_second_table(self):
+        text='### H2：比較\n説明\n## セクション別ボリューム設計\n\n| H2タイトル | 重要度(1-5) | 推奨文字数 | 根拠（1文） |\n|---|---|---|---|\n| 比較 | 5 | 5,000字 | 核心 |\n'
+        fixed,_=ensure_complete_volume_design(text,'5,000字')
+        self.assertEqual(fixed.count('セクション別ボリューム設計'),1)
+        self.assertIn('| 比較 | 5 | 5,000字 | 核心 |',fixed)
+
     def test_live_research_labels_exclude_context_and_closed_services(self):
         facts = '''## 重要な事実・データ
 ### 主要アプリ共通の特徴（業界構造）

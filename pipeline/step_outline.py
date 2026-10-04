@@ -218,7 +218,7 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
     ]
     if not h2s:
         return outline_text, normalized
-    marker = re.search(r"^###\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
+    marker = re.search(r"^#{2,3}\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
     existing_titles: list[str] = []
     existing_chars: list[int] = []
     if marker:

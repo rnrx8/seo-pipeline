@@ -1,0 +1,15 @@
+{
+  "outline_completed": true,
+  "outline_initial_chars": 17932,
+  "outline_after_deterministic_handoff_fix_chars": 17253,
+  "article_started": false,
+  "research_coverage": "passed",
+  "outline_semantic_quality": "failed",
+  "structural_handoff_after_fix": "passed",
+  "offline_tests": 393,
+  "new_accounted_usd": 1.053228625,
+  "new_unknown_reservation_usd": 0.705315,
+  "cumulative_ledger_usd": 9.624193074999999,
+  "remaining_ledger_usd": 0.3758069250000009,
+  "production_writes": false
+}
