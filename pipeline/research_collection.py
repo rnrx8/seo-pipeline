@@ -21,7 +21,7 @@ def batches(plan):
 
 def source_fingerprint(pages, urls):
     # Same-day refetch timestamps are not new evidence; changed content is.
-    return digest(json.dumps({u:({k:pages[u].get(k) for k in ('url','status','text','links','title','reason')}
+    return digest(json.dumps({u:({k:pages[u].get(k) for k in ('url','status','text','links','title','reason','image_sources','text_only')}
         if u in pages else None) for u in urls},ensure_ascii=False,sort_keys=True))
 
 
