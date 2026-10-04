@@ -120,11 +120,67 @@ class CompactQualityFlowTests(unittest.TestCase):
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             return te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources},'',fq.ROLES['evidence'],self.text)
 
+    def test_known_outline_condition_error_goes_to_repair_without_rereading_sources(self):
+        calls=[]
+        def send(job,step,request):
+            calls.append(step)
+            result,usage=self.reply(request)
+            for c in result['checks']:
+                c['requires_source_check']=False
+                if c['key']=='evidence_support':
+                    c.update(status='fail',reason='採用済みの決済方法別条件が構成から欠落。条件を補う。')
+            return result,usage
+        with patch('pipeline.tiered_research.checked_request',side_effect=send):
+            report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
+                            contract={},requirements=self.requirements,sources=self.sources)
+        self.assertEqual(calls,['tiered_audit_research'])
+        self.assertFalse(report['valid'])  # Minor does not mean publish unchanged.
+
+    def test_source_uncertainty_does_not_erase_a_separate_known_condition_error(self):
+        calls=[]
+        def send(job,step,request):
+            calls.append(step)
+            result,usage=self.reply(request)
+            if step=='tiered_audit_research':
+                for c in result['checks']:
+                    c['requires_source_check']=False
+                    if c['key']=='comparison_conditions':c.update(status='fail',reason='契約期間が欠落')
+                    if c['key']=='evidence_support':c.update(status='fail',requires_source_check=True,reason='機能表との対応確認が必要')
+            return result,usage
+        with patch('pipeline.tiered_research.checked_request',side_effect=send):
+            report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
+                            contract={},requirements=self.requirements,sources=self.sources)
+        self.assertEqual(len(calls),2)
+        self.assertEqual(next(c for c in report['checks'] if c['key']=='evidence_support')['status'],'pass')
+        self.assertEqual(next(c for c in report['checks'] if c['key']=='comparison_conditions')['status'],'fail')
+        self.assertFalse(report['valid'])
+
+    def test_clear_source_typo_stays_failed_without_automatic_sol_escalation(self):
+        calls=[]
+        def send(job,step,request):
+            calls.append(step)
+            return self.reply(request,fail=True,review=False)
+        checks,_,trace=self.run_evidence(send)
+        self.assertEqual(len(calls),1)
+        self.assertFalse(trace[-1]['review']['needed'])
+        self.assertTrue(all(c['status']=='fail' for c in checks))
+
+    def test_invalid_source_routing_is_rejected_before_another_paid_call(self):
+        def send(job,step,request):
+            value,usage=self.reply(request)
+            value['checks'][0]['requires_source_check']='false'
+            return value,usage
+        with patch('pipeline.tiered_research.checked_request',side_effect=send) as call:
+            with self.assertRaises(cq.ContentQualityError):
+                cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
+                         contract={},requirements=self.requirements,sources=self.sources)
+        self.assertEqual(call.call_count,1)
+
     def test_failure_is_reviewed_with_neighbors_and_source_expansion_is_bounded(self):
         calls=[]
         def send(job,step,request):
             data=json.loads(request['messages'][0]['content']);calls.append((step,data))
-            if step.endswith('screen'):return self.reply(request,fail=True,review=False)
+            if step.endswith('screen'):return self.reply(request,fail=True,review=True)
             return self.reply(request,review=True)
         checks,usage,trace=self.run_evidence(send)
         self.assertEqual(len(calls),3)
@@ -132,13 +188,15 @@ class CompactQualityFlowTests(unittest.TestCase):
         self.assertEqual(calls[2][1]['source_documents'],self.pages)
         shown={b['id'] for b in calls[1][1]['article_blocks']}
         self.assertTrue({self.blocks[n]['id'] for n in (1,2,3)}<=shown)
-        self.assertTrue(all(c['status']=='fail' for c in checks))
+        self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
+        self.assertTrue(all(c['status']=='pass' for c in checks if c['key']!='evidence_support'))
         self.assertEqual(usage.input_tokens,30)
 
     def test_optional_sol_review_does_not_overrule_unresolved_fact_to_pass(self):
         def send(job,step,request):return self.reply(request,review=True)
         checks,_,_=self.run_evidence(send)
-        self.assertTrue(all(c['status']=='fail' for c in checks))
+        self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
+        self.assertTrue(all(c['status']=='pass' for c in checks if c['key']!='evidence_support'))
 
     def test_adjudication_gets_sources_cited_by_failed_blocks_not_only_screen_selection(self):
         self.text=self.text.replace('月額の対象は男性です。', '月額の対象は男性です。 https://b.example/price')
@@ -146,7 +204,7 @@ class CompactQualityFlowTests(unittest.TestCase):
         calls=[]
         def send(job,step,request):
             data=json.loads(request['messages'][0]['content']);calls.append(step)
-            if step.endswith('screen'):return self.reply(request,fail=True)
+            if step.endswith('screen'):return self.reply(request,fail=True,review=True)
             self.assertEqual(data['source_documents'],self.pages)
             return self.reply(request)
         checks,_,_=self.run_evidence(send)

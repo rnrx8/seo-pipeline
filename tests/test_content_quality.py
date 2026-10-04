@@ -181,6 +181,35 @@ class QualityTests(unittest.TestCase):
         self.assertFalse(result['meta']['valid'])
         self.assertTrue(json.loads(result['content_text'])['needs_research'])
 
+    def test_pending_source_review_does_not_rewrite_outline_as_if_claim_were_wrong(self):
+        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+                   'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
+        pending={**report('evidence_support'),'evidence_pending':True}
+        with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_research_guard,'get_job',return_value={}), \
+             patch.object(step_research_guard.anthropic,'Anthropic'), \
+             patch.object(step_research_guard,'audit',return_value=pending), \
+             patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
+             patch.object(step_research_guard,'repair_outline') as repair:
+            with self.assertRaisesRegex(quality.ContentQualityError,'原文照合が未完了'):
+                step_research_guard.run('j','比較')
+        repair.assert_not_called()
+        self.assertFalse(save.call_args.kwargs['meta']['valid'])
+
+    def test_pending_source_review_does_not_rewrite_finished_article(self):
+        artifacts={'article':{'content_text':'# 比較\n\n本文です。','meta':{}},
+                   'outline':{'content_text':'# 比較'},'fact_sheet':{'content_text':''},
+                   'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
+        pending={**report('evidence_support'),'evidence_pending':True}
+        with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+             patch.object(step_content_audit,'get_job',return_value={}), \
+             patch.object(step_content_audit,'audit',return_value=pending), \
+             patch.object(step_content_audit,'upsert_artifact',side_effect=lambda **kw:kw), \
+             patch.object(step_content_audit,'create_with_retry') as repair:
+            with self.assertRaisesRegex(quality.ContentQualityError,'原文照合が未完了'):
+                step_content_audit.run('j','比較')
+        repair.assert_not_called()
+
     def test_mechanical_outline_gap_cannot_pass_even_if_model_approves(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
         artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},

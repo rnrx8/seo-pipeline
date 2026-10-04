@@ -99,6 +99,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                                          if f.get('claim') and f['claim'] in b['text']]
     mechanical=readability_issues(text)
     return {'checks':combined,'valid':all(c['status']=='pass' for c in combined) and not mechanical,
+            'evidence_pending':any(p.get('evidence_routing') and p['evidence_routing'][-1]['review']['needed'] for p in phases.values()),
             'phases':phases,'readability_issues':mechanical,'stage':'article','snapshot':fingerprint,
             'policy_version':POLICY_VERSION,'model':model,
             'input_tokens':sum(p['input_tokens'] for p in phases.values()),
