@@ -1,0 +1,23 @@
+{
+  "upper_only": {
+    "target": 5000,
+    "minimum": 0,
+    "maximum": 5000
+  },
+  "state_table": [],
+  "short_faq": [],
+  "plan_comparison": [
+    {
+      "key": "comparison_coverage",
+      "required": true,
+      "protected": true,
+      "reason": "検索意図に対応する対象・条件で比較する。サービス数を推測で追加しない",
+      "comparison_scope": "plans",
+      "requirements": [
+        "検索意図が求める対象の違いと選択理由を説明する",
+        "不足する比較対象を推測で増やさない"
+      ]
+    }
+  ],
+  "heading_word_choice": []
+}

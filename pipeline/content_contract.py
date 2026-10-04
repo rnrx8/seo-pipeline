@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 
-CONTRACT_VERSION = "1.1"
+CONTRACT_VERSION = "1.2"
 
 _COMPARISON_TERMS = ("比較検討", "比較・検討", "比較して", "比較したい", "おすすめ", "ランキング", "選びたい")
 _CV_TERMS = ("cv", "コンバージョン", "自社商品", "自社サービス")
@@ -188,8 +188,16 @@ def build_content_contract(
     required: list[dict[str, Any]] = []
     optional: list[dict[str, Any]] = []
 
-    if comparison_required:
-        minimum = min(3, len(candidates)) if candidates else 3
+    same_service_plans = (len(query_candidates) == 1 and bool(re.search(r'プラン|コース', keyword + primary)))
+    named_comparison = comparison_required and len(candidates) >= 2 and not same_service_plans
+    if comparison_required and not named_comparison:
+        required.append(_section(
+            "comparison_coverage", reason="検索意図に対応する対象・条件で比較する。サービス数を推測で追加しない",
+            protected=True, comparison_scope="plans" if same_service_plans else "intent",
+            requirements=["検索意図が求める対象の違いと選択理由を説明する", "不足する比較対象を推測で増やさない"],
+        ))
+    if named_comparison:
+        minimum = 2
         required.append(_section(
             "named_service_comparison",
             reason=f"Primary意図または検索段階が比較検討を示す（Primary={primary or '不明'} / stage={stage}）",

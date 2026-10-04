@@ -179,10 +179,12 @@ def validate_structure(text: str, contract: dict[str, Any], *, outline: bool) ->
             candidates = section.get("candidate_services") or []
             mentions = _candidate_mentions(text, candidates)
             minimum = int(section.get("minimum_named_items") or 2)
-            if not comparison_h2 or len(mentions) < minimum:
+            # Semantic coverage owns whether the comparison answers the query.
+            # Heading vocabulary is not a completion requirement.
+            if len(mentions) < minimum:
                 violations.append({
                     "key": key,
-                    "reason": "具体的なサービス比較H2または比較対象数が不足",
+                    "reason": "比較対象数が不足",
                     "comparison_h2": comparison_h2,
                     "named_items": mentions,
                     "minimum_named_items": minimum,

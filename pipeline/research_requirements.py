@@ -172,7 +172,7 @@ def plan(job_id, keyword, api_key=None):
     raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
 
 
-def apply_plan_repair(value, changes):
+def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
     """Apply questions and their enclosing scope atomically; never publish a partial patch."""
     original_items={i['id']:i for i in value['items']}
     updates=changes['updates'];additions=changes['additions']
@@ -193,7 +193,8 @@ def apply_plan_repair(value, changes):
         or any(i['id'] not in original_items or i['subject']!=original_items[i['id']]['subject'] for i in updates)
         or any(i['id'] in original_items for i in additions)):
         raise ContentQualityError('計画の部分修正でID・対象が変更されています。')
-    if any(original_items[i['id']].get('required') and not i.get('required') for i in updates):
+    if any(original_items[i['id']].get('required') and not i.get('required')
+           and i['id'] not in reviewed_priority_ids for i in updates):
         raise ContentQualityError('必須質問を更新で補助情報へ降格できません。')
     by_id={i['id']:i for i in updates}
     result={**value,'items':[by_id.get(i['id'],i) for i in value['items'] if i['id'] not in removed]+additions,
@@ -204,7 +205,7 @@ def apply_plan_repair(value, changes):
         if not isinstance(replacements,list) or any(i not in remaining for i in replacements):
             raise ContentQualityError('統合先の質問がありません。')
         original=original_items[r['id']]
-        if original.get('required') and not any(remaining[i].get('required')
+        if original.get('required') and r['id'] not in reviewed_priority_ids and not any(remaining[i].get('required')
             and remaining[i]['subject']==original['subject'] for i in replacements):
             raise ContentQualityError('必須質問を代替なしで削除できません。')
     result['plan_retirements']=removals
@@ -230,7 +231,7 @@ def revalidate_plan(job_id, keyword, api_key=None):
         model,budget=get_step_config('content_repair' if tiered_review_enabled() else 'search_intent')
         msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
             model=model,max_tokens=budget if tiered_review_enabled() else 4000,
-            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
+            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。独立した計画確認で具体的に指摘されたIDは、AIによる必須分類が過剰であれば重要度を訂正し、不要な義務は理由付きで削除してよい。ユーザー明示の要件と検索への主要な回答は維持し、ユーザー設定と照合する。指摘対象外の必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
             output_config={'format':{'type':'json_schema','schema':{'type':'object','properties':{
                 **{k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
                 'removals':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'},'replaced_by':{'type':'array','items':{'type':'string'}}},'required':['id','reason','replaced_by'],'additionalProperties':False}},
@@ -241,7 +242,7 @@ def revalidate_plan(job_id, keyword, api_key=None):
         upsert_artifact(job_id=job_id,step='research_plan_policy_repair_response',content_type='application/json',content_text=raw,
             meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
         context={**context,'previous_plan':value,'proposed_changes':json.loads(raw)}
-        value=apply_plan_repair(value,json.loads(raw))
+        value=apply_plan_repair(value,json.loads(raw), reviewed_priority_ids={i['id'] for i in verdict['issues'] if i['id'] != 'overall'})
         upsert_artifact(job_id=job_id,step='research_plan_policy_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
         inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
         verdict,usage=review(job_id,value,context,'policy_repaired',api_key)

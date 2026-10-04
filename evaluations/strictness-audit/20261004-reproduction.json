@@ -1,0 +1,82 @@
+{
+  "upper_bound_becomes_minimum": {
+    "target": 5000,
+    "minimum": 4000,
+    "maximum": 5500
+  },
+  "valid_state_word_in_table": [
+    {
+      "key": "empty_section",
+      "title": "送信条件"
+    },
+    {
+      "key": "unfinished_table",
+      "excerpt": "| 本人確認が未確認の会員 | メッセージ送信不可 |"
+    }
+  ],
+  "short_complete_answer": [
+    {
+      "key": "empty_section",
+      "title": "女性は無料ですか"
+    }
+  ],
+  "internal_plan_comparison_requires_competitors": [
+    {
+      "key": "named_service_comparison",
+      "required": true,
+      "protected": true,
+      "reason": "Primary意図または検索段階が比較検討を示す（Primary=Primary: Aサービス内の有料プランを比較したい / stage=不明）",
+      "minimum_named_items": 2,
+      "candidate_services": [
+        "Aサービス"
+      ],
+      "requirements": [
+        "具体的なサービス名を並べる",
+        "同じ比較軸の表を置く",
+        "読者が選べる結論を示す"
+      ]
+    }
+  ],
+  "internal_plan_structure_failure": [
+    {
+      "key": "named_service_comparison",
+      "reason": "具体的なサービス比較H2または比較対象数が不足",
+      "comparison_h2": false,
+      "named_items": [
+        "Aサービス"
+      ],
+      "minimum_named_items": 2
+    }
+  ],
+  "word_choice_heading_failure": [
+    {
+      "key": "named_service_comparison",
+      "reason": "具体的なサービス比較H2または比較対象数が不足",
+      "comparison_h2": false,
+      "named_items": [
+        "Aサービス",
+        "Bサービス"
+      ],
+      "minimum_named_items": 2
+    }
+  ],
+  "readability_301": [
+    {
+      "key": "continuous_prose",
+      "heading": "解説",
+      "characters": 301,
+      "reason": "通常の文章が空行を挟んで300字を超えて連続しています。内容に合う形式で整理する。",
+      "affected_blocks": [
+        {
+          "id": "block-0002",
+          "reason": "連続文章の整理対象"
+        },
+        {
+          "id": "block-0004",
+          "reason": "連続文章の整理対象"
+        }
+      ]
+    }
+  ],
+  "ai_priority_cannot_correct": "必須質問を更新で補助情報へ降格できません。"
+}

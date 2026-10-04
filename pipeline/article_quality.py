@@ -19,6 +19,8 @@ def parse_length_budget(setting: str | None) -> LengthBudget | None:
     numbers = [int(n.replace(',', '')) for n in re.findall(r'\d[\d,]*', value)]
     if not numbers or not numbers[0]:
         return None
+    if len(numbers) == 1 and ('上限' in value or '以内' in value or '以下' in value):
+        return LengthBudget(numbers[0], 0, numbers[0])
     lo = numbers[0]
     hi = numbers[1] if len(numbers) > 1 else lo
     if hi < lo:
@@ -137,8 +139,7 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
                 if child['level'] <= actual[found]['level']: break
                 section_body += '\n' + child['body']
             body = re.sub(r'https?://\S+|[\s*#>|_\-]', '', section_body)
-            minimum = 1 if expected['level'] == 2 else 40
-            if len(body) < minimum or not actual[found]['body'].strip():
+            if not body or not actual[found]['body'].strip():
                 issues.append({'key': 'empty_section', 'title': expected['title']})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'
@@ -148,7 +149,8 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
     if internal:
         issues.append({'key': 'internal_note', 'excerpt': internal[0][:180]})
     for line in text.splitlines():
-        if line.lstrip().startswith('|') and re.search(r'要確認|未確認|確認中|\bTBD\b', line, re.I):
+        cells = [re.sub(r'[*_`]', '', c).strip() for c in line.strip().strip('|').split('|')]
+        if line.lstrip().startswith('|') and any(re.fullmatch(r'(?:要確認|未確認|確認中|TBD|要追記)(?:[（(][^）)]*[）)])?', c, re.I) for c in cells):
             issues.append({'key': 'unfinished_table', 'excerpt': line[:180]})
     budget = parse_length_budget(setting)
     if budget and len(text) < budget.minimum:
