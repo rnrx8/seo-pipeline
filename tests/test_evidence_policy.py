@@ -23,6 +23,30 @@ def fixture(priority='essential'):
 
 
 class EvidencePolicyTests(unittest.TestCase):
+    def test_selected_secondary_prices_keep_dates_and_scope_through_writing(self):
+        from pipeline.generation_context import decision_bundle
+        plan,pages,value=fixture()
+        for page in pages[1:]:page['text']='男性スタンダード：1ヶ月6,480円。3ヶ月14,940円（月額換算4,980円）。'
+        # Another source disagrees. It is kept for review, not silently deleted.
+        pages.append({'url':'https://different.example/price','status':'success',
+                      'text':'男性スタンダード：1ヶ月4,980円。'})
+        item=value['items'][0]
+        for ref,page in zip(item['evidence'],pages[1:3]):ref['quote']=page['text']
+        note='media-one：更新2026-09-19。media-two：更新日不明。確認2026-10-04。第三者掲載情報。'
+        item.update(answer='男性スタンダードの1ヶ月契約6,480円。3ヶ月契約は総額14,940円、月額換算4,980円。',
+                    applicable_at=note,supports_current_conclusion=True,
+                    reason='独立した具体的な料金表2件で対象・契約期間・金額が一致。他資料の別料金は現行公式料金による否定ではなく、選択元の掲載情報として限定する。')
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        value['valid']=True
+        self.assertIn(note,accepted_facts(value,plan))
+        bundle=decision_bundle(plan,value,quotes=True)
+        self.assertIn(note,bundle)
+        self.assertIn(item['reason'],bundle)
+        self.assertIn('月額換算4,980円',bundle)
+        # Source selection still needs independent bodies and exact quotations.
+        item['evidence'][1]['independence_group']=item['evidence'][0]['independence_group']
+        self.assertTrue(validate_matrix(value,plan,pages))
+
     def test_current_corroboration_does_not_require_matching_start_dates(self):
         plan,pages,value=fixture()
         for page in pages[1:]:page['text']='男性の1ヶ月契約は月額2,000円です。'
