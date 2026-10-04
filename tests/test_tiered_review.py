@@ -156,6 +156,18 @@ class TieredReviewTests(unittest.TestCase):
         i=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000})
         budget.settle(i,{'input_tokens':280000,'output_tokens':2000,'output_tokens_details':{'reasoning_tokens':1000}})
         self.assertAlmostEqual(self.ledger()['calls'][0]['cost_usd'],1.43)
+
+    def test_authorized_evaluation_threshold_tracks_total_cap_without_resetting_usage(self):
+        with patch.dict(os.environ,{'QUALITY_COMPLETION_EVAL':'1'}):
+            value={'total_limit_usd':10.5, 'completion_evaluation':{
+                'stop_after_usd':10.5,'authorization':'user approved 2100 JPY'},
+                'calls':[{'reserved_usd':10.1,'cost_usd':10.1}]}
+            self.assertTrue(budget.completion_evaluation(value))
+            value['completion_evaluation']['stop_after_usd']=11
+            with self.assertRaises(ContentQualityError):budget.completion_evaluation(value)
+            value['completion_evaluation']['stop_after_usd']=10.5
+            value['calls'][0]['cost_usd']=10.5
+            with self.assertRaises(ContentQualityError):budget.completion_evaluation(value)
     def test_failure_reservation_survives_resume_and_prevents_request(self):
         payload={'model':'gpt-6.1-sol','max_output_tokens':110000}
         i=budget.reserve(payload);budget.settle(i)

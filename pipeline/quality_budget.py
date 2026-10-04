@@ -54,7 +54,10 @@ def completion_evaluation(value):
  if os.getenv('QUALITY_COMPLETION_EVAL')!='1':return False
  from .content_quality import ContentQualityError
  policy=value.get('completion_evaluation') or {}
- if policy.get('stop_after_usd')!=10.0 or not policy.get('authorization'):
+ threshold=policy.get('stop_after_usd')
+ if (not isinstance(threshold,(int,float)) or isinstance(threshold,bool)
+     or not math.isfinite(threshold) or threshold<=0 or not policy.get('authorization')
+     or (threshold!=10.0 and threshold!=value.get('total_limit_usd'))):
   raise ContentQualityError('完了検証用の費用設定・承認記録がありません。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
  if used>=policy['stop_after_usd']:

@@ -140,6 +140,19 @@ class CompactQualityFlowTests(unittest.TestCase):
         checks,_,_=self.run_evidence(send)
         self.assertTrue(all(c['status']=='fail' for c in checks))
 
+    def test_adjudication_gets_sources_cited_by_failed_blocks_not_only_screen_selection(self):
+        self.text=self.text.replace('月額の対象は男性です。', '月額の対象は男性です。 https://b.example/price')
+        self.blocks=content_blocks(self.text)
+        calls=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);calls.append(step)
+            if step.endswith('screen'):return self.reply(request,fail=True)
+            self.assertEqual(data['source_documents'],self.pages)
+            return self.reply(request)
+        checks,_,_=self.run_evidence(send)
+        self.assertEqual(len(calls),2)
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+
     def test_out_of_scope_and_unknown_source_references_fail_closed(self):
         for mode in ('source','block','missing_review'):
             def send(job,step,request):

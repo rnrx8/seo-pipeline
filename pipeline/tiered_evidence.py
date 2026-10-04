@@ -77,7 +77,11 @@ def evidence_audit(stage, payload, system, keys, text):
         positions={n for n,b in enumerate(blocks) if b['id'] in targets}
         nearby={n+d for n in positions for d in (-1,0,1) if 0<=n+d<len(blocks)}
         subset=[b for n,b in enumerate(blocks) if n in nearby or b['text'].lstrip().startswith('#')]
-        selected=[p for p in pages if p['url'] in review['source_urls']]
+        # Failed/comparison blocks can extend beyond the screener's requested
+        # URLs. Include their explicit references before asking for adjudication.
+        from .fresh_sources import extract_urls, normalize_url
+        required_urls=set(extract_urls(subset)) | set(extract_urls(review['source_urls']))
+        selected=[p for p in pages if normalize_url(p['url']) in required_urls]
         if sampled or not selected:selected=pages
         detail={**data,'article_blocks':subset,'source_documents':selected,'candidate_checks':checks,
                 'source_revision':revision,'source_catalog':[{k:p[k] for k in ('url','title','truncated','fetched_at') if k in p} for p in pages],
