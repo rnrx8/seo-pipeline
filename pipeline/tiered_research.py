@@ -162,6 +162,16 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
      value['items']=[replacements.get(i['id'],i) for i in value['items']]
   validate_matrix(value,{'items':questions},selected)
   items.extend(value['items'])
+ overall,usage=review_coverage(job_id,plan,pages,items,intent_context)
+ inputs+=usage.input_tokens;outputs+=usage.output_tokens
+ return {**overall,'items':items},SimpleNamespace(input_tokens=inputs,output_tokens=outputs)
+
+
+def review_coverage(job_id,plan,pages,items,intent_context):
+ from .research_requirements import propose_optional_omissions,validate_matrix
+ from .research_verification import COVERAGE_SYSTEM
+ compact_plan={k:plan[k] for k in ('candidate_services','scope_reason') if k in plan}
+ compact_plan['items']=[{k:q[k] for k in ('id','subject','question','priority')} for q in plan['items']]
  schema={'format':{'type':'json_schema','schema':{'type':'object','properties':{
   'coverage_sufficient':{'type':'boolean'},'coverage_reason':{'type':'string'},'coverage_issues':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},'required':['coverage_sufficient','coverage_reason','coverage_issues'],'additionalProperties':False}}}
  propose_optional_omissions(items,plan,pages)
@@ -170,5 +180,4 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
  decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
- overall,usage=checked_request(job_id,'tiered_coverage',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
- return {**overall,'items':items},SimpleNamespace(input_tokens=inputs,output_tokens=outputs)
+ return checked_request(job_id,'tiered_coverage',request)
