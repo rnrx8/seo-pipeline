@@ -32,6 +32,8 @@ def evidence_audit(stage, payload, system, keys, text):
     except (ValueError,TypeError,AttributeError) as exc:
         raise ContentQualityError('事実照合に必要な出典本文の形式が不正です。') from exc
     urls={p['url'] for p in pages}
+    from .fresh_sources import normalize_url
+    canonical_urls={normalize_url(u):u for u in urls}
     schema=audit_output_config(keys,locations=True)
     props={'needed':{'type':'boolean'},'block_ids':{'type':'array','items':{'type':'string'}},
            'source_urls':{'type':'array','items':{'type':'string'}},'reason':{'type':'string'}}
@@ -51,6 +53,10 @@ def evidence_audit(stage, payload, system, keys, text):
         # keep those addresses, and the reviewer may not cite an unseen block.
         shown={b['id'] for b in data['article_blocks']}
         scope=value.get('review',{})
+        if (isinstance(scope,dict) and isinstance(scope.get('source_urls'),list)
+                and all(isinstance(u,str) for u in scope['source_urls'])):
+            scope={**scope,'source_urls':[u if u in urls else canonical_urls.get(normalize_url(u),u)
+                                         for u in scope['source_urls']]}
         if (not isinstance(scope,dict) or type(scope.get('needed')) is not bool or not isinstance(scope.get('block_ids'),list)
             or not isinstance(scope.get('source_urls'),list) or not isinstance(scope.get('reason'),str)
             or any(not isinstance(i,str) or i not in shown for i in scope['block_ids'])

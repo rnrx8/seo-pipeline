@@ -221,6 +221,18 @@ class CompactQualityFlowTests(unittest.TestCase):
                 return value,usage
             with self.assertRaises(cq.ContentQualityError):self.run_evidence(send)
 
+    def test_known_source_trailing_slash_does_not_require_another_model_response(self):
+        calls=[]
+        def send(job,step,request):
+            calls.append(step)
+            value,usage=self.reply(request,review=step.endswith('screen'))
+            value['review']['source_urls']=[self.pages[0]['url']+'/']
+            return value,usage
+        checks,_,trace=self.run_evidence(send)
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+        self.assertEqual(len(calls),2)
+        self.assertEqual(trace[0]['review']['source_urls'],[self.pages[0]['url']])
+
     def test_passing_sample_still_receives_independent_review(self):
         calls=[]
         def send(job,step,request):calls.append(step);return self.reply(request)
