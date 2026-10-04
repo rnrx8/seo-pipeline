@@ -186,7 +186,12 @@ def validate_promised_comparison_count(text: str) -> list[dict]:
                 named_table = True
                 continue
             if named_table and name and not set(name) <= {'-', ':', ' '}:
-                names.add(unicodedata.normalize('NFKC', name).casefold())
+                # An annotation marker does not create another service. Keep
+                # substantive suffixes (e.g. A Plus) and plan names distinct.
+                normalized = unicodedata.normalize('NFKC', name).casefold()
+                normalized = re.sub(r'(?:\s*※\s*\d*)+$', '', normalized).strip()
+                if normalized:
+                    names.add(normalized)
         if names and len(names) != int(promised[1]):
             issue = {'key': 'comparison_count_mismatch', 'promised': int(promised[1]),
                      'table_count': len(names), 'title': heading[2]}

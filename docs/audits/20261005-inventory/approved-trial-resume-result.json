@@ -1,0 +1,21 @@
+{
+  "trial_id": "2c9be430-2c51-52ec-96bf-d7e7f6d992fd",
+  "status": "blocked_api_credit_balance_exhausted",
+  "article_body_generated": true,
+  "cta_injected": true,
+  "quality_approved": false,
+  "production_writes": false,
+  "accounted_yen_at_200": 562.0454,
+  "unknown_cost_reserved_yen_at_200": 53.3175,
+  "available_yen_after_reservation": 384.6371,
+  "draft_chars": 16956,
+  "checks": {
+    "evidence": "repair_candidates",
+    "coverage": "pass",
+    "language": "repair_candidates",
+    "consistency": "credit_failure",
+    "organization": "not_started"
+  },
+  "offline_tests": 430,
+  "article_sha256": "9c79e491d75cef870e1805cf8acc3c9efcbbb51a0b5def74fc20afebfd059d30"
+}

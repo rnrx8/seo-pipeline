@@ -96,6 +96,13 @@ class QualityTests(unittest.TestCase):
         text = '# サービス2選\n| サービス名 | 料金 |\n|---|---|\n| A | 100円 |\n| B | 200円 |'
         self.assertEqual(validate_promised_comparison_count(text), [])
 
+    def test_annotation_marker_does_not_add_a_service_across_tables(self):
+        base = '# サービス2選\n| サービス | 料金 |\n|---|---|\n| A | 100円 |\n| B※ | 200円 |'
+        second = '\n\n## 無料範囲\n| サービス | 無料 |\n|---|---|\n| A | あり |\n| B | あり |'
+        self.assertEqual(validate_promised_comparison_count(base+second), [])
+        self.assertEqual(validate_promised_comparison_count(base.replace('B※','B※１')+second), [])
+        self.assertTrue(validate_promised_comparison_count(base+second+'\n| B Plus | あり |'))
+
     def test_standard_mode_requires_readiness_and_final_audit(self):
         for high in (False, True):
             keys = [k for k, _ in build_step_plan({'high_accuracy_mode': high})]
