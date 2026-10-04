@@ -35,6 +35,22 @@ class EvidencePolicyTests(unittest.TestCase):
         for ref in item['evidence']:ref['independence_group']='same-publisher'
         self.assertTrue(validate_matrix(value,plan,pages))
 
+    def test_undated_current_listing_does_not_become_an_effective_date_requirement(self):
+        plan,pages,value=fixture()
+        item=value['items'][0]
+        item.update(applicable_at='',supports_current_conclusion=True)
+        for page in pages[1:]:page['text']='個人プランは月額2,000円です。'
+        item['answer']='個人プランは月額2,000円。'
+        for ref,page in zip(item['evidence'],pages[1:]):ref['quote']=page['text']
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        text=accepted_facts(value,plan)
+        self.assertIn('根拠の時点・条件：',text)
+        self.assertNotIn('適用時点：',text)
+        self.assertIn('確認日：',text)
+        # An explicitly historical claim still needs its historical period.
+        item['basis']='historical'
+        self.assertTrue(validate_matrix(value,plan,pages))
+
     def test_qualified_answer_keeps_current_use_restriction(self):
         plan,pages,value=fixture()
         self.assertEqual(validate_matrix(value,plan,pages),[])

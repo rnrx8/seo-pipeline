@@ -33,7 +33,7 @@ SERPに出た全社を自動的に必須対象にせず、終了候補は営業�
 priority=essential/important/supportingとpriority_reasonを検索意図に基づき指定。requiredはpriority=essentialの場合のみtrue。
 source_requirement=standard/expert_allowed/primary_only。商業的な料金・機能はstandard。検索意図に応じた周辺的な専門解説はexpert_allowed。特定の法令・判決の直接説明・引用や個別適法性等の原典を必要とする判断はprimary_only。概念の一般的な線引きはexpert_allowedで、質問へ自ら「判例上」などと付け足して原典調査に拡大しない。注意事項自体の必要性を先に判断し、利用者の行動に関する一般論をサービス自体の適法性調査へ広げない。
 requires_currentは「今日の価格」「現在の最安」等、現在性が質問・結論に不可欠な場合だけtrue。
-一般的なおすすめ記事の料金・会員数・機能比較は、確実な適用時点を明記すれば掲載できるため原則false。質問に自分で「現在」と足して必須化しない。古い情報を現在の優劣へ使わない条件は後段でも維持する。
+一般的なおすすめ記事の料金・機能は、共通基準で確認した掲載情報を使えるため原則false。公開・更新日や確認日と、明示された改定日・集計期間を区別し、適用開始日の記載を追加要求しない。質問に自分で「現在」と足して必須化しない。過去統計の対象期間や明示された旧条件は維持する。
 法律・安全性の現在の判断は過去の規則で回答できないためtrue（歴史的な解説の場合を除く）。
 一つのessentialに補助情報を抱き合わせない。抱き合わせを外した細目は自動的に別質問へ追加しない。検索意図・競合の重要論点・ユーザー指定に必要な理由がある場合だけ別質問に残す。例：「Web型か」から通知の細かな設定を外しても、後者を独立の調査義務にする必要はない。本人確認の有無と書類保存方法、会員総数と職業分布も同様。
 同じ一般的操作をサービス別に複製しない。Webブラウザのホーム画面への追加等は、サービス固有の違いが重要と分かる場合を除き共通の一論点にする。
@@ -54,7 +54,7 @@ JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答"
 
 PLAN_SYSTEM += EVIDENCE_POLICY
 MATRIX_SYSTEM += EVIDENCE_POLICY + '''
-各項目にbasis(primary/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。
+各項目にbasis(primary/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
 primaryは直接の公式/原典。expertはexpert_allowedの質問への有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
 expert採用時は、使用する各専門解説のevidenceにexpert_name、expert_qualification_quote（同じ取得本文にある氏名・資格・執筆/監修の関与を示す連続した原文）、expert_scope_reason（専門分野と回答範囲が適合する理由）を記録する。それ以外は空文字。専門解説のsource_kindはsecondaryのまま。名前だけの登場や資格不明のメディア解説では不可。
 official_checked_urlsはsources内で実際に取得を試みた関連公式資料のURL。存在しない探索記録を作らない。未調査・取得失敗だけでomittedにしない。十分な関連資料の探索後に省略可否を判定する。公式の関連ページ・別の公式資料・第三者本文のどこまで探索したかexploration_reasonに記録し、不足が残ればexploration_complete=false。
@@ -391,9 +391,9 @@ def accepted_facts(value, plan_value):
     for i in value['items']:
         if not i.get('verified') or i.get('basis')=='omitted':continue
         title = planned[i['id']]['question']
-        date = i.get('applicable_at') or '資料に記載された条件（適用時点を推測しない）'
+        date = i.get('applicable_at') or '掲載情報として確認。適用開始日は未指定。'
         refs='\n'.join('出典：'+r['url']+'｜確認箇所：'+json.dumps(r['quote'],ensure_ascii=False) for r in i['evidence'])
-        blocks.append('### '+title+'\n'+' '.join(i['answer'].splitlines())+'\n適用時点：'+date+'\n採用根拠：'+i.get('basis','primary')+
+        blocks.append('### '+title+'\n'+' '.join(i['answer'].splitlines())+'\n根拠の時点・条件：'+date+'\n採用根拠：'+i.get('basis','primary')+
             ('（現在の比較結論には使用不可）' if i.get('supports_current_conclusion') is False else '')+
             '\n'+refs+'\n確認日：'+current_check_date()+'｜[confirmed]')
     return '\n\n'.join(blocks)
