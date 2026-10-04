@@ -41,6 +41,27 @@ class TieredReviewTests(unittest.TestCase):
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'astra'}):
             self.assertEqual(get_step_config('content_audit')[0],'gpt-6-astra')
             self.assertNotEqual(matrix_policy(),tiered)
+
+    def test_claude_count_refines_only_overstated_reservation_without_raising_cap(self):
+        payload={'model':'claude-opus-5-5','max_tokens':1000,'messages':[{'role':'user','content':'確認'*40000}]}
+        counter=Mock(return_value=5000)
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'0.5'}):
+            index=budget.reserve_claude(payload,input_counter=counter)
+            self.assertLess(self.ledger()['calls'][index]['reserved_usd'],0.5)
+            budget.settle(index,{'input_tokens':5000,'output_tokens':100})
+            budget.reserve_claude(payload,input_counter=counter)
+            counter.assert_called_once()
+            with self.assertRaises(ContentQualityError):
+                budget.reserve_claude({**payload,'max_tokens':30000},input_counter=counter)
+        self.assertEqual(self.ledger()['total_limit_usd'],0.5)
+
+    def test_claude_count_does_not_ignore_server_tool_expansion(self):
+        counter=Mock(return_value=1)
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'0.5'}):
+            with self.assertRaises(ContentQualityError):
+                budget.reserve_claude({'model':'claude-opus-5-5','max_tokens':1000,'messages':[],
+                    'tools':[{'type':'web_search_20250305','max_uses':1}]},input_counter=counter)
+        counter.assert_not_called()
         for model in budget.RATES:
             with patch('pipeline.openai_review.create_review_response',return_value='ok') as call:
                 self.assertEqual(create_with_retry(None,**self.request(model)),'ok')

@@ -135,7 +135,7 @@ def settle(index,usage=None):
   else:call['status']='unknown_cost_reserved'
 
 
-def reserve_claude(payload):
+def reserve_claude(payload, input_counter=None):
  """Record generation separately; charge corrective research to quality too."""
  from .content_quality import ContentQualityError
  model=payload['model']
@@ -152,9 +152,23 @@ def reserve_claude(payload):
  ir,orr=CLAUDE_RATES[model]
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
-  guard_total(value,amount)
+  guard_total(value,0)
   used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'] if c.get('category','quality')=='quality')
   evaluation=completion_evaluation(value)
+  total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
+  remaining=min(value.get('total_limit_usd',float('inf'))-total_used,
+                LIMIT-used if category=='quality' and not evaluation else float('inf'))
+  if amount>remaining and input_counter is not None and not payload.get('tools'):
+   key=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,default=lambda v:v.model_dump(mode='json')).encode()).hexdigest()
+   counts=value.setdefault('input_counts',{});record=counts.get(key)
+   if record is None:
+    counts[key]={'status':'attempted'}
+    counted=input_counter(payload)
+    if type(counted) is not int or counted<=0:raise ContentQualityError('入力トークン数の確認に失敗しました。送信しません。')
+    record=counts[key]={'status':'counted','input_token_bound':math.ceil(counted*1.1)+4096}
+   if record['status']!='counted':raise ContentQualityError('入力トークン数の確認が未完了です。自動再試行しません。')
+   amount=(record['input_token_bound']*ir+payload['max_tokens']*orr)/1e6
+  guard_total(value,amount)
   if not evaluation and category=='quality' and used+amount>LIMIT:
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
