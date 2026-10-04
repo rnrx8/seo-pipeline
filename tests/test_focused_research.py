@@ -15,6 +15,20 @@ from test_evidence_policy import fixture
 
 
 class FocusedResearchTests(unittest.TestCase):
+    def test_expansion_preserves_middle_of_unresolved_source_with_same_body_budget(self):
+        url='https://expert.example/explanation'
+        text='前文。'*700+'主要な判断を支える本文。'+'後文。'*1400
+        pages=[{'url':url,'status':'success','text':text}]+[
+            {'url':f'https://other.example/{i}','status':'success','text':'関連する資料。'*3000}
+            for i in range(60)]
+        hints=[{'official_checked_urls':[url],'evidence':[]}]
+        before=tiered.packed_sources(pages,hints)
+        after=tiered.packed_sources(pages,hints,prioritize_referenced=True)
+        self.assertNotIn('主要な判断を支える本文。',next(p['text'] for p in before if p['url']==url))
+        self.assertEqual(next(p['text'] for p in after if p['url']==url),text)
+        self.assertEqual({p['url'] for p in after},{p['url'] for p in pages})
+        self.assertLess(sum(len(p['text']) for p in after),62000)
+
     def setUp(self):
         self.env=patch.dict(os.environ, {'ARTICLE_REVIEW_PROVIDER':'tiered', 'QUALITY_RESEARCH_ROUTING':'focused'})
         self.env.start()

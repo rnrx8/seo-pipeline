@@ -276,6 +276,11 @@ def major_sources_checked(item, pages):
     attempted=[normalize_url(u) for u in item.get('official_checked_urls',[])]
     bodies={normalize_url(p['url']):p['text'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
     visited={normalize_url(p['url']) for p in pages}
+    reviewed=[normalize_url(u) for u in item.get('reviewed_source_urls',[])]
+    # General definitions and expert commentary may have no official source.
+    # Actual bounded reread inputs can support omission, never fact adoption.
+    if reviewed and all(u and u in bodies for u in reviewed) and item.get('exploration_reason','').strip():
+        return True
     refs=item.get('evidence',[]) or item.get('omission_candidate_from',{}).get('evidence',[])
     normalize=lambda s: re.sub(r'\s+','',s)
     # An unavailable official body must not force extra retrieval for optional

@@ -116,6 +116,18 @@ class EvidencePolicyTests(unittest.TestCase):
         propose_optional_omissions(value['items'],plan,pages)
         self.assertEqual(value['items'],original)
 
+    def test_general_optional_term_can_be_omitted_after_recorded_reread(self):
+        plan,pages,value=fixture('supporting');item=value['items'][0]
+        plan['items'][0]['subject']='共通'
+        item.update(status='unresearched',basis='unresolved',verified=False,
+            answer='',evidence=[],official_checked_urls=[],reviewed_source_urls=[pages[1]['url']])
+        propose_optional_omissions(value['items'],plan,pages)
+        self.assertEqual(item['basis'],'omitted')
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        self.assertEqual(accepted_facts(value,plan),'')
+        item['reviewed_source_urls']=['https://not-present.example']
+        self.assertTrue(validate_matrix(value,plan,pages))
+
     def test_subject_main_source_can_support_omission_without_per_item_search(self):
         plan,pages,value=fixture()
         donor=value['items'][0]

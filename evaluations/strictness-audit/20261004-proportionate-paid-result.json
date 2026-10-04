@@ -1,0 +1,23 @@
+{
+  "source_commit_tested": "6c082ef",
+  "keyword": "既婚者 マッチングアプリ おすすめ",
+  "preset_id": "2ae0c003-c11b-4085-b372-21e4943297c9",
+  "article_completed": false,
+  "production_writes": false,
+  "plan_revalidation": "passed",
+  "empty_collection_recovery": "completed",
+  "research_completeness": "failed",
+  "remaining_gaps": [
+    "q48",
+    "q91",
+    "q84"
+  ],
+  "calls_added": 42,
+  "additional_usd": 1.77283055,
+  "cumulative_usd_including_old_unknown_reservation": 6.3173087,
+  "limit_usd": 10,
+  "remaining_usd": 3.6826913,
+  "exchange_rate_for_estimate": 200,
+  "offline_tests_after_fixes": 387,
+  "new_fixes_live_verified": false
+}

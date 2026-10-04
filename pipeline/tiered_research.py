@@ -5,7 +5,7 @@ from .ai import create_with_retry
 from .db import get_optional_artifact,upsert_artifact
 from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
-from .fresh_sources import extract_urls
+from .fresh_sources import extract_urls, normalize_url
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
 VERSION='tiered-research-v4-keyed-question-responses'
 POLICY='''
@@ -19,7 +19,7 @@ related_verified_answersは他の対象で確認できた回答と条件。横�
 出典本文がtruncatedの場合は抜粋である。省略部分を推測して引用しない。回答と理由は簡潔に、不要な全プランの列挙や同じ説明の反復を避ける。
 '''
 
-def packed_sources(pages,hints):
+def packed_sources(pages,hints,*,prioritize_referenced=False):
  copied=copy.deepcopy(pages)
  by_url={p['url']:p for p in copied}
  for item in hints:
@@ -27,7 +27,19 @@ def packed_sources(pages,hints):
    if ref.get('url') in by_url:
     by_url[ref['url']].setdefault('evidence_quotes',[]).extend([ref.get('quote',''),ref.get('expert_qualification_quote','')])
  successful=[p for p in copied if p.get('status')=='success' and p.get('text')]
- result=json.loads(source_evidence({'content_text':json.dumps(successful,ensure_ascii=False)},max_chars=60000)) if successful else []
+ groups=[(successful,60000)]
+ if prioritize_referenced:
+  refs={normalize_url(u) for i in hints for u in i.get('official_checked_urls',[])}
+  refs.update(normalize_url(r['url']) for i in hints for r in i.get('evidence',[]) if r.get('url'))
+  priority=[p for p in successful if normalize_url(p['url']) in refs]
+  other=[p for p in successful if normalize_url(p['url']) not in refs]
+  if priority and other:
+   # Give the still-unresolved questions' documents room before repeating the
+   # whole subject catalog. Keep the same total body budget and other sources.
+   priority_budget=min(30000,sum(len(p['text']) for p in priority))
+   groups=[(priority,priority_budget),(other,60000-priority_budget)]
+ result=[page for group,limit in groups if group for page in json.loads(
+  source_evidence({'content_text':json.dumps(group,ensure_ascii=False)},max_chars=limit))]
  for p in result:p['status']='success'
  result.extend({'url':p['url'],'status':p.get('status','failed'),'text':'','reason':p.get('reason',''),**({'fetched_at':p['fetched_at']} if p.get('fetched_at') else {})} for p in copied if p not in successful)
  return result
