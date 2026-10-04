@@ -38,6 +38,13 @@ USER_TEMPLATE = """\
 ---
 
 以下の形式で記事構成案を作成してください。
+構成案は完成本文ではなく、執筆に必要な設計のみを簡潔に出力する。
+セクション内容・直下方針は各1文を基本とし、同じ説明を重複しない。
+表は列項目と比較対象を設計し、完成記事用の全行の料金表や本文をここで書かない。
+根拠は短い要旨とURLで対応を示し、引用全文や調査判断理由を再掲しない。
+共通の出典注釈・料金条件の扱いは1箇所にまとめ、各見出しでは固有の条件だけを指定する。
+調査質問の数だけ見出しを作らず、同じ読者の疑問に答える項目をまとめる。
+必要な論点・出典との対応・末尾のボリューム設計は省略しない。
 
 ## 記事構成案
 
@@ -516,19 +523,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     total_input = message.usage.input_tokens
     total_output = message.usage.output_tokens
     if getattr(message, "stop_reason", None) == "max_tokens":
-        print('[outline] Response truncated; regenerating the complete outline with a larger limit')
-        message = create_with_retry(
-            client, model=MODEL, max_tokens=MAX_TOKENS * 2, system=SYSTEM_PROMPT,
-            messages=[{'role': 'user', 'content': USER_TEMPLATE.format(
-                keyword=keyword, intent_text=intent['content_text'], fact_text=fact['content_text'],
-                serp_text=serp['content_text'], word_count_instruction=word_count_instruction,
-            ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
-                + '\n前回は出力上限で中断しました。全H2/H3と配分表まで省略せず、構成案全体を出力してください。'}],
-        )
-        total_input += message.usage.input_tokens
-        total_output += message.usage.output_tokens
-        if getattr(message, 'stop_reason', None) == 'max_tokens':
-            raise ContentQualityError('構成案が出力上限で中断されました。未完成の構成から本文は生成できません。')
+        # Preserve diagnostics before stopping; never silently buy a full rewrite.
+        upsert_artifact(job_id=job_id,step='outline_incomplete',content_type='text/markdown',
+            content_text=message_text(message),meta={'model':MODEL,'stop_reason':'max_tokens',
+                'input_tokens':total_input,'output_tokens':total_output,'complete':False})
+        raise ContentQualityError('構成案が出力上限で中断されました。未完成の出力を保存し、上限を倍増した全体再生成は自動実行しません。')
     if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
         raise ContentQualityError('構成生成が正常終了していません。')
     outline_text = message_text(message)

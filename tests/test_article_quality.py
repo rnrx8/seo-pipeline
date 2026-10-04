@@ -170,28 +170,22 @@ class ArticleQualityTests(unittest.TestCase):
         self.assertEqual([sum(s[2] for s in p) for p in parts], [5414, 4581, 5128])
         self.assertEqual([s for p in parts for s in p], sections)
 
-    def test_outline_truncation_retries_once_and_never_saves_partial(self):
+    def test_outline_truncation_preserves_diagnostics_without_paid_rewrite(self):
         artifacts = {'serp': {'content_text': '{}'}, 'search_intent': {'content_text': ''},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_contract': {'content_text': json.dumps(CONTRACT)}}
-        def response(reason):
-            return SimpleNamespace(content=[SimpleNamespace(text=OUTLINE)], stop_reason=reason,
-                                   usage=SimpleNamespace(input_tokens=10, output_tokens=20))
-        for second_reason in ('end_turn', 'max_tokens'):
-            with self.subTest(second_reason=second_reason), \
-                 patch.object(step_outline, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
-                 patch.object(step_outline, 'get_job', return_value={'word_count_setting': '5,000字'}), \
-                 patch.object(step_outline.anthropic, 'Anthropic'), \
-                 patch.object(step_outline, 'create_with_retry', side_effect=[response('max_tokens'), response(second_reason)]) as model, \
-                 patch.object(step_outline, 'upsert_artifact', side_effect=lambda **kw: {'id': 'test', **kw}) as save:
-                if second_reason == 'max_tokens':
-                    with self.assertRaisesRegex(ValueError, '未完成'):
-                        step_outline.run('test', '比較')
-                    save.assert_not_called()
-                else:
-                    result = step_outline.run('test', '比較')
-                    self.assertEqual(result['meta']['output_tokens'], 40)
-                self.assertEqual(model.call_count, 2)
-                self.assertEqual(model.call_args.kwargs['max_tokens'], step_outline.MAX_TOKENS * 2)
+        response=SimpleNamespace(content=[SimpleNamespace(text=OUTLINE)],stop_reason='max_tokens',
+                                 usage=SimpleNamespace(input_tokens=10,output_tokens=20))
+        with patch.object(step_outline,'get_artifact',side_effect=lambda _,step:artifacts[step]), \
+             patch.object(step_outline,'get_job',return_value={'word_count_setting':'5,000字'}), \
+             patch.object(step_outline.anthropic,'Anthropic'), \
+             patch.object(step_outline,'create_with_retry',return_value=response) as model, \
+             patch.object(step_outline,'upsert_artifact',side_effect=lambda **kw:kw) as save:
+            with self.assertRaisesRegex(ValueError,'未完成'):step_outline.run('test','比較')
+        self.assertEqual(model.call_count,1)
+        self.assertEqual(save.call_count,1)
+        self.assertEqual(save.call_args.kwargs['step'],'outline_incomplete')
+        self.assertEqual(save.call_args.kwargs['content_text'],OUTLINE)
+        self.assertFalse(save.call_args.kwargs['meta']['complete'])
 
     def test_review_cannot_replace_complete_article_with_missing_sections(self):
         good = complete_article()

@@ -26,7 +26,7 @@ def decision_bundle(plan, matrix, *, quotes):
         row.update({k:copy.deepcopy(v) for k,v in item.items() if k not in {
             'evidence','official_checked_urls','exploration_complete','exploration_reason',
             'omission_candidate_from','omission_source_review','unresolved_candidate',
-            'additional_sources_needed'}})
+            'additional_sources_needed','reviewed_source_urls'}})
         row['source_ids']=[]
         if item.get('basis')!='omitted':
             for ref in item.get('evidence',[]):

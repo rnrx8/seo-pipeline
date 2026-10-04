@@ -1,0 +1,13 @@
+{
+  "research_coverage": "passed",
+  "normal_verify_persistence": true,
+  "individual_source_checks_replayed_from_saved_receipts": true,
+  "outline": "max_tokens",
+  "article_started": false,
+  "automatic_larger_retry": "blocked_before_send",
+  "additional_usd": 1.0530715,
+  "cumulative_usd_including_old_unknown_reservation": 7.865649449999999,
+  "remaining_usd": 2.1343505500000006,
+  "next_paid_step": "outline_only",
+  "offline_tests": 389
+}

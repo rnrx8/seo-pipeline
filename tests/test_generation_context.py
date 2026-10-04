@@ -14,6 +14,7 @@ class GenerationContextTests(unittest.TestCase):
         matrix['valid']=True
         matrix['items'][0]['verified']=True
         matrix['items'][0]['future_condition']={'audience':'男性','term':'2025年のみ'}
+        matrix['items'][0]['reviewed_source_urls']=['https://review-bookkeeping.example']
         return plan,pages,matrix
 
     def test_deduplicates_references_without_losing_answers_dates_or_new_conditions(self):
@@ -36,6 +37,7 @@ class GenerationContextTests(unittest.TestCase):
         data=decision_bundle(plan,matrix,quotes=False)
         self.assertIn(pages[1]['url'],data)
         self.assertNotIn('"quote"',data)
+        self.assertNotIn('review-bookkeeping.example',data)
         self.assertIn('2025年1月',data)
 
     def test_invalid_or_missing_question_cannot_become_writing_context(self):
