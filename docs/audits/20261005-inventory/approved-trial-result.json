@@ -1,0 +1,26 @@
+{
+  "trial_id": "2c9be430-2c51-52ec-96bf-d7e7f6d992fd",
+  "status": "stopped_scope_violation_before_article",
+  "article_generated": false,
+  "production_writes": false,
+  "actual_usd": 0.182845875,
+  "actual_yen_at_200": 36.5692,
+  "remaining_total_usd": 4.817154125,
+  "remaining_outline_usd": 0.317154125,
+  "calls": [
+    {
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_usd": 0.1780375
+    },
+    {
+      "model": "gpt-6-luna",
+      "status": "accounted",
+      "cost_usd": 0.004808375
+    }
+  ],
+  "historical_ledger_unchanged": true,
+  "cumulative_this_saved_job_yen_at_200": 3062.7039,
+  "offline_tests_after_fix": 429,
+  "live_test_after_fix": false
+}

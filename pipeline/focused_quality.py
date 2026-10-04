@@ -85,7 +85,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             checks=parse_focus(raw,keys,text)
             validate_routes(checks,content_blocks(text),payload['requirements'],pages_from(sources),keys)
             if any(c['requires_source_check'] for c in checks):
-                confirmed,extra,trace=evidence_audit('article',{**payload,'candidate_checks':checks},system,keys,text)
+                confirmed,extra,trace=evidence_audit('article',{**payload,'candidate_checks':checks},keys,text)
                 replacements={c['key']:c for c in confirmed}
                 checks=[replacements[c['key']] if c['requires_source_check'] else c for c in checks]
                 usage=SimpleNamespace(input_tokens=usage.input_tokens+extra.input_tokens,output_tokens=usage.output_tokens+extra.output_tokens)

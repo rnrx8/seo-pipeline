@@ -430,7 +430,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         evidence_payload={'current_date':payload['current_date'],'article_blocks':content_blocks(text),
                           'requirements':payload['requirements'],'confirmed_facts':payload['confirmed_facts'],'content_contract':contract,
                           'source_documents':sources,'candidate_checks':report['checks']}
-        checks,extra,evidence_trace=evidence_audit(stage,evidence_payload,AUDIT_SYSTEM,evidence_keys,text)
+        checks,extra,evidence_trace=evidence_audit(stage,evidence_payload,evidence_keys,text)
         replacements={c['key']:c for c in checks}
         report=parse_audit(json.dumps({'checks':[replacements[c['key']] if c.get('requires_source_check')
                                      else c for c in report['checks']]},ensure_ascii=False))

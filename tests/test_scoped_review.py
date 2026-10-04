@@ -77,8 +77,8 @@ class ScopedReviewTests(unittest.TestCase):
 
     def test_resolution_survives_unrelated_change_but_not_conditions_or_sources(self):
         with patch.object(research,'create_with_retry',side_effect=self.fake_provider()) as send:
-            evidence.evidence_audit('research',self.payload,'',ROLES['evidence'],self.text)
-            checks,usage,trace=evidence.evidence_audit('research',self.payload,'',ROLES['evidence'],self.text)
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+            checks,usage,trace=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
             self.assertEqual(send.call_count,1)
             self.assertEqual(usage.input_tokens,0)
             self.assertEqual(trace[0]['phase'],'reused')
@@ -96,8 +96,8 @@ class ScopedReviewTests(unittest.TestCase):
 
     def test_failed_resolution_is_not_promoted_to_pass_on_resume(self):
         with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)) as send:
-            first=evidence.evidence_audit('research',self.payload,'',ROLES['evidence'],self.text)
-            second=evidence.evidence_audit('research',self.payload,'',ROLES['evidence'],self.text)
+            first=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+            second=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(send.call_count,1)
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
@@ -242,10 +242,10 @@ class ScopedReviewTests(unittest.TestCase):
 
     def test_new_question_inside_same_paragraph_cannot_inherit_old_pass(self):
         with patch.object(research,'create_with_retry',side_effect=self.fake_provider()) as send:
-            evidence.evidence_audit('research',self.payload,'',ROLES['evidence'],self.text)
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
             revised=copy.deepcopy(self.payload)
             revised['candidate_checks'][0]['reason']='同じ料金ページだが、返金条件という別の疑問'
-            evidence.evidence_audit('research',revised,'',ROLES['evidence'],self.text)
+            evidence.evidence_audit('research',revised,ROLES['evidence'],self.text)
             self.assertEqual(send.call_count,2)
 
     def test_unresolved_comparison_cannot_become_pass_when_evidence_support_was_not_requested(self):
@@ -292,7 +292,7 @@ class ScopedReviewTests(unittest.TestCase):
         def restore(pages,urls,job):
             return [{**p,'text':p['text']+' additional plan conditions'} for p in pages]
         with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=restore):
-            checks,_,trace=evidence.evidence_audit('research',payload,'',ROLES['evidence'],self.text)
+            checks,_,trace=evidence.evidence_audit('research',payload,ROLES['evidence'],self.text)
         self.assertEqual(len(seen),3)
         self.assertEqual([p['url'] for p in seen[-1]['source_documents']],[p['url'] for p in self.pages[:2]])
         self.assertEqual(seen[-1]['source_documents'][0],self.pages[0])
@@ -308,7 +308,7 @@ class ScopedReviewTests(unittest.TestCase):
             return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as calls, \
              patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
-            checks,_,trace=evidence.evidence_audit('research',payload,'',ROLES['evidence'],self.text)
+            checks,_,trace=evidence.evidence_audit('research',payload,ROLES['evidence'],self.text)
         self.assertEqual(calls.call_count,2)
         self.assertTrue(trace[-1]['review']['needed'])
         self.assertEqual(checks[0]['status'],'fail')
@@ -344,3 +344,37 @@ class ScopedReviewTests(unittest.TestCase):
             with self.assertRaises(ContentQualityError):
                 budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':1000,'input':'x'})
         with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),1)
+
+    def test_source_review_has_its_own_scope_and_response_allowlists(self):
+        captured=[]
+        def send(job,step,request):
+            captured.append(request)
+            return self.message(request),NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        request=captured[0]
+        from pipeline.evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
+        self.assertIn(EVIDENCE_POLICY,request['system'])
+        self.assertIn(REVIEW_RESOLUTION_POLICY,request['system'])
+        self.assertNotIn('以下の9項目をすべて判定',request['system'])
+        self.assertNotIn('outlineに未使用でも明示',request['system'])
+        root=request['output_config']['format']['schema']['properties']
+        self.assertEqual(set(root['review']['properties']['block_ids']['items']['enum']),{self.a,self.summary})
+        self.assertEqual(root['review']['properties']['source_urls']['items']['enum'],[self.pages[0]['url']])
+        self.assertEqual(set(root['checks']['items']['properties']['affected_blocks']['items']['properties']['id']['enum']),{self.a,self.summary})
+
+    def test_unrelated_source_request_cannot_trigger_more_calls_or_become_pass(self):
+        # Regression: target conditions are confirmed, but the reviewer asks for
+        # other services' prices in the same comparison table.
+        self.payload['article_blocks'][2]['text']+='\nBは100円。 https://b.example/price'
+        def send(job,step,request):
+            value=self.message(request,True)
+            value['review']={'needed':True,'block_ids':[self.a],
+                'source_urls':[self.pages[1]['url']],
+                'reason':'Aの条件は確認できたが、同じ表のBの料金原文がない。'}
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as call:
+            with self.assertRaisesRegex(ContentQualityError,'追加確認範囲'):
+                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(call.call_count,1)
+        self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))

@@ -67,7 +67,7 @@ def run(saved_run):
                 'source_urls':['https://kikon-match.co.jp/price','https://kikon-match.co.jp/faq'],'reason':'offline scripted escalation'}}, SimpleNamespace(input_tokens=0,output_tokens=0)
     with patch('pipeline.tiered_research.checked_request',side_effect=send):
         evidence.evidence_audit('research',{'article_blocks':blocks,'requirements':review_requirements(requirements,'research'),
-            'source_documents':sources,'candidate_checks':[check]},cq.AUDIT_SYSTEM,ROLES['evidence'],text)
+            'source_documents':sources,'candidate_checks':[check]},ROLES['evidence'],text)
     with patch.object(guard,'get_artifact',side_effect=lambda j,s:load(s)),patch.object(guard,'get_job',return_value=job), \
          patch.object(guard,'requirements_for',return_value=requirements),patch('pipeline.research_requirements.require_matrix',return_value={}), \
          patch('pipeline.tiered_research.checked_request',side_effect=lambda *a:(record(*a),(_ for _ in ()).throw(Captured()))):

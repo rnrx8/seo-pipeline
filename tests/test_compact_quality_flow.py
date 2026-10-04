@@ -128,7 +128,7 @@ class CompactQualityFlowTests(unittest.TestCase):
             return te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources,
                 'candidate_checks':[{'key':'evidence_support','status':'fail','requires_source_check':True,
                     'reason':'条件の確認','source_urls':[self.pages[0]['url']],'research_ids':[],
-                    'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},'',fq.ROLES['evidence'],self.text)
+                    'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},fq.ROLES['evidence'],self.text)
 
     def test_restore_only_requested_saved_source_without_another_fetch(self):
         pages=[{'url':'https://a.example','text':'head\n[中略：取得本文の抜粋]\ntail','truncated':True,'fetched_at':'today'},
@@ -299,6 +299,6 @@ class CompactQualityFlowTests(unittest.TestCase):
                 ledger['calls'].append({'cost_usd':budget.LIMIT,'reserved_usd':budget.LIMIT,'category':'quality'})
             with patch('pipeline.tiered_research.get_optional_artifact',return_value=None),patch('pipeline.openai_review.requests.post') as post:
                 with self.assertRaises(cq.ContentQualityError):
-                    te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources,'candidate_checks':[{'key':'evidence_support','status':'fail','requires_source_check':True,'reason':'期間','source_urls':[self.pages[0]['url']],'research_ids':[],'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},'',fq.ROLES['evidence'],self.text)
+                    te.evidence_audit('article',{'article_blocks':self.blocks,'source_documents':self.sources,'candidate_checks':[{'key':'evidence_support','status':'fail','requires_source_check':True,'reason':'期間','source_urls':[self.pages[0]['url']],'research_ids':[],'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}]},fq.ROLES['evidence'],self.text)
                 post.assert_not_called()
             with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),1)
