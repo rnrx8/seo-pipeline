@@ -80,13 +80,25 @@ def repair_context(requirements, sources, failed_checks, structural_issues, repo
     return review_requirements(requirements,'evidence'),sources
 
 
+def canonical_answers_match(facts, requirements):
+    from .content_quality import digest
+    decisions=requirements.get('research_decisions')
+    return (isinstance(decisions,dict) and decisions.get('valid') is True
+            and bool(decisions.get('items')) and decisions.get('facts_sha256')==digest(facts))
+
+
+def review_conditions(facts, requirements):
+    """Canonical answers already include the literal conditions; don't copy them again."""
+    if compact_enabled() and canonical_answers_match(facts, requirements):
+        return '対象・プラン・期間・無料範囲等の条件は requirements.research_decisions の各回答と一体で照合する。'
+    from .claim_scope import conditional_facts
+    return conditional_facts(facts)
+
+
 def review_facts(facts, requirements):
     """Keep one authoritative copy of canonical answers and omit quote duplication."""
     if not compact_enabled():return facts
-    from .content_quality import digest
-    decisions=requirements.get('research_decisions')
-    if (isinstance(decisions,dict) and decisions.get('valid') is True
-        and decisions.get('items') and decisions.get('facts_sha256')==digest(facts)):
+    if canonical_answers_match(facts, requirements):
         return '確認済み回答・条件・出典と省略状態は requirements.research_decisions に一度だけ掲載。omitted の内容を本文で断定しない。'
     # Noncanonical or additional fact-review evidence must never disappear.
     # Remove only parseable source-quotation annotations, retaining their URL.

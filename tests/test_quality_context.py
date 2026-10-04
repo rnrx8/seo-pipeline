@@ -9,6 +9,38 @@ from pipeline import focused_quality as focused
 
 
 class QualityContextTests(unittest.TestCase):
+    def test_canonical_conditions_are_sent_once_and_noncanonical_facts_survive(self):
+        from pipeline.quality_context import review_conditions
+        from pipeline.claim_scope import conditional_facts
+        facts = '男性は初回メッセージ無料。継続は月額100円。'
+        requirements = self.requirements()
+        requirements['research_decisions']['facts_sha256'] = quality.digest(facts)
+        with patch('pipeline.quality_context.compact_enabled', return_value=True):
+            self.assertIsInstance(review_conditions(facts, requirements), str)
+            changed = facts + '追加プランは200円。'
+            self.assertEqual(review_conditions(changed, requirements), conditional_facts(changed))
+            requirements['research_decisions']['valid'] = False
+            self.assertEqual(review_conditions(facts, requirements), conditional_facts(facts))
+
+    def test_research_request_does_not_repeat_canonical_condition_statements(self):
+        class Captured(Exception): pass
+        facts = '男性は初回無料、以降100円。'
+        requirements = self.requirements()
+        requirements['research_decisions'].update(facts_sha256=quality.digest(facts))
+        requirements['research_decisions']['items'][0]['answer'] = facts
+        def capture(job, step, request):
+            payload = json.loads(request['messages'][0]['content'])
+            self.assertEqual(payload['requirements']['research_decisions']['items'][0]['answer'], facts)
+            self.assertIsInstance(payload['conditional_facts'], str)
+            self.assertNotIn(facts, payload['conditional_facts'])
+            raise Captured()
+        with patch('pipeline.quality_context.compact_enabled', return_value=True), \
+             patch('pipeline.ai.tiered_review_enabled', return_value=True), \
+             patch('pipeline.tiered_research.checked_request', side_effect=capture):
+            with self.assertRaises(Captured):
+                quality.audit(None, stage='research', text='# 構成', facts=facts, outline='# 構成',
+                              contract={}, requirements=requirements, sources='資料')
+
     def requirements(self):
         return {'custom_prompt':'自社を優先。ただし料金条件を明記','learned_style_rules':['自然な日本語'],
                 'research_plan':{'items':[{'id':'q1','question':'料金条件','required':True}],

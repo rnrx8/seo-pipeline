@@ -148,7 +148,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_research_guard, 'audit', side_effect=lambda *a, **kw: report('coverage')) as audit, \
              patch.object(step_research_guard, 'upsert_artifact', side_effect=lambda **kw: kw), \
              patch.object(step_fact_sheet, 'run') as research, \
-             patch.object(step_content_contract, 'run'), patch.object(step_outline, 'run'), \
+             patch.object(step_content_contract, 'run'), patch.object(step_research_guard, 'repair_outline'), \
              patch.object(step_structure_guard, 'run'):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j', '比較')
         self.assertEqual(audit.call_count, 2)
@@ -165,12 +165,12 @@ class QualityTests(unittest.TestCase):
              patch.object(step_research_guard,'audit',side_effect=[report('comparison_conditions'),report()]), \
              patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw), \
              patch.object(step_fact_sheet,'run') as research, \
-             patch.object(step_content_contract,'run'),patch.object(step_outline,'run') as outline, \
+             patch.object(step_content_contract,'run'),patch.object(step_research_guard,'repair_outline') as outline, \
              patch.object(step_structure_guard,'run_before_research'):
             result=step_research_guard.run('j','比較')
         research.assert_not_called()
         outline.assert_called_once()
-        self.assertIn('comparison_conditions',outline.call_args.kwargs['research_gaps'])
+        self.assertEqual(next(c for c in outline.call_args.args[2]['checks'] if c['status']=='fail')['key'],'comparison_conditions')
         self.assertTrue(result['meta']['valid'])
 
     def test_structure_failure_routes_to_research_without_becoming_pass(self):
@@ -191,7 +191,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_research_guard,'audit',side_effect=lambda *a,**kw:report()), \
              patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw) as save, \
              patch.object(step_fact_sheet,'run') as research, \
-             patch.object(step_content_contract,'run'),patch.object(step_outline,'run'), \
+             patch.object(step_content_contract,'run'),patch.object(step_research_guard,'repair_outline'), \
              patch.object(step_structure_guard,'run_before_research'), \
              patch.object(step_structure_guard,'validate_structure',return_value=[{'key':'named_service_comparison','reason':'不足'}]):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j','比較')

@@ -391,8 +391,9 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     if compact:
         from .focused_quality import ROLES
         evidence_keys=ROLES['evidence']
-        from .quality_context import review_facts
+        from .quality_context import review_facts, review_conditions
         payload['confirmed_facts']=review_facts(facts,requirements)
+        payload['conditional_facts']=review_conditions(facts,requirements)
         payload.pop('source_documents')
         payload['source_revision']=digest(sources)
         system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。原文の再照合は問題がある場合の独立担当が実施する。未確認や省略情報の復活、新しい根拠のない主張、条件を外した比較は該当する事実項目でfailを返す。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
