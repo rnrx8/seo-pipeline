@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v5-targeted-source-expansion'
+VERSION = 'focused-research-v6-preserve-alternative-sources'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -48,13 +48,18 @@ def merge_visible_sources(original, reread):
     return result
 
 
-def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches, related_answers=None):
+def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches, related_answers=None, prior_candidates=None):
     from .research_requirements import MATRIX_SCHEMA, MATRIX_SYSTEM, propose_optional_omissions
     from .source_spans import indexed_sources, span_schema, expand_references, SPAN_POLICY
     from .tiered_research import checked_request, needs_adjudication, packed_sources, validate_visible_matrix, POLICY
     from .content_quality import ContentQualityError, digest
 
     value = copy.deepcopy(value)
+    initial_candidates = copy.deepcopy(value['items'])
+    for previous in prior_candidates or []:
+        initial_candidates.append(previous)
+        initial_candidates.extend({**candidate,'id':previous['id']} for key in ('omission_candidate_from','unresolved_candidate')
+            if isinstance(candidate:=previous.get(key),dict))
     inputs = outputs = 0
     planned = {q['id']:q for q in questions}
     catalog = [{k:p[k] for k in ('url', 'title', 'status', 'fetched_at', 'truncated', 'reason') if k in p} for p in selected]
@@ -139,7 +144,10 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
                and needs_adjudication(i, planned[i['id']])]
     if pending:
         # Preserve each already-visible page in full, including neighboring spans.
-        focused = related_pages(packed, pending)
+        pending_ids = {i['id'] for i in pending}
+        # Rereading may select one of conflicting sources. Independent review
+        # must still see the original alternatives, not only the selected side.
+        focused = related_pages(packed, pending + [i for i in initial_candidates if i['id'] in pending_ids])
         complete = focused == packed
         result = ask(pending, focused, 'gpt-6.1-sol', 'audit', FOCUS_POLICY, True, complete)
         if result['needs_more_sources'] and not complete:

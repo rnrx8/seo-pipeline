@@ -138,7 +138,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
    if focused_enabled() and paid_legacy is None:
-    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'],related_answers=related_answers)
+    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'],related_answers=related_answers,prior_candidates=hints)
     inputs+=usage.input_tokens;outputs+=usage.output_tokens
    else:
     # Keep already-paid identical factual checks. For new work, offer eligible

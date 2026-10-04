@@ -106,6 +106,22 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertFalse(result['items'][0]['verified'])
         self.assertTrue(validate_matrix(result,self.plan,self.pages))
 
+    def test_adjudication_keeps_original_alternative_after_reread_selects_other_sources(self):
+        alternative={'url':'https://alternative.example/price','status':'success','text':'同条件の料金は別金額です。'}
+        self.pages.append(alternative)
+        audits=[]
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:
+                value=self.unknown()
+                value['items'][0]['evidence']=[{'url':alternative['url'],'quote':alternative['text'],'source_kind':'secondary'}]
+                return value
+            if request['model']=='gpt-6.1-sol':audits.append(payload)
+            return {**self.answer,'needs_more_sources':False}
+        self.run_flow(respond)
+        self.assertTrue(audits)
+        self.assertIn(alternative['url'],{p['url'] for p in audits[0]['sources']})
+
     def test_reread_recovers_saved_price_without_search_and_then_audits_if_needed(self):
         self.pages[0]['text']='1ヶ月（30日）9,980円。税込。'
         self.plan['items'][0]['source_requirement']='primary_only'
