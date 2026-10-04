@@ -268,16 +268,23 @@ def revalidate_plan(job_id, keyword, api_key=None):
 
 
 def major_sources_checked(item, pages):
-    """Successful relevant official bodies recorded by the source reviewer.
+    """Recorded main-source review for proposing omission, not fact adoption.
 
     This is a prerequisite for proposing omission, not evidence of absence.
     It does not require item-specific exhaustive search certification.
     """
     attempted=[normalize_url(u) for u in item.get('official_checked_urls',[])]
-    bodies={normalize_url(p['url']) for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
+    bodies={normalize_url(p['url']):p['text'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
     visited={normalize_url(p['url']) for p in pages}
+    refs=item.get('evidence',[]) or item.get('omission_candidate_from',{}).get('evidence',[])
+    normalize=lambda s: re.sub(r'\s+','',s)
+    # An unavailable official body must not force extra retrieval for optional
+    # details when relevant third-party text was actually reviewed. This only
+    # permits an omission proposal; it does not corroborate or publish a fact.
+    secondary_read=any(r.get('source_kind')=='secondary' and r.get('quote','').strip()
+        and normalize(r['quote']) in normalize(bodies.get(normalize_url(r.get('url','')),'')) for r in refs)
     return (bool(attempted) and all(u and u in visited for u in attempted)
-            and any(u in bodies for u in attempted)
+            and (any(u in bodies for u in attempted) or secondary_read)
             and bool(item.get('exploration_reason','').strip()))
 
 
@@ -313,7 +320,7 @@ def propose_optional_omissions(items, plan, pages, *, supporting_only=False):
         item.setdefault('omission_candidate_from',{k:item.get(k) for k in ('status','basis','reason','answer','evidence','applicable_at','supports_current_conclusion')})
         item.update(basis='omitted',status='searched_not_found',answer='',evidence=[],
             supports_current_conclusion=False,
-            omission_reason='主要な関連公式資料を確認済みだが、この補助情報は未確認のため本文に使用しない。'
+            omission_reason='関連する主要資料の確認記録はあるが、この補助情報は未確認のため本文に使用しない。'
                 '検索意図への主要な回答・比較・結論が維持できるかは記事全体の網羅性判定で確認する。')
     return items
 

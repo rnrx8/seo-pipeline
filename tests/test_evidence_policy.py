@@ -3,7 +3,7 @@ import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
-from pipeline.research_requirements import validate_matrix, validate_plan, accepted_facts, propose_optional_omissions
+from pipeline.research_requirements import validate_matrix, validate_plan, accepted_facts, propose_optional_omissions, major_sources_checked
 from pipeline.research_collection import collect
 from pipeline.fresh_sources import FreshSources
 
@@ -83,17 +83,31 @@ class EvidencePolicyTests(unittest.TestCase):
         value.update(coverage_sufficient=False,coverage_reason='比較の重要論点が足りない',coverage_issues=[{'id':'q1','reason':'このクエリでは必要'}])
         self.assertTrue(validate_matrix(value,plan,pages))
 
-    def test_omission_does_not_excuse_required_failed_or_unvisited_sources(self):
-        for case in ('required','failed','unvisited','no_record'):
+    def test_omission_does_not_excuse_required_unread_or_unvisited_sources(self):
+        for case in ('required','unread','unvisited','no_record'):
             plan,pages,value=fixture('supporting');item=value['items'][0]
             item.update(status='unresearched',basis='unresolved',verified=False,exploration_complete=False)
             if case=='required':plan['items'][0]['required']=True
-            if case=='failed':pages[0]['status']='failed'
+            if case=='unread':
+                for page in pages:page['status']='failed'
             if case=='unvisited':item['official_checked_urls']=['https://invented.example']
             if case=='no_record':item['exploration_reason']=''
             propose_optional_omissions(value['items'],plan,pages)
             self.assertEqual(item['basis'],'unresolved',case)
             self.assertTrue(validate_matrix(value,plan,pages),case)
+
+    def test_optional_omission_with_failed_official_and_read_secondary(self):
+        plan,pages,value=fixture('supporting');item=value['items'][0]
+        pages[0].update(status='failed',reason='access denied')
+        item.update(status='unresearched',basis='unresolved',verified=False,exploration_complete=False)
+        propose_optional_omissions(value['items'],plan,pages)
+        self.assertEqual(item['basis'],'omitted')
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        self.assertEqual(accepted_facts(value,plan),'')
+        value.update(coverage_sufficient=False,coverage_reason='主要な回答が不足',coverage_issues=[{'id':'q1','reason':'主要な判断に必要'}])
+        self.assertTrue(validate_matrix(value,plan,pages))
+        for page in pages[1:]:page['text']='unrelated text'
+        self.assertFalse(major_sources_checked(item,pages))
 
     def test_verified_optional_fact_is_not_discarded(self):
         plan,pages,value=fixture('supporting')
