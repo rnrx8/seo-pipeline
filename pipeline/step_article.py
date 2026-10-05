@@ -554,24 +554,8 @@ def _build_cta_prompt(cta: dict) -> str:
 
 
 def _build_chains_prompt(chains: list) -> str:
-    """原文を活かす表現方針を維持し、事実としての利用だけを制限する。"""
-    if not chains:
-        return ""
-    phrases = [c for c in chains if c.get("concrete_phrase")]
-    if not phrases:
-        return ""
-    lines = [
-        "",
-        "【検索意図チェーン：読者の関心を理解するための分析資料】",
-        "以下は検索意図の仮説であり、読者の実際の発言や確認済み事実ではない。",
-        "具体的な言葉は原文を活かしてよい。ただし含まれる数値・事実・安全性や成果の主張は確認済み情報と一致させる。",
-        "事実として使えない部分は修正し、感情表現や読者の関心を示す表現は維持する。",
-    ]
-    for c in phrases:
-        direction = c.get("direction", "")
-        lines.append(f"- 「{c['concrete_phrase']}」（{direction}）")
-    lines.append("")
-    return "\n".join(lines)
+    from .reader_presentation import intent_value_prompt
+    return intent_value_prompt(chains)
 
 
 def _build_extra_instructions(job: dict) -> str:

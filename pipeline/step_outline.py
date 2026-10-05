@@ -345,11 +345,13 @@ def _build_cta_prompt(cta: dict) -> str:
 
 def _build_chains_prompt(chains: list) -> str:
     """検索意図chainsの見出し語彙をH2タイトル指示に追加する。serp_grounded=trueを優先採用。"""
+    from .reader_presentation import intent_value_prompt
+    value_prompt = intent_value_prompt(chains)
     if not chains:
         return ""
     grounded = [c for c in chains if c.get("serp_grounded") and c.get("heading_vocab")]
     if not grounded:
-        return ""
+        return value_prompt
     lines = [
         "",
         "【検索意図チェーン：見出しの言葉選び】",
@@ -362,7 +364,7 @@ def _build_chains_prompt(chains: list) -> str:
         lines.append(f"- 「{c['heading_vocab']}」（起点: {origin}）")
     lines.append("※ SERP非接地の語彙は見出しに使わず本文側に委ねるため、ここには含めていません。")
     lines.append("")
-    return "\n".join(lines)
+    return value_prompt + "\n".join(lines)
 
 
 def _build_extra_instructions(job: dict) -> str:

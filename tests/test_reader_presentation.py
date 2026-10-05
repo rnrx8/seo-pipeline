@@ -74,3 +74,31 @@ class ReaderPresentationTests(unittest.TestCase):
                      'スタンド付きなので、手を空けて動画を楽しめます。'):
             self.assertEqual(content_quality.explicit_risk_guarantees(text), [])
         self.assertTrue(content_quality.explicit_risk_guarantees('無料登録なのでノーリスクです。'))
+
+    def test_deep_intent_reaches_writer_outline_and_only_coverage_review(self):
+        from pipeline.reader_presentation import intent_value_context
+        from pipeline.quality_context import review_requirements
+        # Different industries and no ready-made catchphrase: traces must survive.
+        for origin, trace in (
+            ('話し相手がほしい', '交流したい→家庭と子どもの暮らしは守りたい'),
+            ('転職を考えている', '環境を変えたい→収入を途切れさせたくない'),
+            ('料理の手間を減らしたい', '帰宅後に休みたい→家族の食事は大切にしたい'),
+        ):
+            chains=[{'origin':origin,'trace':trace,'direction':'avoidance','serp_grounded':False}]
+            for module in (step_article,step_outline):
+                prompt=module._build_chains_prompt(chains)
+                self.assertIn(origin,prompt)
+                self.assertIn(trace,prompt)
+            context=intent_value_context(chains)
+            for role in focused_quality.ROLES:
+                projected=review_requirements({'intent_value_context':context},role)
+                self.assertEqual('intent_value_context' in projected,role=='coverage')
+
+    def test_saved_intent_links_are_loaded_into_final_requirements(self):
+        chains=[{'origin':'家事を楽にしたい','trace':'時間不足→家族との時間を取り戻したい',
+                 'direction':'approach','concrete_phrase':'家族とゆっくり過ごしたい'}]
+        with patch.object(content_quality,'requirements_for',return_value={}), \
+             patch.object(content_quality,'astra_review_enabled',return_value=False), \
+             patch('pipeline.db.get_optional_artifact',return_value={'content_text':json.dumps({'chains':chains})}):
+            req=content_quality.final_review_requirements({'id':'other-product'},'時短家電')
+        self.assertEqual(req['intent_value_context'],chains)

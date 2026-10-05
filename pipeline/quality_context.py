@@ -2,7 +2,7 @@
 import copy
 import json
 
-CONTEXT_POLICY = 'role-input-v3-scoped-resolutions'
+CONTEXT_POLICY = 'role-input-v4-intent-value-coverage'
 
 
 def compact_enabled():
@@ -32,6 +32,10 @@ def review_requirements(requirements, role):
     # All user/editorial settings survive unchanged. Research evidence is not
     # needed to judge prose, internal consistency, or information presentation.
     result=copy.deepcopy(requirements)
+    # The existing coverage role owns the connection to deeper search intent.
+    # Other reviewers retain the shared policy but do not reread the analysis.
+    if role != 'coverage':
+        result.pop('intent_value_context', None)
     if role not in ('evidence','coverage','research'):
         result.pop('research_plan',None)
         result.pop('research_decisions',None)

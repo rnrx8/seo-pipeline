@@ -152,6 +152,19 @@ def requirements_for(job: dict, keyword: str) -> dict:
 
 def final_review_requirements(job: dict, keyword: str) -> dict:
     requirements = requirements_for(job, keyword)
+    if job.get('id'):
+        from .db import get_optional_artifact
+        from .reader_presentation import intent_value_context
+        saved = get_optional_artifact(job['id'], 'intent_chains')
+        if saved:
+            try:
+                value = json.loads(saved['content_text'])
+                chains = value.get('chains', []) if isinstance(value, dict) else []
+            except (ValueError, KeyError, TypeError):
+                chains = []
+            context = intent_value_context(chains)
+            if context:
+                requirements['intent_value_context'] = context
     if astra_review_enabled():
         from .db import get_learned_style_rules
         from .step_review import SYSTEM_PROMPT

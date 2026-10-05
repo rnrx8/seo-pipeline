@@ -62,6 +62,11 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if role=='coverage' and compact_enabled():
             from .review_scope import ROUTING_POLICY
             system+=ROUTING_POLICY+'\n今回は網羅性担当。requires_source_checkはfalse。補う情報のresearch_idsを指定する。'
+        if role == 'coverage':
+            system += ('\nintent_value_contextがあれば、推奨理由が読者の望み・避けたいこと・葛藤に接続しているか照合する。'
+                       '重点対象は指定の推奨商材、指定がなければ根拠あるランキング上位・主要推奨候補。'
+                       '全社への均等な感情訴求は不要。機能から葛藤のどの部分に応えるかを示し、単に便利・安心という説明だけで終えない。'
+                       '感情への接点が薄い検索意図に重い葛藤を要求しない。仮説の願望を成果保証や全読者の実態へ読み替えない。')
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled()),
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])

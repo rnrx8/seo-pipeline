@@ -147,6 +147,9 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             from .review_scope import repair_packet
             packet=repair_packet(text,review_requirements(requirements,'evidence'),sources,report)
             packet['content_contract']=contract
+            if (requirements.get('intent_value_context') and
+                    any(c['key']=='coverage' and c['status']=='fail' for c in report['checks'])):
+                packet['requirements']['intent_value_context'] = requirements['intent_value_context']
             repair_data=packet
         else:
             repair_data={
