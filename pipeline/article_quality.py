@@ -140,7 +140,18 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
                 section_body += '\n' + child['body']
             body = re.sub(r'https?://\S+|[\s*#>|_\-]', '', section_body)
             if not body or not actual[found]['body'].strip():
-                issues.append({'key': 'empty_section', 'title': expected['title']})
+                # Preserve the exact heading address for scoped repair, including
+                # duplicate heading titles and headings joined to adjacent prose.
+                offset = list(re.finditer(r'^(#{2,4})\s+(.+)$', text, re.M))[found].start()
+                cursor = 0
+                locations = []
+                for block_index, part in enumerate(re.split(r'(\n[ \t]*\n)', text)):
+                    if cursor <= offset < cursor + len(part):
+                        locations = [{'id': f'block-{block_index:04d}',
+                                      'reason': '既存見出しを維持し、直下に確認済み内容の短い回答・導入を補う'}]
+                        break
+                    cursor += len(part)
+                issues.append({'key': 'empty_section', 'title': expected['title'], 'affected_blocks': locations})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'
         r'(?:以下|次|上記|この|本)(?:の)?H[234](?:で|では|に)(?:各|紹介|説明|解説|扱)|'

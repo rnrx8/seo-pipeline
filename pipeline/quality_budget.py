@@ -96,7 +96,14 @@ def guard_review(value,amount):
    raise ContentQualityError('修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。')
  if any(c['review_operation']['request_sha256']==meta['request_sha256'] for c in same):
   raise ContentQualityError('同じ確認要求の送信記録があります。保存応答または未確定費用を確認するまで再送しません。')
- if len(same)>=meta['call_limit']:
+ extension=value.get('additional_review_authorization') or {}
+ extra=0
+ if extension:
+  if (extension.get('phase')!='article' or type(extension.get('extra_calls_per_role')) is not int
+      or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')):
+   raise ContentQualityError('追加確認の承認設定が不正です。')
+  if meta['phase']=='article':extra=extension['extra_calls_per_role']
+ if len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)
  quality_used=sum(c.get('cost_usd',c['reserved_usd']) for c in calls if c.get('category','quality')=='quality')

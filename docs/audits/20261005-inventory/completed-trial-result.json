@@ -1,0 +1,66 @@
+{
+  "trial_id": "2c9be430-2c51-52ec-96bf-d7e7f6d992fd",
+  "run_status": "passed",
+  "audit_valid": true,
+  "checks": [
+    {
+      "key": "coverage",
+      "status": "pass"
+    },
+    {
+      "key": "evidence_support",
+      "status": "pass"
+    },
+    {
+      "key": "comparison_conditions",
+      "status": "pass"
+    },
+    {
+      "key": "conclusion_consistency",
+      "status": "pass"
+    },
+    {
+      "key": "metric_scope",
+      "status": "pass"
+    },
+    {
+      "key": "unfinished_content",
+      "status": "pass"
+    },
+    {
+      "key": "unsupported_guarantees",
+      "status": "pass"
+    },
+    {
+      "key": "prose_quality",
+      "status": "pass"
+    },
+    {
+      "key": "redundancy",
+      "status": "pass"
+    }
+  ],
+  "final_structure": {
+    "stage": "final_article",
+    "valid": true,
+    "violations": [],
+    "h2s": [
+      "既婚者向けマッチングアプリはどれがいい？6選を比較",
+      "男性の料金はいくら？契約期間別の総額と無料範囲",
+      "身バレ対策はどう違う？画面・明細・写真・知人で比較",
+      "サクラや業者への対策は？本人確認と監視体制の違い",
+      "目的・年代・地域で選ぶならどれ？",
+      "既婚者マッチングアプリの利用は不倫・違法になる？",
+      "登録から解約までの流れは？既婚者クラブを例に解説",
+      "まとめ（目的と予算で候補を1〜2つに絞る）"
+    ]
+  },
+  "article_characters": 17774,
+  "article_sha256": "190b1519812c390002cdf4225ac802055d0fcd69acb36b60267374b4a0ce0507",
+  "accounted_yen_at_200": 1049.1914,
+  "unknown_reserved_yen_at_200": 53.3175,
+  "total_including_reservation_yen_at_200": 1102.5089,
+  "approved_limit_yen_at_200": 1200,
+  "production_published": false,
+  "manual_article_edits": false
+}

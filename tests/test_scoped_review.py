@@ -432,3 +432,31 @@ class ScopedReviewTests(unittest.TestCase):
                 self.assertAlmostEqual(budget.review_remaining(ledger),1.05)
                 ledger['calls'][0]['duplicate_review_reconciliation']['retained_request_sha256']='wrong'
                 with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(ledger,.1)
+
+    def test_explicit_additional_round_does_not_reset_count_or_cost(self):
+        with budget.request_scope('offline-job','tiered_article_language','new',{'messages':[{'content':'{}'}]}):
+            with budget.ledger() as ledger:
+                meta=dict(budget.REQUEST.get())
+                ledger['calls']=[{'status':'accounted','category':'quality','cost_usd':.1,'reserved_usd':.1,
+                    'review_operation':{**meta,'request_sha256':str(i)}} for i in range(2)]
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.1)
+                ledger['additional_review_authorization']={'phase':'article','extra_calls_per_role':2,'user_message':'+200 yen; proceed'}
+                budget.guard_review(ledger,.1)
+                self.assertAlmostEqual(budget.review_remaining(ledger),1.05)
+                for i in (2,3):ledger['calls'].append({'status':'accounted','category':'quality','cost_usd':.1,'reserved_usd':.1,'review_operation':{**meta,'request_sha256':str(i)}})
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.1)
+
+    def test_empty_intro_routes_to_exact_heading_for_local_repair(self):
+        from pipeline.article_quality import validate_delivery
+        from pipeline.content_edits import apply_block_edits
+        text='# 記事\n\n## 安全\n\n説明します。\n\n### 個人情報\n\n#### 書類\n\n書類は確認後に破棄します。'
+        outline='### H2：安全\n#### H3：個人情報'
+        issues=validate_delivery(text,outline)
+        self.assertEqual([i['key'] for i in issues],['empty_section'])
+        packet=scope.repair_packet(text,{},[],{'checks':[],'structural_issues':issues})
+        blocks={b['id']:b['text'] for b in content_blocks(text)}
+        target=packet['target_block_ids'][0]
+        self.assertEqual(blocks[target],'### 個人情報')
+        raw=json.dumps({'edits':[{'id':target,'new':blocks[target]+'\n\n確認書類の扱いを説明します。'}]})
+        scope.validate_edits(raw,packet)
+        self.assertEqual(validate_delivery(apply_block_edits(text,raw),outline),[])
