@@ -15,6 +15,7 @@ from pypdf import PdfReader
 from .browser_fetch import fetch_rendered_page
 from . import db
 from .evidence_policy import EVIDENCE_POLICY
+from .reader_presentation import READER_PRESENTATION_POLICY
 from .public_fetch import get_public_page
 
 MAX_URLS = 40
@@ -50,7 +51,7 @@ WRITING_POLICY = """
 「次のH3」「このH2」など制作上の説明を読者向け本文に混ぜず、具体的な章の主題で案内する。
 """
 
-WRITING_POLICY += EVIDENCE_POLICY
+WRITING_POLICY += EVIDENCE_POLICY + READER_PRESENTATION_POLICY
 DIRECT_POLICY += EVIDENCE_POLICY
 
 def normalize_url(url):
