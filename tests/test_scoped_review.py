@@ -378,3 +378,42 @@ class ScopedReviewTests(unittest.TestCase):
                 evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(call.call_count,1)
         self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
+
+    def test_explicit_credit_retry_retains_cost_and_blocks_second_resend(self):
+        request={'messages':[{'content':'{}'}]}
+        with budget.request_scope('offline-job','tiered_article_consistency','same',request):
+            with budget.ledger() as ledger:
+                ledger['calls']=[{'status':'unknown_cost_reserved','reserved_usd':.25,'category':'quality',
+                    'review_operation':dict(budget.REQUEST.get()),
+                    'retry_authorization':{'reason':'credit_balance_exhausted','request_sha256':'same','user_message':'added credits; continue'}}]
+                budget.guard_review(ledger,.1)
+                self.assertAlmostEqual(budget.review_remaining(ledger),1.0)
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.01)
+                ledger['calls'].append({'status':'pending','reserved_usd':.1,'category':'quality','review_operation':dict(budget.REQUEST.get())})
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+
+    def test_review_date_survives_midnight_but_changes_with_snapshot(self):
+        from pipeline.quality_context import review_reference_date
+        from datetime import datetime, timezone
+        first=datetime(2026,10,4,23,59,tzinfo=timezone.utc)
+        second=datetime(2026,10,5,0,1,tzinfo=timezone.utc)
+        with patch('datetime.datetime') as clock:
+            clock.now.return_value=first
+            self.assertEqual(review_reference_date('article','same-inputs'),'2026-10-04')
+            clock.now.return_value=second
+            self.assertEqual(review_reference_date('article','same-inputs'),'2026-10-04')
+            self.assertEqual(review_reference_date('article'),'2026-10-04')
+            self.assertEqual(review_reference_date('article','changed-text-or-evidence'),'2026-10-05')
+            self.assertEqual(review_reference_date('research','new-research'),'2026-10-05')
+
+    def test_unchanged_request_is_cached_after_midnight(self):
+        from pipeline.quality_context import review_reference_date
+        from datetime import datetime, timezone
+        with patch('datetime.datetime') as clock, patch.object(research,'create_with_retry',side_effect=self.fake_provider()) as send:
+            for day in (4,5):
+                clock.now.return_value=datetime(2026,10,day,23,59,tzinfo=timezone.utc)
+                request={'model':'gpt-6-luna','max_tokens':100,'system':'unchanged source review',
+                    'messages':[{'role':'user','content':json.dumps({'current_date':review_reference_date('article','unchanged-snapshot')})}],
+                    'output_config':{'format':{'schema':{'properties':{'checks':{'items':{'properties':{'key':{'enum':['evidence_support']}}}}}}}}}
+                research.checked_request('offline-job','tiered_article_evidence_scope',request)
+            self.assertEqual(send.call_count,1)

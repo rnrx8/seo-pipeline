@@ -43,10 +43,12 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                                   snapshot, response_text, audit_output_config, create_with_retry)
     model, budget = get_step_config('content_audit')
     fingerprint = snapshot(text,facts,outline,contract,requirements,sources)
+    from .quality_context import review_reference_date
+    reference_date = review_reference_date("article", fingerprint)
     phases = {}
     for role, keys in ROLES.items():
         # Source-heavy context is restricted to the roles that actually need it.
-        payload = {'current_date':datetime.now(timezone.utc).date().isoformat(), 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
+        payload = {'current_date':reference_date, 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
         if role in ('evidence','coverage'):
             payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources

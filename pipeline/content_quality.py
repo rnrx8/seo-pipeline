@@ -381,9 +381,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         return audit_article(client, text=text, facts=facts, outline=outline, contract=contract, requirements=requirements, sources=sources, checkpoint=checkpoint)
     model, configured_budget = get_step_config('content_audit' if stage == 'article' else 'review')
     prices, price_issues = comparison_evidence(text, contract)
-    from .quality_context import review_requirements
+    from .quality_context import review_requirements, review_reference_date
+    reference_date = review_reference_date(stage, snapshot(text,facts,outline,contract,requirements,sources))
     payload = {
-            'current_date': datetime.now(timezone.utc).date().isoformat(), 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources,
+            'current_date': reference_date, 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources,
             'contract': contract, 'requirements':review_requirements(requirements, 'research'),
             'calculated_price_minima': prices, 'price_contradictions': price_issues,
             'conditional_facts': conditional_facts(facts), 'scope_issues': scope_issues(text, facts)}

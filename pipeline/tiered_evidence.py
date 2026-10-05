@@ -60,7 +60,7 @@ def evidence_audit(stage, payload, keys, text):
     payload=scoped_packet(payload,candidates)
     if not payload['source_documents']:
         raise ContentQualityError('指定された主張の根拠資料がありません。照合範囲の確認が必要です。')
-    binding=receipt_binding(payload['article_blocks']+payload['heading_context'],payload['source_documents'],payload['requirements'],candidates)
+    binding=receipt_binding(payload['article_blocks']+payload['heading_context'],payload['source_documents'],payload['requirements'],candidates,stage)
     for receipt in source_resolutions(stage,original['article_blocks'],original['source_documents'],original.get('requirements',{})):
         if receipt['binding']==binding:
             return receipt['checks'],SimpleNamespace(input_tokens=0,output_tokens=0),[{

@@ -82,3 +82,31 @@ def review_facts(facts, requirements):
             except ValueError:pass
         lines.append(line)
     return '\n'.join(lines)
+
+
+def review_reference_date(stage, fingerprint=None):
+    """Resume the same frozen review as of its original date, not today's date.
+
+    A changed snapshot starts a new review date. This does not assert that old
+    sources have been refreshed; callers must supply the full snapshot identity.
+    """
+    from datetime import datetime, timezone, date
+    from .quality_budget import JOB
+    from .tiered_research import get_optional_artifact, upsert_artifact
+    today = datetime.now(timezone.utc).date().isoformat()
+    if not JOB.get():
+        return today
+    step = 'quality_reference_' + stage
+    prior = get_optional_artifact(JOB.get(), step)
+    meta = (prior or {}).get('meta') or {}
+    saved = meta.get('reference_date')
+    try:
+        valid_date = isinstance(saved, str) and date.fromisoformat(saved).isoformat() == saved
+    except ValueError:
+        valid_date = False
+    if valid_date and (fingerprint is None or meta.get('snapshot') == fingerprint):
+        return saved
+    if fingerprint is not None:
+        upsert_artifact(job_id=JOB.get(), step=step, content_type='application/json',
+                        content_text='{}', meta={'snapshot':fingerprint,'reference_date':today})
+    return today

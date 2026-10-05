@@ -71,7 +71,14 @@ def guard_review(value,amount):
  if saved!=policy:
   raise ContentQualityError('保存済みの確認回数・費用配分が現在の設定と異なります。自動変更しません。')
  previous=[c for c in calls if c.get('review_operation',{}).get('phase')==meta['phase']]
- same=[c for c in previous if c['review_operation']['role']==meta['role']]
+ # A user-authorized retry of a known credit rejection does not erase its
+ # uncertain charge. It only releases that exact request's duplicate/count lock.
+ def retry_released(c):
+  permit=c.get('retry_authorization') or {}
+  return (c.get('status')=='unknown_cost_reserved' and permit.get('reason')=='credit_balance_exhausted'
+          and permit.get('request_sha256')==c['review_operation']['request_sha256']
+          and bool(permit.get('user_message')))
+ same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c)]
  if meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
   allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
   allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}

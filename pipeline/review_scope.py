@@ -109,12 +109,13 @@ def scoped_packet(payload, checks):
     return result
 
 
-def receipt_binding(blocks, pages, requirements, checks):
+def receipt_binding(blocks, pages, requirements, checks, stage="research"):
     from .content_quality import digest, AUDIT_SYSTEM
     from .tiered_evidence import POLICY as SOURCE_POLICY
-    # Include subject conditions, settings, date, and heading/neighbor context.
+    from .quality_context import review_reference_date
+    # Include subject conditions, settings, reference date, and neighboring context.
     req = {k:v for k,v in requirements.items() if k != 'source_resolutions'}
-    return digest(json.dumps([POLICY_VERSION,ROUTING_POLICY,AUDIT_SYSTEM,SOURCE_POLICY, datetime.now(timezone.utc).date().isoformat(),
+    return digest(json.dumps([POLICY_VERSION,ROUTING_POLICY,AUDIT_SYSTEM,SOURCE_POLICY, review_reference_date(stage),
         blocks, pages, req, checks], ensure_ascii=False, sort_keys=True))
 
 
@@ -131,7 +132,7 @@ def source_resolutions(stage, blocks, sources, requirements):
         if not {l['id'] for c in r['scope'] for l in c.get('affected_blocks',[])} <= {b['id'] for b in blocks}:
             continue
         packet = scoped_packet({'article_blocks':blocks,'source_documents':sources,'requirements':requirements}, r['scope'])
-        binding = receipt_binding(packet['article_blocks'] + packet['heading_context'], packet['source_documents'], packet['requirements'],r['scope'])
+        binding = receipt_binding(packet['article_blocks'] + packet['heading_context'], packet['source_documents'], packet['requirements'],r['scope'],stage)
         if binding == r.get('binding'):
             valid.append(r)
     return valid
@@ -156,7 +157,7 @@ def save_resolution(stage, packet, checks, original, trace):
                        for c in packet['candidate_checks'] if any(l['id']==target for l in c['affected_blocks'])])
     for scope in scopes:
         view=scoped_packet(original,scope)
-        binding=receipt_binding(view['article_blocks']+view['heading_context'],view['source_documents'],view['requirements'],scope)
+        binding=receipt_binding(view['article_blocks']+view['heading_context'],view['source_documents'],view['requirements'],scope,stage)
         relevant=set(view['target_block_ids'])
         verdicts=[]
         for c in checks:
