@@ -78,7 +78,17 @@ def guard_review(value,amount):
   return (c.get('status')=='unknown_cost_reserved' and permit.get('reason')=='credit_balance_exhausted'
           and permit.get('request_sha256')==c['review_operation']['request_sha256']
           and bool(permit.get('user_message')))
- same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c)]
+ def superseded_duplicate(c):
+  replacement=c.get('duplicate_review_reconciliation') or {}
+  index=replacement.get('retained_call_index')
+  if replacement.get('reason')!='calendar_rollover_duplicate' or type(index) is not int or not 0<=index<len(calls):return False
+  kept=calls[index]
+  return (bool(replacement.get('authorization')) and c.get('status')=='accounted'
+          and kept.get('status')=='accounted' and kept is not c
+          and kept.get('review_operation',{}).get('role')==c['review_operation']['role']
+          and kept.get('review_operation',{}).get('phase')==c['review_operation']['phase']
+          and replacement.get('retained_request_sha256')==kept.get('review_operation',{}).get('request_sha256'))
+ same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c) and not superseded_duplicate(c)]
  if meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
   allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
   allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}

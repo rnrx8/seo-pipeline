@@ -417,3 +417,18 @@ class ScopedReviewTests(unittest.TestCase):
                     'output_config':{'format':{'schema':{'properties':{'checks':{'items':{'properties':{'key':{'enum':['evidence_support']}}}}}}}}}
                 research.checked_request('offline-job','tiered_article_evidence_scope',request)
             self.assertEqual(send.call_count,1)
+
+    def test_reconciled_calendar_duplicate_still_consumes_budget(self):
+        req={'messages':[{'content':'{}'}]}
+        with budget.request_scope('offline-job','tiered_article_language','new-text',req):
+            with budget.ledger() as ledger:
+                meta=dict(budget.REQUEST.get())
+                ledger['calls']=[{'status':'accounted','reserved_usd':.1,'cost_usd':.1,'category':'quality',
+                    'review_operation':{**meta,'request_sha256':f'day-{i}'}} for i in (1,2)]
+                with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(ledger,.1)
+                ledger['calls'][0]['duplicate_review_reconciliation']={'reason':'calendar_rollover_duplicate',
+                    'authorization':'continue repair and recheck','retained_call_index':1,'retained_request_sha256':'day-2'}
+                budget.guard_review(ledger,.1)
+                self.assertAlmostEqual(budget.review_remaining(ledger),1.05)
+                ledger['calls'][0]['duplicate_review_reconciliation']['retained_request_sha256']='wrong'
+                with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(ledger,.1)
