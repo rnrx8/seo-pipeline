@@ -1,0 +1,84 @@
+{
+  "kind": "historical_accounting_and_offline_prompt_checks",
+  "api_calls": 0,
+  "exchange_rate_jpy_per_usd": 200,
+  "accounted_jpy": 1049.1913499999998,
+  "unknown_reserved_jpy": 53.317499999999995,
+  "role_totals": {
+    "audit": {
+      "accounted_calls": 1,
+      "accounted_jpy": 35.607499999999995
+    },
+    "screen": {
+      "accounted_calls": 2,
+      "accounted_jpy": 1.78605
+    },
+    "service_map": {
+      "accounted_calls": 1,
+      "accounted_jpy": 41.9268
+    },
+    "article": {
+      "accounted_calls": 3,
+      "accounted_jpy": 427.17519999999996
+    },
+    "evidence_scope": {
+      "accounted_calls": 6,
+      "accounted_jpy": 9.7843
+    },
+    "coverage": {
+      "accounted_calls": 6,
+      "accounted_jpy": 233.303
+    },
+    "language": {
+      "accounted_calls": 6,
+      "accounted_jpy": 81.831
+    },
+    "consistency": {
+      "accounted_calls": 5,
+      "accounted_jpy": 61.1845
+    },
+    "organization": {
+      "accounted_calls": 4,
+      "accounted_jpy": 53.5
+    },
+    "repair": {
+      "accounted_calls": 5,
+      "accounted_jpy": 103.09300000000002
+    }
+  },
+  "known_calendar_repeat_jpy": 53.953725000000006,
+  "superseded_original_calendar_calls_jpy": 55.549825,
+  "latest_complete_five_role_round_jpy": 78.19720000000001,
+  "max_per_role_recombined_round_jpy": 83.976575,
+  "historical_cost_scenarios_not_new_article_quotes": {
+    "saved_outline_check_plus_two_latest_article_audits_plus_largest_repair_jpy": 236.02645,
+    "saved_outline_check_plus_two_max_article_audits_plus_two_largest_repairs_jpy": 288.6347
+  },
+  "new_research_search_intent_and_outline_generation_excluded": true,
+  "normal_run_300_jpy_quality_target_verified": false,
+  "writing_parts": [
+    {
+      "part": 1,
+      "target_characters": 3113,
+      "draft_characters": 5449,
+      "duplicate_outline_tokens_removed_net_of_new_instruction": 4398,
+      "complete_outline_preserved": true
+    },
+    {
+      "part": 2,
+      "target_characters": 3161,
+      "draft_characters": 6085,
+      "duplicate_outline_tokens_removed_net_of_new_instruction": 4329,
+      "complete_outline_preserved": true
+    },
+    {
+      "part": 3,
+      "target_characters": 3817,
+      "draft_characters": 5049,
+      "duplicate_outline_tokens_removed_net_of_new_instruction": 3819,
+      "complete_outline_preserved": true
+    }
+  ],
+  "tokenizer": "local o200k_base; not provider billing",
+  "quality_from_changed_prompts_verified": false
+}

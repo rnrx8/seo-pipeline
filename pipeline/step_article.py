@@ -12,6 +12,7 @@ from .ai import create_with_retry, get_step_config, message_text
 from .content_contract import contract_prompt, reference_prompt
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
+from .readability import EMPATHY_ENDING_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -106,9 +107,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 
 ▼ H2末尾の補完文の注意点
 - 共感文にするために無理に語尾を調整する必要は無し
-- 語尾で共感をする場合はバリエーションを使い分ける：
-  「〜はずです」「〜ではないでしょうか」
-  「〜が大切です」「〜をおすすめします」
+""" + EMPATHY_ENDING_POLICY + """
 
 ▼ ファクトの使い方
 - [confirmed]の要約または今回直接取得した原文で対象・条件を照合できる数値・データを使用する
@@ -273,6 +272,7 @@ def _build_part_instructions(
 
         p1_total = sum(wc for _, _, wc in part1_secs)
         p2_total = sum(wc for _, _, wc in part2_secs)
+        p3_total = sum(wc for _, _, wc in part3_secs)
 
         p1_rem = _service_reminder(part1_secs)
         p2_rem = _service_reminder(part2_secs)
@@ -293,7 +293,7 @@ def _build_part_instructions(
         )
         part3 = (
             f"上記の続きから以下のH2セクションとまとめまで書いてください：{_sec_label(part3_secs)}\n"
-            f"記事全体の目標文字数は{total:,}字です。必ずまとめまで書き切ってください。"
+            f"このパートの目安文字数は約{p3_total:,}字です。記事全体の目標文字数は{total:,}字です。必ずまとめまで書き切ってください。"
             f"{p3_rem}\n"
             f"最後に【PART3_END】と書いてください。"
         )
@@ -359,11 +359,21 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     """Retry a defective part once, before allowing the next part to start."""
     required_outline = select_outline(outline, [title for title, _, _ in sections])
     target = sum(chars for _, _, chars in sections)
+    # The normal writer already receives the exact complete outline. Avoid
+    # appending the same section instructions a second time. Standalone callers
+    # still receive their section text if that outline is absent or different.
+    outline_present = bool(outline) and any(
+        m.get('role') == 'user' and isinstance(m.get('content'), str)
+        and outline in m['content'] for m in messages)
     instruction = (
         '\n【このパートの完成条件】以下の構成のH2/H3/H4をすべて本文まで書き切る。'
         '見出しは表記を維持し、次パートに持ち越さない。'
         '内部メモ・執筆予定・要確認の比較表は禁止。根拠は提供された確認済み要約または直接取得本文。要約の欠落を非公表扱いにしない。\n'
-        + required_outline
+        + ('上記に掲載済みの構成案から、今回指定されたH2とその配下のH3/H4を参照する。'
+           if outline_present else required_outline)
+        + f'\n今回のパート全体の目安は約{target:,}字。表・リスト・注釈も分量に含める。'
+          '重要な疑問への回答と比較条件は残し、詳しく説明済みの内容は必要な条件と短い要約に留める。'
+          '文字数だけを合わせるために必須情報を削除したり説明を水増ししたりしない。'
     )
     attempt_messages = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + instruction}]
     total_input = total_output = 0
@@ -661,6 +671,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     service_prompt = ""
     cta_prompt = ""
     job = get_job(job_id)
+    # Final review uses these same account rules. Apply them during writing so
+    # they do not arrive as new requirements only after a paid draft exists.
+    from .db import get_learned_style_rules
+    from .step_review import _build_learned_rules_block
+    learned_rules = get_learned_style_rules(job['tenant_id']) if job.get('tenant_id') else []
+    structure_prompts += _build_learned_rules_block(learned_rules)
     from .research_requirements import require_matrix
     matrix = require_matrix(job_id)
     from .quality_context import compact_enabled

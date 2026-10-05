@@ -6,6 +6,16 @@ from pipeline import step_article
 from pipeline.content_quality import ContentQualityError
 
 class OutlineNormalizationTests(unittest.TestCase):
+    def test_writer_reuses_exact_outline_but_preserves_missing_or_changed_context(self):
+        outline='### H2：FAQ\n#### H3：年齢層は？\n固有の対象条件を維持する。'
+        article='## FAQ\n概要です。\n### 年齢層は？\n対象条件を説明します。'
+        for prior in (outline, outline.replace('対象条件','別の条件'), ''):
+            with self.subTest(prior=prior), patch.object(step_article,'_call',return_value=(article,1,1)) as call:
+                step_article._write_complete_part(None,[{'role':'user','content':prior+'\n執筆してください。'}],2000,outline,[('FAQ',4,20)],1)
+            sent=call.call_args.args[1][0]['content']
+            self.assertEqual(sent.count('固有の対象条件を維持する。'),1)
+            self.assertIn('#### H3：年齢層は？',sent)
+
     def test_bold_faq_h2_has_own_children_and_volume_allocation(self):
         outline='### H2：始め方\n本文の指示\n\n### FAQ\n\n**H2：よくある質問**\n\n**H2直下方針**：結論を先に。\n\n#### H3：年齢層は？\n説明\n\n#### H3：アイコンは残る？\n説明'
         normalized,changed=ensure_complete_volume_design(outline,'5,000字')

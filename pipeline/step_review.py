@@ -9,6 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
+from .readability import EMPATHY_ENDING_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -32,11 +33,8 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - CTAの配置を増やさない。根拠のない安全保証は本文・見出し・まとめを通じて修正する。
 
 ### 【重複・冗長】
-1. 「ですよね」多用の修正
-   - 1記事中に3回以上出現する場合
-   - 3回目以降を以下のいずれかに書き換える：
-     「〜はずです」「〜ではないでしょうか」「〜が大切です」「〜をおすすめします」
-   - 自然に締まる場合は共感表現を省略してもよい
+1. 共感表現の語尾
+""" + EMPATHY_ENDING_POLICY + """
 
 ### 【構造チェック】
 2. H2直下の結論文チェック（見出しへの直答・順序）

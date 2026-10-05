@@ -1,0 +1,24 @@
+{
+  "candidate_keyword": "既婚者 マッチングアプリ 無料",
+  "preset_id": "2ae0c003-c11b-4085-b372-21e4943297c9",
+  "source_job_id": "e4214f3c-ca12-42c9-8695-ed04b23ee649",
+  "existing_article_preserved": true,
+  "new_test_job_required": true,
+  "available_saved_artifacts": [
+    "article",
+    "content_contract",
+    "fact_sheet",
+    "fresh_sources",
+    "outline",
+    "search_intent",
+    "serp"
+  ],
+  "missing_current_research_handoff_artifacts": [
+    "research_matrix",
+    "research_plan"
+  ],
+  "same_as_completed_trial_starting_state": false,
+  "paid_test_started": false,
+  "api_calls": 0,
+  "note": "旧フローの別記事資料。調査計画・採用回答を現行の検証済み資料として扱わない。別クエリの検索意図・必須論点を再確認し、新しいジョブで実行する。"
+}

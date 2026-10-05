@@ -94,9 +94,10 @@ class GenerationContextTests(unittest.TestCase):
                 stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
                 stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
                 stack.enter_context(patch.object(module,'get_artifact',side_effect=lambda j,k:artifacts[k]))
-                stack.enter_context(patch.object(module,'get_job',return_value={'word_count_setting':'5,000字'}))
+                stack.enter_context(patch.object(module,'get_job',return_value={'word_count_setting':'5,000字', **({'tenant_id':'tenant'} if module==step_article else {})}))
                 stack.enter_context(patch.object(module.anthropic,'Anthropic'))
                 if module==step_article:
+                    stack.enter_context(patch('pipeline.db.get_learned_style_rules',return_value=[{'rule_text':'ACCOUNT_STYLE_SENTINEL'}]))
                     stack.enter_context(patch.object(module,'require_audit'))
                     stack.enter_context(patch.object(module,'requirements_for',return_value={}))
                     stack.enter_context(patch.object(module,'_call',side_effect=send))
@@ -107,3 +108,5 @@ class GenerationContextTests(unittest.TestCase):
             self.assertNotIn('MATRIX_BOOKKEEPING_SENTINEL',captured[0])
             self.assertIn('2025年1月',captured[0])
             self.assertIn('https://media-one.example/a',captured[0])
+            if module==step_article:
+                self.assertIn('ACCOUNT_STYLE_SENTINEL',captured[0])
