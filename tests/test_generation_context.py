@@ -125,11 +125,20 @@ class GenerationContextTests(unittest.TestCase):
                 stack.enter_context(patch.object(module.anthropic,'Anthropic'))
                 if module==step_article:
                     stack.enter_context(patch('pipeline.db.get_learned_style_rules',return_value=[{'rule_text':'ACCOUNT_STYLE_SENTINEL'}]))
-                    stack.enter_context(patch.object(module,'require_audit'))
-                    stack.enter_context(patch.object(module,'requirements_for',return_value={}))
+                    from pipeline import content_quality as cq
+                    requirements={'intent_value_context':{'reader_desire':'料金を比較して選びたい'}}
+                    stack.enter_context(patch.object(module,'intent_review_requirements',return_value=requirements))
+                    readiness={'valid':True,'stage':'research','policy_version':cq.POLICY_VERSION,
+                        'checks':[{'key':key,'status':'pass','reason':'fixture'} for key in cq.CHECKS],
+                        'snapshot':cq.snapshot(outline,cq.confirmed_facts(artifacts['fact_sheet']['content_text']),outline,
+                            CONTRACT,requirements,cq.source_evidence(artifacts['fresh_sources']))}
+                    artifacts['research_validation']={'content_text':json.dumps(readiness)}
                     stack.enter_context(patch.object(module,'_call',side_effect=send))
                 else:stack.enter_context(patch.object(module,'create_with_retry',side_effect=send))
                 with self.assertRaises(Captured):module.run('job','比較')
+                if module==step_article:
+                    requirements['intent_value_context']['reader_desire']='確認後に検索意図が変更された'
+                    with self.assertRaises(ContentQualityError):module.run('job','比較')
             self.assertEqual(len(captured),1)
             self.assertNotIn('UNRELATED_BODY_SENTINEL',captured[0])
             self.assertNotIn('MATRIX_BOOKKEEPING_SENTINEL',captured[0])

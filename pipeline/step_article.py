@@ -1,7 +1,7 @@
 from .section_identity import bind_sections
 from .claim_scope import scope_issues
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, explicit_risk_guarantees
+from .content_quality import ContentQualityError, confirmed_facts, require_audit, intent_review_requirements, snapshot, source_evidence, explicit_risk_guarantees
 import json
 import re as _re
 import time
@@ -662,7 +662,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .quality_context import compact_enabled
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                     contract, requirements_for(job, keyword), sources), stage="research")
+                                     contract, intent_review_requirements(job, keyword), sources), stage="research")
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
