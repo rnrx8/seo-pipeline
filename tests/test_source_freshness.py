@@ -113,8 +113,8 @@ class SourceFreshnessTests(unittest.TestCase):
         request = generate.call_args.kwargs
         self.assertIn(TODAY, request["prompt"])
         self.assertIn("登録されているだけで[confirmed]にしない", request["system"])
-        self.assertIn("【商業情報の代替根拠】", request["system"])
-        self.assertIn("Tier 2のソース1件のみ", request["system"])
+        self.assertIn("【主張に対応した根拠の採用】", request["system"])
+        self.assertIn("商業情報の第三者採用は公式探索後の独立した本文2件以上", request["system"])
         stored = save.call_args.kwargs
         self.assertIn(fact(), stored["content_text"])
         self.assertEqual(stored["meta"]["incomplete_confirmations_downgraded"], 1)

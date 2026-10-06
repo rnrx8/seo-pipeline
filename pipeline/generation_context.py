@@ -2,8 +2,9 @@
 import copy
 import json
 
-POLICY_VERSION='generation-evidence-v2-separated-provenance'
+POLICY_VERSION='generation-evidence-v3-claim-scope'
 POLICY='''以下は調査の合格後に採用された回答・条件と省略項目。回答の対象・期間・適用条件を維持する。
+本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
 引用は回答の根拠であり、引用内の別の情報を自由に追加するための資料ではない。
 省略・未確認項目は本文で断定しない。現在の結論に使用不可の情報を現在の比較に使わない。
 decisionsは執筆する回答と条件。usage_constraintsは回答の使用範囲を判断するための記録で、本文用の文章ではない。実際の対象期間・利用条件だけを回答と対応させ、取得日を適用日へ変換しない。

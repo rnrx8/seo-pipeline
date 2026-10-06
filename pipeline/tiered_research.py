@@ -46,7 +46,7 @@ def packed_sources(pages,hints,*,prioritize_referenced=False):
 
 def needs_adjudication(item,question):
  return (not item.get('verified') or item.get('basis') in ('corroborated','expert','historical')
-         or question.get('source_requirement')!='standard'
+         or question.get('source_requirement') not in ('standard','general_guidance')
          or any(word in question['question'] for word in ('唯一','最多','最安','No.1'))
          or int(digest(question['id'])[:8],16)%10==0)
 

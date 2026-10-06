@@ -31,10 +31,10 @@ SERPに出た全社を自動的に必須対象にせず、終了候補は営業�
 競合の憶測を必須事実とせず、読者の疑問を抽出する。重要な質問をoptionalにして逃げない。
 事実の回答は生成しない。1項目は単一対象(subject)の単一論点。複数社を1項目に束ねない。全体に関する論点のsubjectは「共通」。最大120項目。
 priority=essential/important/supportingとpriority_reasonを検索意図に基づき指定。requiredはpriority=essentialの場合のみtrue。
-source_requirement=standard/expert_allowed/primary_only。商業的な料金・機能はstandard。検索意図に応じた周辺的な専門解説はexpert_allowed。特定の法令・判決の直接説明・引用や個別適法性等の原典を必要とする判断はprimary_only。概念の一般的な線引きはexpert_allowedで、質問へ自ら「判例上」などと付け足して原典調査に拡大しない。注意事項自体の必要性を先に判断し、利用者の行動に関する一般論をサービス自体の適法性調査へ広げない。
+source_requirementは共通基準の主張区分に従う。standardは商業情報・通常の事実・本人に帰属を限定した体験報告。general_guidanceは専門判断を含まない日常的ハウツー。expert_allowedは法的な概念の線引き等の周辺的な専門解説。primary_onlyは特定の法令・判決の直接説明・引用や個別適法性等の原典が必要な判断。分類は記事全体のテーマではなく各質問の回答範囲から決める。調査候補の媒体名を質問の必須取得リストに変換しない。
 requires_currentは「今日の価格」「現在の最安」等、現在性が質問・結論に不可欠な場合だけtrue。
 一般的なおすすめ記事の料金・機能は、共通基準で確認した掲載情報を使えるため原則false。公開・更新日や確認日と、明示された改定日・集計期間を区別し、適用開始日の記載を追加要求しない。質問に自分で「現在」と足して必須化しない。過去統計の対象期間や明示された旧条件は維持する。
-法律・安全性の現在の判断は過去の規則で回答できないためtrue（歴史的な解説の場合を除く）。
+法律・医療等の専門的判断で現行の規則・基準が回答に不可欠ならtrue（歴史的な解説の場合を除く）。日常的ハウツーの場所選び等をこの理由だけで現在値必須にしない。
 一つのessentialに補助情報を抱き合わせない。抱き合わせを外した細目は自動的に別質問へ追加しない。検索意図・競合の重要論点・ユーザー指定に必要な理由がある場合だけ別質問に残す。例：「Web型か」から通知の細かな設定を外しても、後者を独立の調査義務にする必要はない。本人確認の有無と書類保存方法、会員総数と職業分布も同様。
 同じ一般的操作をサービス別に複製しない。Webブラウザのホーム画面への追加等は、サービス固有の違いが重要と分かる場合を除き共通の一論点にする。
 候補に出た付加情報をすべてsupportingとして残さない。記事のどの主要な疑問・選択に使うか説明できない細目は計画に採用しない。件数を減らす目的で重要論点を削らず、既存の取得困難や不合格結果を整理の根拠にしない。
@@ -55,8 +55,8 @@ JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答"
 
 PLAN_SYSTEM += EVIDENCE_POLICY
 MATRIX_SYSTEM += EVIDENCE_POLICY + '''
-各項目にbasis(primary/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
-primaryは直接の公式/原典。expertはexpert_allowedの質問への有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
+各項目にbasis(primary/guidance/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
+primaryは直接の公式/原典で、本人に帰属を限定した体験報告は本人の発信原文が該当する。guidanceはgeneral_guidanceの質問に対する取得本文の範囲内の一般的助言。expertはexpert_allowedの質問への有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
 expert採用時は、使用する各専門解説のevidenceにexpert_name、expert_qualification_quote（同じ取得本文にある氏名・資格・執筆/監修の関与を示す連続した原文）、expert_scope_reason（専門分野と回答範囲が適合する理由）を記録する。それ以外は空文字。専門解説のsource_kindはsecondaryのまま。名前だけの登場や資格不明のメディア解説では不可。
 official_checked_urlsはsources内で実際に取得を試みた関連公式資料のURL。存在しない探索記録を作らない。未調査・取得失敗だけでomittedにしない。十分な関連資料の探索後に省略可否を判定する。公式の関連ページ・別の公式資料・第三者本文のどこまで探索したかexploration_reasonに記録し、不足が残ればexploration_complete=false。
 exploration_completeは対象・論点に関連する取得済み資料を合理的に確認し終えたことを指す。ウェブ全体の探索完了や、各補助項目専用の追加検索を要求しない。同じ対象の料金・FAQ等の関連本文は複数質問の探索記録に利用できる。関連資料が未取得・未確認なのに探索済みとはしない。記事で使わない補助情報を省略できるか判断するためだけに際限なく調査を追加しない。
@@ -79,11 +79,11 @@ MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum'
 
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['properties'].update({
     'subject': {'type':'string'}, 'priority': {'type':'string','enum':['essential','important','supporting']},
-    'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','expert_allowed','primary_only']},
+    'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','general_guidance','expert_allowed','primary_only']},
     'requires_current': {'type':'boolean'}})
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current']
 mp = MATRIX_SCHEMA['format']['schema']['properties']['items']['items']
-mp['properties'].update({'basis':{'type':'string','enum':['primary','expert','corroborated','historical','omitted','unresolved']},
+mp['properties'].update({'basis':{'type':'string','enum':['primary','guidance','expert','corroborated','historical','omitted','unresolved']},
     'official_checked_urls':{'type':'array','items':{'type':'string'}}, 'applicable_at':{'type':'string'},
     'supports_current_conclusion':{'type':'boolean'}, 'omission_reason':{'type':'string'},
     'exploration_complete':{'type':'boolean'}, 'exploration_reason':{'type':'string'}})
@@ -108,7 +108,7 @@ def validate_plan(value):
     for i in items:
         if i.get('priority') not in ('essential','important','supporting') or not i.get('subject','').strip() or not i.get('priority_reason','').strip():
             raise ContentQualityError('調査計画の対象・重要度・理由が不足しています。計画から再実行してください。')
-        if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
+        if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','general_guidance','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
             raise ContentQualityError('調査計画の重要度と採用条件が矛盾しています。')
     if not any(i['required'] for i in items):raise ContentQualityError('必須質問がありません。')
 
@@ -369,6 +369,7 @@ def validate_matrix(value, plan_value, pages):
             domains = {urlsplit(r['url']).hostname for r in refs}
             corroborated = explored and len(groups) >= 2 and len(domains) >= 2
             if basis == 'primary': accepted = accepted and primary
+            elif basis == 'guidance': accepted = accepted and planned['source_requirement']=='general_guidance'
             elif basis == 'expert': accepted = accepted and expert
             elif basis == 'corroborated': accepted = accepted and planned['source_requirement']=='standard' and corroborated
             elif basis == 'historical':

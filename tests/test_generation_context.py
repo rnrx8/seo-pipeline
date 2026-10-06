@@ -79,7 +79,7 @@ class GenerationContextTests(unittest.TestCase):
         plan,_,matrix=self.data()
         for provider in ('astra','sonnet','tiered'):
             with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
-                self.assertIn('generation-evidence-v2',generation_evidence('job','facts','sources'))
+                self.assertIn('generation-evidence-v3',generation_evidence('job','facts','sources'))
 
     def test_canonical_facts_can_reference_decisions_but_extra_facts_are_retained(self):
         facts='男性のみ、2025年価格。\n出典：https://source.example｜確認箇所："原文"'
