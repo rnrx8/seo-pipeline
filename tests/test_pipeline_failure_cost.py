@@ -81,6 +81,7 @@ class PipelineFailureCostTests(unittest.TestCase):
         sources=Mock(pages={})
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered'}), \
              patch('pipeline.research_search.require_search_config'), \
+             patch('pipeline.research_search.get_optional_artifact',return_value=None), \
              patch.object(collection,'get_optional_artifact',return_value=None), \
              patch.object(collection,'upsert_artifact') as save, \
              patch.object(collection,'run_with_fetch',side_effect=failure):
