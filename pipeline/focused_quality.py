@@ -39,6 +39,18 @@ def parse_focus(raw, keys, text):
         raise ContentQualityError('分割品質検査の判定・対象段落が不正です。') from exc
 
 
+def merge_block_findings(checks):
+    """Preserve every distinct reason when reviewers flag the same paragraph."""
+    reasons = {}
+    for check in checks:
+        for finding in check['affected_blocks']:
+            bucket = reasons.setdefault(finding['id'], [])
+            if finding['reason'] not in bucket:
+                bucket.append(finding['reason'])
+    return [{'id': block_id, 'reason': '\n'.join(values)}
+            for block_id, values in reasons.items()]
+
+
 def audit_article(client, *, text, facts, outline, contract, requirements, sources, checkpoint=None):
     from .content_quality import (AUDIT_SYSTEM, EDITORIAL_SYSTEM, CHECKS, POLICY_VERSION,
                                   snapshot, response_text, audit_output_config, create_with_retry)
@@ -120,7 +132,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         failed=[c for c in results if c['status']=='fail']
         combined.append({'key':key,'status':'fail' if failed else 'pass',
                          'reason':'\n'.join(c['reason'] for c in failed or results),
-                         'affected_blocks':list({v['id']:v for c in failed for v in c['affected_blocks']}.values()),
+                         'affected_blocks':merge_block_findings(failed),
                          'research_ids':sorted({i for c in failed for i in c.get('research_ids',[])}),
                          'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])})})
     from .price_comparison import comparison_evidence

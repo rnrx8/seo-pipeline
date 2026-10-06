@@ -9,6 +9,17 @@ from pipeline import focused_quality as focused
 
 
 class QualityContextTests(unittest.TestCase):
+    def test_shared_paragraph_keeps_language_and_organization_findings(self):
+        checks=[{'affected_blocks':[{'id':'block-1','reason':'動詞の対応が不自然'},
+                                    {'id':'block-2','reason':'説明が重複'}]},
+                {'affected_blocks':[{'id':'block-1','reason':'結論が後置されている'},
+                                    {'id':'block-1','reason':'動詞の対応が不自然'}]}]
+        before=copy.deepcopy(checks)
+        self.assertEqual(focused.merge_block_findings(checks),[
+            {'id':'block-1','reason':'動詞の対応が不自然\n結論が後置されている'},
+            {'id':'block-2','reason':'説明が重複'}])
+        self.assertEqual(checks,before)
+
     def test_canonical_conditions_are_sent_once_and_noncanonical_facts_survive(self):
         from pipeline.quality_context import review_conditions
         from pipeline.claim_scope import conditional_facts
