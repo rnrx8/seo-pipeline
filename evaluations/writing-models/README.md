@@ -1,6 +1,6 @@
 # Writing model comparison — isolated evaluation
 
-Status: requests prepared; paid generation NOT approved or executed yet.
+Status: approved up to 200 JPY. Sonnet generation completed; restricted Opus edit completed. Standalone Opus generation is excluded.
 Branch: codex/writing-model-comparison. Production routing is unchanged.
 
 ## Sequence
@@ -13,7 +13,7 @@ Branch: codex/writing-model-comparison. Production routing is unchanged.
 
 Use the saved `マッチングアプリ 40代 既婚者` / meetingtechnology inputs from job a401a011-bfd9-44c9-86e7-4bb9f61b2988. Scope: H1/lead, comparison H2 introduction and five-company table, first two product H3s. This is an excerpt, not a claim that the complete article has only two products.
 
-- A: Opus 5.5 once.
+- A: OMITTED by user instruction; no standalone Opus generation.
 - B: Sonnet 5.5 once, exactly the same system/user inputs, effort medium, output cap including thinking 10,000 tokens.
 - C: the SAME B draft, optionally edited once by Opus. Do not regenerate B. If B already meets the agreed quality without a meaningful weakness, skip the paid edit and record why.
 
@@ -23,7 +23,7 @@ For C, target at most three prose blocks: lead, featured-product opening, and a 
 
 ## Assessment
 
-Show A/B/C texts side by side using neutral labels for the user's comparison; retain a reproducible model mapping. Record concrete examples rather than a single synthetic quality score.
+Show B/C texts side by side using neutral labels for the user's comparison; retain a reproducible model mapping. Record concrete examples rather than a single synthetic quality score.
 
 - Main query words in the comparative H2 and its first answer sentence.
 - H2 concise comparative answer versus distinct H3 product overview.
@@ -45,3 +45,13 @@ Token-count calls are free per https://platform.claude.com/docs/en/build-with-cl
 ## Preflight result / proposed authorization
 
 Both frozen requests count as 63,040 input tokens via provider count_tokens. At the configured 10,000 output-token limit (including thinking), uncached Opus ceiling is 90.432 JPY and Sonnet 45.216 JPY. Token counts are estimates. Proposed experiment cap: 200 JPY total, up to 3 model requests (A, B, optional C), no retries; C hard allocation 50 JPY. Sum of counted A/B ceilings plus C is 185.648 JPY, leaving 14.352 JPY margin. No paid generation has run. This is a new experiment; it does not silently extend the prior article's budget. Before executing, implement/verify durable one-call-per-arm reservations and reject a request that cannot fit its approved remaining allowance.
+
+## Latest user authorization
+
+User approved the 200 JPY ceiling, then chose to keep the existing 40s married-app inputs and omit the standalone Opus arm. Execute Sonnet once and only if useful, one Opus block edit of that same draft. run_once.py rejects the standalone Opus arm, reserves at most 50 JPY per allowed arm within the 200 JPY authorization, preserves unknown charges and prevents resending an attempted arm. No production job/state writes. The former A/B/C proposal above is historical; the full Opus arm must not run.
+
+## Completed experiment (2026-10-07)
+
+Sonnet: 63,040 input / 3,001 output tokens, 19.07 seconds, 31.218 JPY. Restricted Opus edit: 12,014 input / 1,250 output (including 770 thinking), 14.34 seconds, 14.6112 JPY. Total 45.8292 JPY at the budgeting rate of 200 JPY/USD. Two calls, no retries, no standalone Opus.
+
+Edited three frozen blocks only; all other blocks, headings, tables and prices match byte-for-byte. Both excerpts pass the existing continuous-prose check. Sonnet includes the query terms in the first H2 answer and product tables. Direct inspection still finds verbose H2 recommendation detail and unnecessary caveats. The saved outline explicitly requests three need/strength pairs in H2 in addition to brief reasons; this contributes to duplication and must not be misattributed solely to the model. Opus improves the lead and product overview but retains a guarantee disclaimer and adds caution in the third block. This is a completed experiment, not approval of the draft or production routing. Targeted human-specified feedback is an intervention, so the result evaluates this editing workflow, not pure model superiority. No new source verification was performed.
