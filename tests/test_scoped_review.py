@@ -393,6 +393,31 @@ class ScopedReviewTests(unittest.TestCase):
                 ledger['calls'].append({'status':'pending','reserved_usd':.1,'category':'quality','review_operation':dict(budget.REQUEST.get())})
                 with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
 
+    def test_authorized_transport_retry_preserves_cost_attempt_and_duplicate_guard(self):
+        request={'messages':[{'content':'{}'}]}
+        with budget.request_scope('offline-job','tiered_audit_research','same',request):
+            with budget.ledger() as ledger:
+                prior={'status':'unknown_cost_reserved','reserved_usd':.2,'category':'quality',
+                       'review_operation':dict(budget.REQUEST.get()),
+                       'interruption':{'process_exit_confirmed':True,'response_saved':False},
+                       'retry_authorization':{'reason':'transport_interrupted','request_sha256':'same','user_message':'retry once'}}
+                ledger['calls']=[prior]
+                budget.guard_review(ledger,.1)
+                self.assertAlmostEqual(budget.review_remaining(ledger),.3)
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.31)
+                for field in ('process_exit_confirmed','response_saved'):
+                    original=prior['interruption'][field]
+                    prior['interruption'][field]=not original
+                    with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                    prior['interruption'][field]=original
+                prior['retry_authorization']['request_sha256']='wrong'
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                prior['retry_authorization']['request_sha256']='same'
+                ledger['calls'].append({'status':'pending','reserved_usd':.1,'category':'quality','review_operation':dict(budget.REQUEST.get())})
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                with budget.request_scope('offline-job','tiered_audit_research','changed',request):
+                    with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(ledger,0)
+
     def test_review_date_survives_midnight_but_changes_with_snapshot(self):
         from pipeline.quality_context import review_reference_date
         from datetime import datetime, timezone

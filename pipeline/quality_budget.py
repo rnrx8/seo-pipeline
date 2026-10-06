@@ -94,7 +94,19 @@ def guard_review(value,amount):
   allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}
   if not same or not set(meta['source_urls'])<=allowed_urls or not set(meta['research_ids'])<=allowed_questions:
    raise ContentQualityError('修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。')
- if any(c['review_operation']['request_sha256']==meta['request_sha256'] for c in same):
+ def transport_retry_authorized(c):
+  permit=c.get('retry_authorization') or {}
+  interrupted=c.get('interruption') or {}
+  return (c.get('status')=='unknown_cost_reserved'
+          and permit.get('reason')=='transport_interrupted'
+          and permit.get('request_sha256')==c['review_operation']['request_sha256']
+          and bool(permit.get('user_message'))
+          and interrupted.get('process_exit_confirmed') is True
+          and interrupted.get('response_saved') is False)
+ # Release only the authorized lost response's duplicate lock. Its cost and
+ # attempt still count; a later pending/accounted retry blocks another resend.
+ if any(c['review_operation']['request_sha256']==meta['request_sha256']
+        and not transport_retry_authorized(c) for c in same):
   raise ContentQualityError('同じ確認要求の送信記録があります。保存応答または未確定費用を確認するまで再送しません。')
  extension=value.get('additional_review_authorization') or {}
  extra=0
