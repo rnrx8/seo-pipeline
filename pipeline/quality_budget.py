@@ -111,10 +111,13 @@ def guard_review(value,amount):
  extension=value.get('additional_review_authorization') or {}
  extra=0
  if extension:
-  if (extension.get('phase')!='article' or type(extension.get('extra_calls_per_role')) is not int
-      or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')):
+  phase=extension.get('phase')
+  if (phase not in ('article','outline') or type(extension.get('extra_calls_per_role')) is not int
+      or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')
+      or (phase=='outline' and (extension['extra_calls_per_role']!=1 or extension.get('role')!='audit'))):
    raise ContentQualityError('追加確認の承認設定が不正です。')
-  if meta['phase']=='article':extra=extension['extra_calls_per_role']
+  if meta['phase']==phase and (phase=='article' or meta['role']=='audit'):
+   extra=extension['extra_calls_per_role']
  if len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)

@@ -418,6 +418,23 @@ class ScopedReviewTests(unittest.TestCase):
                 with budget.request_scope('offline-job','tiered_audit_research','changed',request):
                     with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(ledger,0)
 
+    def test_outline_extension_allows_only_one_audit_and_preserves_budget(self):
+        req={'messages':[{'content':'{}'}]}
+        with budget.request_scope('offline-job','tiered_audit_research','next',req):
+            with budget.ledger() as value:
+                meta=dict(budget.REQUEST.get())
+                value['calls']=[{'status':'accounted','reserved_usd':.1,'cost_usd':.1,'category':'quality',
+                    'review_operation':{**meta,'request_sha256':str(i)}} for i in range(2)]
+                with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
+                value['additional_review_authorization']={'phase':'outline','role':'audit','extra_calls_per_role':1,'user_message':'one recheck within existing budget'}
+                budget.guard_review(value,.1)
+                with self.assertRaises(ContentQualityError):budget.guard_review(value,.31)
+                value['calls'].append({'status':'pending','reserved_usd':.1,'category':'quality','review_operation':{**meta,'request_sha256':'third'}})
+                with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
+                with budget.request_scope('offline-job','outline_local_repair_response','repair',req):
+                    value['calls'].append({'status':'accounted','reserved_usd':0,'cost_usd':0,'category':'quality','review_operation':{**budget.REQUEST.get(),'request_sha256':'old-repair'}})
+                    with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
+
     def test_review_date_survives_midnight_but_changes_with_snapshot(self):
         from pipeline.quality_context import review_reference_date
         from datetime import datetime, timezone
