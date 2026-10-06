@@ -118,6 +118,27 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertTrue(validate_matrix(result,self.plan,self.pages))
         self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
 
+    def test_confirmed_partial_answer_still_fails_missing_essential_coverage(self):
+        missing='必須の比較判断に必要な部分が回答されていない'
+        def respond(request,payload):
+            if 'decisions' in payload:
+                self.assertTrue(payload['decisions'][0]['verified'])
+                self.assertEqual(payload['decisions'][0]['omission_reason'],missing)
+                return dict(coverage_sufficient=False,coverage_reason=missing,
+                            coverage_issues=[{'id':self.plan['items'][0]['id'],'reason':missing}])
+            if 'candidate_answers' not in payload:
+                unknown=self.unknown()
+                unknown['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])
+                return unknown
+            partial=copy.deepcopy(self.answer)
+            partial['items'][0]['omission_reason']=missing
+            return {**partial,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertTrue(result['items'][0]['verified'])
+        self.assertFalse(result['coverage_sufficient'])
+        gaps=validate_matrix(result,self.plan,self.pages)
+        self.assertTrue(any(g['id']==self.plan['items'][0]['id'] for g in gaps))
+
     def test_same_resume_reuses_results_and_changed_source_invalidates(self):
         result,_=self.run_flow(self.responder)
         again,usage=self.run_flow(self.responder)
