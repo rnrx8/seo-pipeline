@@ -449,7 +449,34 @@ def resume_research_gaps(artifact,plan):
     except (ValueError,TypeError,KeyError,AttributeError):return None
 
 
-def supplement_once(job_id, keyword, plan, gaps, api_key=None):
+def retrieval_gaps(gaps, matrix, pages):
+    """Route evidence-backed coverage disagreements to the existing second audit.
+
+    This chooses work, not acceptance: quotations and the reviewer's explicit
+    no-new-sources decision only avoid recollection. The full second audit must
+    still independently satisfy the unchanged evidence and coverage policy.
+    Missing/legacy routing data retains the conservative retrieval path.
+    """
+    coverage_ids={i.get('id') for i in matrix.get('coverage_issues',[])}
+    items={i.get('id'):i for i in matrix.get('items',[])}
+    normalize=lambda text: re.sub(r'\s+','',text)
+    bodies={normalize_url(p['url']):normalize(p.get('text','')) for p in pages
+            if p.get('status','success')=='success'}
+    result=[]
+    for gap in gaps:
+        item=items.get(gap.get('id'),{})
+        candidates=[item]+[item[k] for k in ('omission_candidate_from','unresolved_candidate')
+                           if isinstance(item.get(k),dict)]
+        has_quote=any(ref.get('quote','').strip() and normalize(ref['quote']) in
+                      bodies.get(normalize_url(ref.get('url','')),'')
+                      for candidate in candidates for ref in candidate.get('evidence',[]))
+        if not (gap.get('id') in coverage_ids
+                and item.get('additional_sources_needed') is False and has_quote):
+            result.append(gap)
+    return result
+
+
+def supplement_once(job_id, keyword, plan, gaps, api_key=None, *, matrix=None):
     """One supplemental collection per job, resumable at completed subject receipts."""
     from . import step_fact_sheet
     key=digest(json.dumps({'plan':plan,'gaps':gaps},ensure_ascii=False,sort_keys=True))
@@ -462,8 +489,12 @@ def supplement_once(job_id, keyword, plan, gaps, api_key=None):
     def save(status):
         upsert_artifact(job_id=job_id,step='research_supplement',content_type='application/json',
             content_text=json.dumps({'request_sha256':key,'status':status}),meta={})
+    selected=gaps if matrix is None else retrieval_gaps(
+        gaps,matrix,json.loads(get_artifact(job_id,'fresh_sources')['content_text']))
     save('running')
-    step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(gaps,ensure_ascii=False))
+    if selected:
+        step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(gaps,ensure_ascii=False),
+                            research_question_ids=[g['id'] for g in selected])
     save('completed')
 
 
@@ -484,7 +515,7 @@ def verify(job_id, keyword, api_key=None):
         # Reuse failures only as retrieval instructions, never as a passing
         # verdict. Always run the complete current-source audit after retrieval.
         print('[research] Resume pending retrieval; do not repeat the completed audit',flush=True)
-        supplement_once(job_id,keyword,plan_value,pending_gaps,api_key)
+        supplement_once(job_id,keyword,plan_value,pending_gaps,api_key,matrix=json.loads(previous['content_text']))
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
     for attempt in range(first_attempt,2):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
@@ -514,7 +545,7 @@ def verify(job_id, keyword, api_key=None):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
                 meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
         if not gaps:return saved
-        if attempt<1: supplement_once(job_id,keyword,plan_value,gaps,api_key)
+        if attempt<1: supplement_once(job_id,keyword,plan_value,gaps,api_key,matrix=value)
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
 
 

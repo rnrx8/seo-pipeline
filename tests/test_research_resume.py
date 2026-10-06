@@ -86,6 +86,18 @@ class ResearchResumeTests(unittest.TestCase):
         self.assertFalse(value['items'][0]['verified'])
         self.assertFalse(value['coverage_sufficient'])
 
+    def test_coverage_feedback_rechecks_saved_sources_without_changing_other_requests(self):
+        issue={'id':'q1','reason':'Use the supported part of the existing answer'}
+        def add_feedback(plan,pages,saved):
+            saved['research_matrix_1']={'content_text':json.dumps({'coverage_issues':[issue]})}
+        calls,_,_=self.run_case(add_feedback)
+        self.assertEqual(len(calls),4)
+        original=json.loads(calls[0]['messages'][0]['content'])
+        recheck=json.loads(calls[2]['messages'][0]['content'])
+        self.assertNotIn('previous_findings',original)
+        self.assertEqual(recheck.pop('previous_findings'),[issue])
+        self.assertEqual(recheck,original)
+
     def test_changed_source_or_plan_requires_fresh_review(self):
         for change in (lambda p,s,c:s[0].update(text='new source'),
                        lambda p,s,c:p['items'][0].update(question='別の条件')):
@@ -294,3 +306,100 @@ class SourceLineageTests(unittest.TestCase):
     def test_markdown_code_delimiters_are_not_part_of_urls(self):
         from pipeline.fresh_sources import extract_urls
         self.assertEqual(extract_urls('出典：`https://official.example/price`'),['https://official.example/price'])
+
+class CoverageRetrievalRoutingTests(unittest.TestCase):
+    def case(self):
+        plan,pages,result=fixture()
+        item=result['items'][0]
+        item['additional_sources_needed']=False
+        result['coverage_issues']=[{'id':item['id'],'reason':'Reconsider the existing answer'}]
+        gaps=[{**plan['items'][0],'reason':'coverage disagreement'}]
+        return plan,pages,result,gaps
+
+    def test_existing_quote_and_explicit_routing_avoids_retrieval_not_validation(self):
+        from pipeline import research_requirements as req
+        plan,pages,result,gaps=self.case()
+        before=copy.deepcopy(result)
+        self.assertEqual(req.retrieval_gaps(gaps,result,pages),[])
+        self.assertEqual(result,before)
+        result.update(coverage_sufficient=False,coverage_reason='still unresolved')
+        self.assertTrue(req.validate_matrix(result,plan,pages))
+
+    def test_missing_sources_or_routing_or_actual_quote_still_requires_retrieval(self):
+        from pipeline import research_requirements as req
+        for change in (
+            lambda r,p:r['items'][0].update(additional_sources_needed=True),
+            lambda r,p:r['items'][0].pop('additional_sources_needed'),
+            lambda r,p:r.update(coverage_issues=[]),
+            lambda r,p:[ref.update(quote='not in any source') for ref in r['items'][0]['evidence']],
+            lambda r,p:[page.update(status='failed') for page in p]):
+            plan,pages,result,gaps=self.case();change(result,pages)
+            self.assertEqual(req.retrieval_gaps(gaps,result,pages),gaps)
+
+    def test_omission_keeps_candidate_evidence_for_recheck_not_publication(self):
+        from pipeline import research_requirements as req
+        plan,pages,result,gaps=self.case()
+        item=result['items'][0]
+        item['omission_candidate_from']=copy.deepcopy(item)
+        item.update(basis='omitted',answer='',evidence=[])
+        self.assertEqual(req.retrieval_gaps(gaps,result,pages),[])
+        self.assertEqual(item['answer'],'')
+
+    def test_running_supplement_preserves_identity_and_fetches_only_missing_items(self):
+        from pipeline import research_requirements as req
+        plan,pages,result,gaps=self.case()
+        missing={**gaps[0],'id':'q2'};gaps.append(missing)
+        key=req.digest(json.dumps({'plan':plan,'gaps':gaps},ensure_ascii=False,sort_keys=True))
+        saved=[]
+        with patch.object(req,'get_optional_artifact',return_value={'content_text':json.dumps({'request_sha256':key,'status':'running'})}), \
+             patch.object(req,'get_artifact',return_value={'content_text':json.dumps(pages)}), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:saved.append(json.loads(kw['content_text']))), \
+             patch('pipeline.step_fact_sheet.run') as collect:
+            req.supplement_once('j','query',plan,gaps,matrix=result)
+        self.assertEqual(json.loads(collect.call_args.kwargs['research_gaps']),gaps)
+        self.assertEqual(collect.call_args.kwargs['research_question_ids'],['q2'])
+        self.assertEqual(saved[-1],{'request_sha256':key,'status':'completed'})
+
+    def test_recheck_failure_stops_at_second_audit_without_recollection(self):
+        from pipeline import research_requirements as req
+        plan,pages,result,gaps=self.case()
+        result.update(coverage_sufficient=False,coverage_reason='still unresolved')
+        records={};artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
+        with patch.object(req,'load_plan',return_value=plan), \
+             patch.object(req,'get_optional_artifact',side_effect=lambda j,s:records.get(s)), \
+             patch.object(req,'refresh_dynamic_sources'), \
+             patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
+             patch.object(req,'upsert_artifact',side_effect=lambda **kw:records.update({kw['step']:kw}) or kw), \
+             patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
+             patch('pipeline.step_fact_sheet.run') as collect, \
+             patch.object(r,'audit_matrix',side_effect=lambda *a,**k:(copy.deepcopy(result),SimpleNamespace(input_tokens=0,output_tokens=0))) as audit:
+            with self.assertRaises(req.ContentQualityError):req.verify('j','query')
+            self.assertEqual(audit.call_count,2)
+            with self.assertRaises(req.ContentQualityError):req.verify('j','query')
+            self.assertEqual(audit.call_count,2)
+        collect.assert_not_called()
+        self.assertEqual(json.loads(records['research_matrix']['content_text'])['attempt'],2)
+        self.assertFalse(records['research_matrix']['meta']['valid'])
+
+    def test_narrowed_work_reuses_paid_receipt_with_original_request_identity(self):
+        from pipeline import research_collection as c
+        from pipeline.fresh_sources import FreshSources
+        plan,pages,result,gaps=self.case()
+        plan['items'].append({**plan['items'][0],'id':'q2','subject':'B'})
+        gaps.append({**plan['items'][1],'reason':'other coverage issue'})
+        fresh=FreshSources({},[]);fresh.pages={p['url']:p for p in pages}
+        records={};calls=[]
+        def save(**kw):records[kw['step']]=copy.deepcopy(kw)
+        def generate(*args,**kw):
+            calls.append(kw)
+            return message({}),'saved source notes',[],[]
+        with patch.object(c,'tiered_review_enabled',return_value=False), \
+             patch.object(c,'get_optional_artifact',side_effect=lambda j,s:records.get(s)), \
+             patch.object(c,'upsert_artifact',side_effect=save),patch.object(fresh,'save'), \
+             patch.object(c,'run_with_fetch',side_effect=generate):
+            args=dict(plan=plan,fresh=fresh,system='',prompt='',model='test',search_tool={},gaps=json.dumps(gaps))
+            c.collect('j',None,**args)
+            self.assertEqual(len(calls),2)
+            c.collect('j',None,question_ids=['q1'],**args)
+            self.assertEqual(len(calls),2)
+            self.assertEqual(records['research_collection_2']['content_text'],'saved source notes')

@@ -186,7 +186,7 @@ def _downgrade_incomplete_confirmations(
     return "".join(blocks), downgraded
 
 
-def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: str = '') -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: str = '', research_question_ids: list[str] | None = None) -> dict:
     """Generate a fact sheet with real-time web search verification via Claude."""
     print("[fact_sheet] Generating fact sheet with web search...")
 
@@ -223,7 +223,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     collection_prompt = freshness_context(checked_on) + 'キーワード: ' + keyword + primary_sources_prompt
     try:
         resp, fact_text, search_queries, observed = collect(job_id, client, plan=load_plan(job_id),fresh=fresh,
-            system=SYSTEM_PROMPT,prompt=collection_prompt,model=MODEL,search_tool=WEB_SEARCH_TOOL,gaps=research_gaps)
+            system=SYSTEM_PROMPT,prompt=collection_prompt,model=MODEL,search_tool=WEB_SEARCH_TOOL,gaps=research_gaps,question_ids=research_question_ids)
     finally:
         fresh.save(job_id)
     return save_collected_notes(job_id, fresh, resp, fact_text, search_queries, observed, checked_on, sources)

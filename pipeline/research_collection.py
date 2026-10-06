@@ -87,7 +87,7 @@ def recover_empty_collections(job_id, keyword, plan, *, api_key=None, loader=Non
     return True
 
 
-def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, gaps=''):
+def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, gaps='', question_ids=None):
     tasks = batches(plan)
     bounded_search=tiered_review_enabled()
     if bounded_search:
@@ -102,6 +102,12 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
     if any(g.get('id') not in known_ids for g in gap_rows):
         raise ContentQualityError('追加調査の質問IDが未特定です。全対象の再調査には広げません。')
     ids = {i['id'] for i in gap_rows}
+    if question_ids is not None:
+        if not gaps or not set(question_ids)<=ids:
+            raise ContentQualityError('追加調査の実行対象が不足指摘に含まれていません。')
+        # Keep the original gap request for paid receipt identity. Routing only
+        # narrows work; it must not invalidate a completed subject's receipt.
+        ids=set(question_ids)
     prior_records=collection_records(job_id) if gaps else []
     notes, queries, observed = [], [], []
     inputs = outputs = 0
