@@ -95,4 +95,29 @@ class PipelineFailureCostTests(unittest.TestCase):
         self.assertEqual(json.loads(record['content_text'])['partial_text'],'未完了のメモ')
         sources.save.assert_called_once_with('job')
 
+    def test_raw_notes_can_be_truncated_but_required_evidence_cannot_be_missing(self):
+        from pipeline.research_requirements import validate_matrix
+        from test_evidence_policy import fixture
+        response=NS(content=[NS(type='text',text='q1の途中メモ')],stop_reason='max_tokens',
+                    usage=NS(input_tokens=100,output_tokens=6000))
+        create=Mock(return_value=response)
+        result,note,_,_=fresh.run_with_fetch(None,create=create,model='test',max_tokens=6000,
+            system='',prompt='',search_tool={},fresh=fresh.FreshSources({},[]),allow_partial_notes=True)
+        create.assert_called_once()
+        self.assertEqual(result.stop_reason,'max_tokens')
+        self.assertEqual(note,'q1の途中メモ')
+        plan,pages,verdict=fixture()
+        # Coverage is accepted from direct source evidence, not the note stop reason.
+        self.assertEqual(validate_matrix(verdict,plan,pages),[])
+        verdict['items'][0]['evidence']=[]
+        self.assertTrue(validate_matrix(verdict,plan,pages))
+
+    def test_partial_note_opt_in_does_not_accept_empty_or_refused_responses(self):
+        for reason,text in [('max_tokens',''),('refusal','cannot answer')]:
+            response=NS(content=[NS(type='text',text=text)],stop_reason=reason,
+                        usage=NS(input_tokens=100,output_tokens=1))
+            with self.subTest(reason=reason), self.assertRaises(fresh.ResearchResponseError):
+                fresh.run_with_fetch(None,create=Mock(return_value=response),model='test',max_tokens=6000,
+                    system='',prompt='',search_tool={},fresh=fresh.FreshSources({},[]),allow_partial_notes=True)
+
 if __name__=='__main__':unittest.main()

@@ -226,6 +226,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             system=SYSTEM_PROMPT,prompt=collection_prompt,model=MODEL,search_tool=WEB_SEARCH_TOOL,gaps=research_gaps)
     finally:
         fresh.save(job_id)
+    return save_collected_notes(job_id, fresh, resp, fact_text, search_queries, observed, checked_on, sources)
+
+
+def save_collected_notes(job_id, fresh, resp, fact_text, search_queries, observed, checked_on, sources):
+    """Persist raw evidence notes; only research_completeness can accept answers."""
     searched_urls = _search_result_urls(observed)
     total_input, total_output = resp.usage.input_tokens, resp.usage.output_tokens
     fresh.fetch_confirmed_citations(fact_text)

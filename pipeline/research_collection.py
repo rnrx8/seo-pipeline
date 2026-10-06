@@ -153,7 +153,14 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         try:
             resp, note, searches, blocks = run_with_fetch(client, create=create_with_retry, model=model,max_tokens=tokens,
                 system=system, prompt=focused, search_tool=tool,fresh=fresh,
-                context_override=index_context,max_rounds=rounds,**search_args)
+                context_override=index_context,max_rounds=rounds,allow_partial_notes=True,**search_args)
+            if getattr(resp,'stop_reason','end_turn') == 'max_tokens':
+                diagnostic=ResearchResponseError('incomplete_response',response=resp,
+                    input_tokens=resp.usage.input_tokens,output_tokens=resp.usage.output_tokens)
+                upsert_artifact(job_id=job_id,step=step+'_incomplete',content_type='application/json',
+                    content_text=json.dumps(diagnostic.diagnostic,ensure_ascii=False),
+                    meta={'subject':task['subject'],'question_ids':sorted(task_ids),
+                          'plan_sha256':plan_hash,'usable_as_completed_research':False})
             fresh.fetch_confirmed_citations(note)
         except ResearchResponseError as exc:
             upsert_artifact(job_id=job_id, step=step+'_incomplete', content_type='application/json',
@@ -175,9 +182,11 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         search_history=list(dict.fromkeys([*previous_searches,*searches]))
         upsert_artifact(job_id=job_id,step=step,content_type='text/markdown',content_text=note,
             meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),'targeted_retry':bool(gaps),'source_urls':sorted(u for u in used_urls if u in fresh.pages),
+                  'response_complete':getattr(resp,'stop_reason','end_turn') == 'end_turn',
                   'input_tokens':resp.usage.input_tokens,'output_tokens':resp.usage.output_tokens,'search_queries':search_history})
         # A completed collection receipt is raw evidence only; final matrix review remains mandatory.
         meta={'plan_sha256':plan_hash,'subject':task['subject'],'question_ids':sorted(task_ids),
+              'response_complete':getattr(resp,'stop_reason','end_turn') == 'end_turn',
               'source_urls':sorted(u for u in used_urls if u in fresh.pages),'search_queries':search_history,
               'result_sha256':digest(note)}
         meta['sources_sha256']=source_fingerprint(fresh.pages,meta['source_urls'])

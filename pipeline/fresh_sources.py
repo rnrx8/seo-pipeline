@@ -337,7 +337,7 @@ class FreshSources:
         return all(any(squash(q) in squash(p.get('text', '')) for p in pages) for q in quotes)
 
 
-def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12, search_handler=None, max_context_chars=100000):
+def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_tool, fresh, context_override=None, max_rounds=12, search_handler=None, max_context_chars=100000, allow_partial_notes=False):
     from .ai import tiered_review_enabled
     # Reuse only the identical model-input prefix, never a stale source verdict.
     # Public pages still follow the existing fresh-fetch policy.
@@ -391,7 +391,9 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
             if results:
                 messages.append({'role': 'user', 'content': results})
             continue
-        if resp.stop_reason != 'end_turn':
+        # Only raw research collection may hand incomplete notes to the independent
+        # question/evidence audit. Article and fact-review callers remain strict.
+        if resp.stop_reason != 'end_turn' and not (allow_partial_notes and resp.stop_reason == 'max_tokens'):
             raise ResearchResponseError('incomplete_response', response=resp,
                                         input_tokens=input_tokens, output_tokens=output_tokens)
         resp.usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
