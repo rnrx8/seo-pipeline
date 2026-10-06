@@ -66,6 +66,38 @@ class TieredReviewTests(unittest.TestCase):
             with patch('pipeline.openai_review.create_review_response',return_value='ok') as call:
                 self.assertEqual(create_with_retry(None,**self.request(model)),'ok')
                 self.assertEqual(call.call_args.kwargs['model'],model)
+
+    def test_client_tool_requests_are_counted_with_tools_and_keep_total_cap(self):
+        tools=[{'name':'fetch_current_page','description':'公開本文の取得',
+                'input_schema':{'type':'object','properties':{'url':{'type':'string'}}}}]
+        client=Mock();client.with_options.return_value=client
+        client.messages.count_tokens.return_value=NS(input_tokens=5000)
+        response=NS(usage=NS(model_dump=lambda:{'input_tokens':5000,'output_tokens':100}))
+        stream=Mock();stream.get_final_message.return_value=response
+        from unittest.mock import MagicMock
+        manager=MagicMock();manager.__enter__.return_value=stream
+        client.messages.stream.return_value=manager
+        payload={'model':'claude-sonnet-4-6','max_tokens':1000,'system':'調査',
+                 'messages':[{'role':'user','content':'確認'*40000}],
+                 'tools':tools,'tool_choice':{'type':'auto'}}
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'0.3'}):
+            self.assertIs(create_with_retry(client,**payload),response)
+        sent=client.messages.count_tokens.call_args.kwargs
+        self.assertEqual(sent['tools'],tools)
+        self.assertEqual(sent['tool_choice'],payload['tool_choice'])
+        self.assertEqual(sent['messages'],payload['messages'])
+        self.assertEqual(self.ledger()['total_limit_usd'],.3)
+        self.assertLess(self.ledger()['calls'][0]['reserved_usd'],.3)
+
+    def test_client_tool_count_failure_never_sends_generation(self):
+        client=Mock();client.with_options.return_value=client
+        client.messages.count_tokens.side_effect=RuntimeError('count unavailable')
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'0.3'}):
+            with self.assertRaises(RuntimeError):
+                create_with_retry(client,model='claude-sonnet-4-6',max_tokens=1000,
+                    messages=[{'role':'user','content':'確認'*40000}],
+                    tools=[{'name':'fetch','input_schema':{'type':'object'}}])
+        client.messages.stream.assert_not_called()
     def test_missing_budget_setting_stops_before_generation(self):
         with patch.dict(os.environ,{'QUALITY_BUDGET_DIR':''}):
             with self.assertRaises(ContentQualityError):validate_model_credentials({})

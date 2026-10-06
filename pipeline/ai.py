@@ -90,7 +90,7 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwarg
     if tiered_review_enabled():
         from .quality_budget import reserve_claude, settle
         def count_input(payload):
-            fields={k:payload[k] for k in ('model','messages','system','thinking','output_config') if k in payload}
+            fields={k:payload[k] for k in ('model','messages','system','thinking','output_config','tools','tool_choice','cache_control') if k in payload}
             return client.with_options(max_retries=0).messages.count_tokens(**fields,timeout=30).input_tokens
         reservation=reserve_claude(kwargs,input_counter=count_input)
         accounted=False

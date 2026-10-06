@@ -290,7 +290,11 @@ def reserve_claude(payload, input_counter=None):
   total_used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
   remaining=min(category_remaining(value,category),review_remaining(value),value.get('total_limit_usd',float('inf'))-total_used,
                 LIMIT-used if category=='quality' and not evaluation else float('inf'))
-  if amount>remaining and input_counter is not None and not payload.get('tools'):
+  # Client tools return control to us before new evidence is appended, so each
+  # next request can be counted independently. Server tools can expand context
+  # inside one request and must keep the original conservative reservation.
+  countable=all(t.get('type','custom')=='custom' for t in payload.get('tools',[])) and not payload.get('mcp_servers')
+  if amount>remaining and input_counter is not None and countable:
    key=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,default=lambda v:v.model_dump(mode='json')).encode()).hexdigest()
    counts=value.setdefault('input_counts',{});record=counts.get(key)
    if record is None:
