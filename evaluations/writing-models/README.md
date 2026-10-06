@@ -41,3 +41,7 @@ A single-topic excerpt cannot establish general superiority or production-wide c
 Set ARTICLE_REVIEW_PROVIDER=tiered and QUALITY_RESEARCH_ROUTING=focused to match the saved research policy. Run prepare.py with --artifacts, --settings and --output absolute paths. Do not commit tenant settings, article fixtures or secrets. Generated requests and input hashes live in seo-saas/tmp/writing-model-comparison-20261007.
 
 Token-count calls are free per https://platform.claude.com/docs/en/build-with-claude/token-counting. Counts are estimates, so reserve margin. Prices verified at https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-07: Opus 5.5 $4/$20; Sonnet 5.5 $2/$10 per million input/output tokens, uncached standard API. All test estimates use 200 JPY/USD. No cache discount assumed.
+
+## Preflight result / proposed authorization
+
+Both frozen requests count as 63,040 input tokens via provider count_tokens. At the configured 10,000 output-token limit (including thinking), uncached Opus ceiling is 90.432 JPY and Sonnet 45.216 JPY. Token counts are estimates. Proposed experiment cap: 200 JPY total, up to 3 model requests (A, B, optional C), no retries; C hard allocation 50 JPY. Sum of counted A/B ceilings plus C is 185.648 JPY, leaving 14.352 JPY margin. No paid generation has run. This is a new experiment; it does not silently extend the prior article's budget. Before executing, implement/verify durable one-call-per-arm reservations and reject a request that cannot fit its approved remaining allowance.
