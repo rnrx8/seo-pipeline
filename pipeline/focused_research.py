@@ -4,16 +4,19 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v7-review-partial-candidates'
+VERSION = 'focused-research-v8-answer-evidence-scope'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
 答えがなお不明なら未確認を維持する。資料一覧のタイトルやURLは証拠にしない。
 '''
 FOCUS_POLICY = '''
-候補回答の全主張を原文で独立確認する。資料は引用先・確認済みURLを優先提示している。
-source_catalogには本文を今回提示していない資料も含む。反証や別条件の確認に追加資料が
-必要なら該当する質問のadditional_sources_needed=trueを返す。その質問だけ未確認として扱う。
+この段階は回答文と根拠の照合を担当する。候補回答を原文で独立確認し、根拠が揃う記述に範囲を限定する。
+confirmedはその限定したanswerの全主張・対象・期間・条件を根拠で確認できたことを表す。質問文の全細目が完了したことや記事全体の合格を意味しない。
+未回答の細目とその理由はreason・omission_reasonに残し、その不足で検索意図への回答が成立しないかは後続の全体網羅性判定に委ねる。必須論点の削除や重要度の変更はしない。
+資料は引用先・確認済みURLを優先提示している。source_catalogには本文を今回提示していない資料も含む。
+additional_sources_neededは採用するanswerの事実・条件・反証を照合するために資料がさらに必要かを表す。記載しない細目が不明という理由だけでtrueにしない。
+回答自体の根拠が足りなければtrueとし、その質問を未確認として扱う。
 他の質問に不足があることを理由に、根拠が揃った回答まで未確認に戻さない。
 sources_complete=trueは保存済み対象ページの集合を提示済みという意味。各本文はtruncatedなら抜粋であり、全文の提示やウェブ全体の探索完了ではない。
 それでも不足なら未確認を返す。全体の網羅性は別工程で検査する。
