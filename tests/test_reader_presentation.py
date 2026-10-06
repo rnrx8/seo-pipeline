@@ -156,6 +156,15 @@ class ReaderPresentationTests(unittest.TestCase):
         self.assertIn('intent_analysis', review_requirements(req, 'coverage'))
         self.assertNotIn('editorial_rules', req)
 
+    def test_heading_answer_policy_change_invalidates_saved_audit(self):
+        # An old verdict cannot silently become a pass after the user's clarification.
+        before = content_quality.snapshot('article', 'facts', 'outline', {}, {})
+        with patch.object(content_quality, 'EDITORIAL_SYSTEM',
+                          content_quality.EDITORIAL_SYSTEM.replace(
+                              READER_PRESENTATION_POLICY, 'previous heading-answer policy')):
+            after = content_quality.snapshot('article', 'facts', 'outline', {}, {})
+        self.assertNotEqual(before, after)
+
     def test_recommendation_rubric_change_invalidates_saved_audit(self):
         before = content_quality.snapshot('outline', 'facts', 'outline', {}, {})
         with patch.object(content_quality, 'RECOMMENDATION_REVIEW', 'changed acceptance rubric'):
