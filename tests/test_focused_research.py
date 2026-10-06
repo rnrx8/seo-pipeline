@@ -77,6 +77,47 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertEqual(set(self.saved),{'tiered_screen_1','tiered_focused_1_reread','tiered_coverage'})
         self.assertEqual([p['url'] for p in self.calls[1][1]['sources']],[self.pages[0]['url']])
 
+    def check_partial_candidate(self, priority):
+        self.plan,self.pages,self.answer=fixture(priority)
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:
+                unknown=self.unknown()
+                unknown['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])
+                unknown['items'][0]['answer']=self.answer['items'][0]['answer']
+                return unknown
+            partial=copy.deepcopy(self.answer)
+            if request['model']=='gpt-6-luna':
+                partial['items'][0]['status']='searched_not_found'
+                partial['items'][0]['reason']='料金は確認できたが補助条件が不明'
+            return {**partial,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertTrue(result['items'][0]['verified'])
+        self.assertEqual(result['items'][0]['answer'],self.answer['items'][0]['answer'])
+        self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
+        self.assertFalse(validate_matrix(result,self.plan,self.pages))
+
+    def test_reread_partial_answer_is_adjudicated_before_optional_omission(self):
+        self.check_partial_candidate('important')
+
+    def test_supporting_partial_answer_also_reaches_bounded_review(self):
+        self.check_partial_candidate('supporting')
+
+    def test_rejected_partial_answer_cannot_be_promoted_by_routing(self):
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:
+                unknown=self.unknown()
+                unknown['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])
+                return unknown
+            partial=copy.deepcopy(self.answer)
+            partial['items'][0]['status']='searched_not_found'
+            return {**partial,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertFalse(result['items'][0]['verified'])
+        self.assertTrue(validate_matrix(result,self.plan,self.pages))
+        self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
+
     def test_same_resume_reuses_results_and_changed_source_invalidates(self):
         result,_=self.run_flow(self.responder)
         again,usage=self.run_flow(self.responder)

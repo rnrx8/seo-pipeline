@@ -315,6 +315,10 @@ def propose_optional_omissions(items, plan, pages, *, supporting_only=False):
         if (item.get('verified') or q.get('required') is not False
             or q.get('priority') not in (('supporting',) if supporting_only else ('important','supporting'))):
             continue
+        if supporting_only and item.get('answer','').strip() and item.get('evidence'):
+            # Preserve a concrete partial candidate for bounded source review.
+            # Final coverage may still omit it after that review rejects it.
+            continue
         if not major_sources_checked(item,pages):
             shared=reviewed.get(q.get('subject'))
             if not shared:continue

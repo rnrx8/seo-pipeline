@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v6-preserve-alternative-sources'
+VERSION = 'focused-research-v7-review-partial-candidates'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -140,8 +140,13 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         packed = merge_visible_sources(packed, bodies)
         packed = merge_visible_sources(packed, pages_visible)
 
-    pending = [i for i in value['items'] if i.get('verified') and i.get('basis') != 'omitted'
-               and needs_adjudication(i, planned[i['id']])]
+    # A reread may find a supported partial answer but label the whole question
+    # unknown because another detail is missing. Resolve that disagreement in
+    # the existing bounded audit instead of erasing the answer as an omission.
+    pending = [i for i in value['items'] if i.get('basis') != 'omitted'
+               and ((i.get('verified') and needs_adjudication(i, planned[i['id']]))
+                    or (not i.get('verified') and i.get('additional_sources_needed') is False
+                        and i.get('answer','').strip() and i.get('evidence')))]
     if pending:
         # Preserve each already-visible page in full, including neighboring spans.
         pending_ids = {i['id'] for i in pending}
