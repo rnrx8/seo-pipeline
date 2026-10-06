@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 from .ai import create_with_retry, tiered_review_enabled
 from .db import get_optional_artifact, upsert_artifact
-from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL
+from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL, ResearchResponseError
 from .content_quality import digest, ContentQualityError
 
 
@@ -152,6 +152,12 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
                 system=system, prompt=focused, search_tool=tool,fresh=fresh,
                 context_override=index_context,max_rounds=rounds,**search_args)
             fresh.fetch_confirmed_citations(note)
+        except ResearchResponseError as exc:
+            upsert_artifact(job_id=job_id, step=step+'_incomplete', content_type='application/json',
+                content_text=json.dumps(exc.diagnostic, ensure_ascii=False),
+                meta={'subject':task['subject'], 'question_ids':sorted(task_ids),
+                      'plan_sha256':plan_hash, 'usable_as_completed_research':False})
+            raise
         finally:
             fresh.save(job_id)
         if not note.strip():raise ContentQualityError('調査回答が空のため完了記録を作成しません。')

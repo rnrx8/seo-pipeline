@@ -10,9 +10,9 @@ from functools import wraps
 JOB=contextvars.ContextVar('quality_budget_job',default=None)
 STAGE=contextvars.ContextVar('quality_budget_stage',default='quality')
 GENERATION_STAGES={'serp','search_intent','research_plan','fact_sheet','reference_structure','content_contract','outline','service_map','article','cta_inject'}
-CLAUDE_RATES={'claude-opus-5-5':(8.,20.),'claude-opus-4-8':(10.,25.),'claude-sonnet-4-6':(6.,15.)}
+CLAUDE_RATES={'claude-opus-5-5':(8.,20.),'claude-opus-4-8':(10.,25.),'claude-sonnet-4-6':(6.,15.),'claude-haiku-4-5-20251001':(2.,5.)}
 # Standard API prices checked 2026-10-03 at platform.claude.com/docs/en/about-claude/pricing.
-CLAUDE_USAGE_RATES={'claude-opus-5-5':(4.,5.,8.,.2,20.),'claude-opus-4-8':(5.,6.25,10.,.5,25.),'claude-sonnet-4-6':(3.,3.75,6.,.3,15.)}
+CLAUDE_USAGE_RATES={'claude-opus-5-5':(4.,5.,8.,.2,20.),'claude-opus-4-8':(5.,6.25,10.,.5,25.),'claude-sonnet-4-6':(3.,3.75,6.,.3,15.),'claude-haiku-4-5-20251001':(1.,1.25,2.,.1,5.)}
 RATES={'gpt-6-luna':(.125,.5),'gpt-6.1-sol':(2.5,10.)} # cache-write input ceiling
 LIMIT=1.25 # <=250 JPY at conservative 200 JPY/USD allowance, 50 JPY headroom
 

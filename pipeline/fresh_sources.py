@@ -17,6 +17,23 @@ from . import db
 from .evidence_policy import EVIDENCE_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY
 from .public_fetch import get_public_page
+from .content_quality import ContentQualityError
+
+
+class ResearchResponseError(ContentQualityError):
+    """Incomplete evidence is diagnostic data, never a completed fact sheet."""
+    def __init__(self, reason, *, response=None, input_tokens=0, output_tokens=0):
+        self.diagnostic = {
+            'reason': reason,
+            'stop_reason': getattr(response, 'stop_reason', None),
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'partial_text': '\n\n'.join(b.text for b in getattr(response, 'content', [])
+                                      if getattr(b, 'type', '') == 'text'),
+        }
+        label = {'empty_response':'調査の最終回答が空です', 'round_limit':'調査の回数上限に達しました',
+                 'incomplete_response':'調査応答が途中で終了しました'}.get(reason, reason)
+        super().__init__(f"{label}（stop_reason={self.diagnostic['stop_reason']}）。全工程を再実行せず取得済み資料を保持しました。")
 
 MAX_URLS = 40
 FETCH_TOOL = {
@@ -375,10 +392,13 @@ def run_with_fetch(client, *, create, model, max_tokens, system, prompt, search_
                 messages.append({'role': 'user', 'content': results})
             continue
         if resp.stop_reason != 'end_turn':
-            raise ValueError('出典確認の応答が完了しませんでした。再実行してください。')
+            raise ResearchResponseError('incomplete_response', response=resp,
+                                        input_tokens=input_tokens, output_tokens=output_tokens)
         resp.usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
         raw = '\n\n'.join(b.text for b in resp.content if getattr(b, 'type', '') == 'text')
         if not raw.strip():
-            raise ValueError('調査の最終回答が空です。調査完了として保存しません。')
+            raise ResearchResponseError('empty_response', response=resp,
+                                        input_tokens=input_tokens, output_tokens=output_tokens)
         return resp, raw, queries, observed
-    raise ValueError('出典確認の回数上限に達しました。再実行してください。')
+    raise ResearchResponseError('round_limit', response=resp,
+                                input_tokens=input_tokens, output_tokens=output_tokens)

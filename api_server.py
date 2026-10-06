@@ -20,7 +20,6 @@ from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 from pipeline.step_plan import build_step_plan, requires_rate_limit_delay  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
-MAX_AUTO_RETRIES = 2
 WATCHDOG_INTERVAL_SECONDS = 300   # 5分ごとにチェック
 STALE_THRESHOLD_MINUTES = 5       # 5分以上 queued なら再実行対象
 
@@ -126,7 +125,7 @@ def _resolve_api_key(job: dict) -> str | None:
     return None
 
 
-def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
+def _run_pipeline(job_id: str, keyword: str) -> None:
     """Run pipeline steps for an existing job, respecting delivery_type."""
     try:
         job = get_job(job_id)
@@ -157,15 +156,14 @@ def _run_pipeline(job_id: str, keyword: str, _retry: int = 0) -> None:
         from pipeline.autofix import classify_error, create_github_issue
         error_info = classify_error(exc)
 
-        # 一時的なエラーは自動リトライ
-        if error_info["retryable"] and _retry < MAX_AUTO_RETRIES:
-            delay = 30 * (2 ** _retry)  # 30s → 60s
-            print(f"[pipeline] Auto-retry ({_retry + 1}/{MAX_AUTO_RETRIES}) in {delay}s: {error_info['reason']}")
-            time.sleep(delay)
-            update_job_step(job_id, None)
-            update_job_status(job_id, "queued")
-            _run_pipeline(job_id, keyword, _retry=_retry + 1)
-            return
+        # A failed request must never replay already paid pipeline stages.
+        # Provider-level retries are owned by the request helper and its ledger.
+        try:
+            upsert_artifact(job_id=job_id, step="pipeline_failure", content_type="application/json",
+                content_text=json.dumps({"step": failed_step, "exception_type": type(exc).__name__,
+                    "detail": str(exc), "classification": error_info, "automatic_restart": False}, ensure_ascii=False))
+        except Exception as record_error:
+            print(f"[pipeline] Could not save failure diagnosis: {type(record_error).__name__}")
 
         update_job_step(job_id, None)
         # コードバグは修正デプロイ後に自動再実行するため bug_fixing ステータスにする

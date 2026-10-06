@@ -6,6 +6,8 @@ import anthropic
 # Centralized model config per step
 STEP_CONFIG: dict[str, dict] = {
     "search_intent": {"model": "claude-opus-5-5",   "max_tokens": 6000},
+    "query_attrs":   {"model": "claude-haiku-4-5-20251001", "max_tokens": 800},
+    "intent_chains": {"model": "claude-haiku-4-5-20251001", "max_tokens": 3000},
     "outline":       {"model": "claude-opus-5-5",   "max_tokens": 16000},
     "fact_sheet":    {"model": "claude-sonnet-4-6", "max_tokens": 30000},
     "article":       {"model": "claude-opus-5-5",   "max_tokens": 16000},
@@ -62,6 +64,12 @@ def validate_model_credentials(job: dict) -> None:
         raise ContentQualityError('品質確認に必要なOPENAI_API_KEYが未設定です。生成開始前に停止しました。')
 
     if tiered_review_enabled():
+        from .quality_budget import CLAUDE_RATES, CLAUDE_USAGE_RATES, RATES
+        from .content_quality import ContentQualityError
+        models = {get_step_config(step)[0] for step in STEP_CONFIG}
+        supported = (CLAUDE_RATES.keys() & CLAUDE_USAGE_RATES.keys()) | RATES.keys()
+        if models - supported:
+            raise ContentQualityError('生成モデルと費用定義が一致しません。課金開始前に設定を確認してください。')
         from .research_search import require_search_config
         require_search_config()
 

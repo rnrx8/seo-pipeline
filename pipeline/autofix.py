@@ -37,8 +37,8 @@ def classify_error(exc: Exception) -> dict:
     for pattern, retryable, err_type, reason in _RULES:
         if pattern.search(msg):
             return {"retryable": retryable, "type": err_type, "reason": reason, "detail": msg}
-    # デフォルト: 不明なエラーは一時的とみなしてリトライ
-    return {"retryable": True, "type": "transient", "reason": "不明なエラー（デフォルトリトライ）", "detail": msg}
+    # Unknown does not mean transient; inspect before authorizing another charge.
+    return {"retryable": False, "type": "operational", "reason": "未分類のエラー（原因確認が必要）", "detail": msg}
 
 
 def create_github_issue(

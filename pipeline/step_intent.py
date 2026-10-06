@@ -131,10 +131,11 @@ def _generate_query_attrs(client: anthropic.Anthropic, job_id: str, keyword: str
     """SERPからクエリ属性を生成して保存。起点ヒント(dict)を返す。失敗時は空dict。"""
     try:
         print("[search_intent] Generating query attributes (hint)...")
+        model, max_tokens = get_step_config("query_attrs")
         attrs_msg = create_with_retry(
             client,
-            model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+            model=model,
+            max_tokens=max_tokens,
             system="SEOの専門家として、検索クエリの属性をJSONで分析してください。",
             messages=[{
                 "role": "user",
@@ -209,10 +210,11 @@ def _generate_chains(
     """コール①の深掘り結果から中間ワードchainsを抽出して intent_chains に保存。失敗してもパイプラインは止めない。"""
     try:
         print("[search_intent] Extracting intent chains...")
+        model, max_tokens = get_step_config("intent_chains")
         chains_msg = create_with_retry(
             client,
-            model="claude-haiku-4-5-20251001",
-            max_tokens=3000,
+            model=model,
+            max_tokens=max_tokens,
             system="あなたはSEOの専門家として、潜在ニーズ深掘りから構造化された中間ワードを抽出します。",
             messages=[{
                 "role": "user",
