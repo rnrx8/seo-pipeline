@@ -14,6 +14,8 @@ from test_content_quality import SOURCE, report
 
 class QualityResumeCostTests(unittest.TestCase):
     def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
         self.saved={}
         env=patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered'})
         env.start();self.addCleanup(env.stop)

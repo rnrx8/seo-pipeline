@@ -39,9 +39,11 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertEqual(validate_matrix(value,plan,pages),[])
         value['valid']=True
         self.assertIn(note,accepted_facts(value,plan))
+        from pipeline.research_requirements import matrix_policy
+        value['policy_sha256']=matrix_policy()
         bundle=decision_bundle(plan,value,quotes=True)
         self.assertIn(note,bundle)
-        self.assertIn(item['reason'],bundle)
+        self.assertNotIn(item['reason'],bundle)
         self.assertIn('月額換算4,980円',bundle)
         # Source selection still needs independent bodies and exact quotations.
         item['evidence'][1]['independence_group']=item['evidence'][0]['independence_group']

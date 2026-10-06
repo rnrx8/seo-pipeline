@@ -44,6 +44,8 @@ class SectionIdentityTests(unittest.TestCase):
 class SectionPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         from unittest.mock import patch
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
         patcher=patch('pipeline.research_requirements.require_matrix',return_value={})
         patcher.start();self.addCleanup(patcher.stop)
 

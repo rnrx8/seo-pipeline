@@ -1,3 +1,4 @@
+from pipeline.outline_policy import current_policy
 from quality_fixtures import responses, phases
 import json
 
@@ -20,6 +21,8 @@ def report(failed=None):
 
 class QualityTests(unittest.TestCase):
     def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
         for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
             patcher=patch('pipeline.research_requirements.'+target, return_value=value)
             patcher.start(); self.addCleanup(patcher.stop)
@@ -118,7 +121,7 @@ class QualityTests(unittest.TestCase):
 
     def test_final_gate_rejects_missing_semantic_audit_even_when_structure_passes(self):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
-                     'outline': {'content_text': '### H2：比較'},
+                     'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}}
         with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
@@ -129,7 +132,7 @@ class QualityTests(unittest.TestCase):
 
     def test_repair_is_bounded_and_every_candidate_is_reaudited(self):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
-                     'outline': {'content_text': '### H2：比較'},
+                     'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
         responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':[{'id':'block-0000','new':'## 比較\n'+new}]}))]) for old,new in [('十分な説明。','一度修正した説明。'),('一度修正した説明。','修正した説明。')]]
@@ -147,7 +150,7 @@ class QualityTests(unittest.TestCase):
 
     def test_outline_gap_repairs_once_without_recursive_research_and_still_fails(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
-        artifacts = {'outline': {'content_text': '### H2：比較8選'}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
+        artifacts = {'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：比較8選'}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
                      'content_contract': {'content_text': '{}'}}
         with patch.object(step_research_guard, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_research_guard, 'get_job', return_value={}), \
@@ -164,7 +167,7 @@ class QualityTests(unittest.TestCase):
 
     def test_outline_condition_error_can_recover_without_repeating_source_search(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
-        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+        artifacts={'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
                    'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
         with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
              patch.object(step_research_guard,'get_job',return_value={}), \
@@ -189,7 +192,7 @@ class QualityTests(unittest.TestCase):
         self.assertTrue(json.loads(result['content_text'])['needs_research'])
 
     def test_pending_source_review_does_not_rewrite_outline_as_if_claim_were_wrong(self):
-        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+        artifacts={'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
                    'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
         pending={**report('evidence_support'),'evidence_pending':True}
         with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
@@ -205,7 +208,7 @@ class QualityTests(unittest.TestCase):
 
     def test_pending_source_review_does_not_rewrite_finished_article(self):
         artifacts={'article':{'content_text':'# 比較\n\n本文です。','meta':{}},
-                   'outline':{'content_text':'# 比較'},'fact_sheet':{'content_text':''},
+                   'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'# 比較'},'fact_sheet':{'content_text':''},
                    'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
         pending={**report('evidence_support'),'evidence_pending':True}
         with patch.object(step_content_audit,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
@@ -219,7 +222,7 @@ class QualityTests(unittest.TestCase):
 
     def test_mechanical_outline_gap_cannot_pass_even_if_model_approves(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
-        artifacts={'outline':{'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
+        artifacts={'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
                    'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
         with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
              patch.object(step_research_guard,'get_job',return_value={}), \
@@ -316,6 +319,10 @@ class ReadinessInstructionRegressionTests(unittest.TestCase):
         self.assertEqual(next(c for c in result['checks'] if c['key']=='comparison_conditions')['affected_blocks'][0]['id'],'block-0000')
 
 class RepairEncodingRegressionTests(unittest.TestCase):
+    def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
+
     def test_checkpoint_requires_same_snapshot_and_never_reuses_pass(self):
         saved = {**report('evidence_support'), 'stage':'article', 'attempt':2, 'snapshot':'same'}
         def load(value, snapshot='same'):
@@ -328,7 +335,7 @@ class RepairEncodingRegressionTests(unittest.TestCase):
 
     def run_repair(self, responses, succeeds):
         artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
-                     'outline': {'content_text': '### H2：誤った比較結論'},
+                     'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：誤った比較結論'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 事実 [confirmed]'}}
         responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps({'edits':e}))]) for e in responses]
@@ -370,9 +377,13 @@ class RepairEncodingRegressionTests(unittest.TestCase):
         self.run_repair([[{'id':'block-0000','new':'## 比較\n\n#### 分割\n長い説明。'}]]*2,False)
 
 class RequiredRepairLocationsTests(unittest.TestCase):
+    def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
+
     def test_omitted_condition_is_retried_before_any_article_write(self):
         text='## 比較\n\n対象漏れ。\n\n別の誤り。'
-        artifacts={'article':{'content_text':text},'outline':{'content_text':'### H2：比較'},
+        artifacts={'article':{'content_text':text},'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：比較'},
                    'content_contract':{'content_text':'{"required_sections":[]}'},
                    'fresh_sources':SOURCE,'fact_sheet':{'content_text':''}}
         failure=report('comparison_conditions')
@@ -403,9 +414,13 @@ class InternalHeadingReferenceTests(unittest.TestCase):
         self.assertEqual(validate_delivery(text.replace('以下のH3で各サービス','次の章で各サービス'),'### H2：比較'),[])
 
 class ScopeRepairCompletenessTests(unittest.TestCase):
+    def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
+
     def test_changing_target_block_without_fixing_scope_is_not_applied(self):
         text='## 無料範囲\n\n無料でできるのは検索までです。'
-        artifacts={'article':{'content_text':text},'outline':{'content_text':'### H2：無料範囲'},
+        artifacts={'article':{'content_text':text},'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：無料範囲'},
                    'content_contract':{'content_text':'{"required_sections":[]}'},'fresh_sources':SOURCE,
                    'fact_sheet':{'content_text':'> 女性は基本機能が無料。男性はメッセージが有料。 [confirmed]'}}
         failure=report('comparison_conditions')

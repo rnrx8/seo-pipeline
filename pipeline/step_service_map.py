@@ -145,6 +145,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print("[service_map] Analyzing outline for service/CTA placement...")
 
     outline = get_artifact(job_id, "outline")
+    from .outline_policy import require_current_outline
+    require_current_outline(outline)
     outline_text = outline["content_text"]
 
     service: dict | None = None

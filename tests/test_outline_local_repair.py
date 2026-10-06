@@ -1,3 +1,4 @@
+from pipeline.outline_policy import current_policy
 import json
 import unittest
 from contextlib import ExitStack
@@ -11,7 +12,7 @@ from pipeline.content_quality import ContentQualityError
 class OutlineRepairTests(unittest.TestCase):
     def repair(self, replacement):
         original = '# 構成\n\n無料で全機能を使える\n\n## 比較\n\n表の列は料金・条件。https://example.com'
-        artifacts = {'outline': {'content_text': original, 'meta': {}},
+        artifacts = {'outline': {'meta':{'editorial_policy':current_policy()},'content_text': original},
                      'fact_sheet': {'content_text': 'facts'}, 'fresh_sources': {'content_text': '[]'}}
         response = SimpleNamespace(content=[SimpleNamespace(type='text', text=json.dumps(
             {'edits': [{'id': 'block-0002', 'new': replacement}]}, ensure_ascii=False))])
@@ -19,11 +20,16 @@ class OutlineRepairTests(unittest.TestCase):
             stack.enter_context(patch('pipeline.research_requirements.require_matrix', return_value={}))
             stack.enter_context(patch('pipeline.generation_context.generation_evidence', return_value='初回だけ無料'))
             stack.enter_context(patch('pipeline.ai.tiered_review_enabled', return_value=False))
-            stack.enter_context(patch('pipeline.ai.create_with_retry', return_value=response))
+            send = stack.enter_context(patch('pipeline.ai.create_with_retry', return_value=response))
+            stack.enter_context(patch.object(guard, 'get_job', return_value={'id':'j'}))
+            stack.enter_context(patch.object(guard, 'intent_review_requirements', return_value={'intent_analysis':'家庭を守りながら本音で話したい'}))
             stack.enter_context(patch.object(guard, 'source_evidence', return_value='sources'))
             stack.enter_context(patch.object(guard, 'get_artifact', side_effect=lambda _, s: artifacts[s]))
             save = stack.enter_context(patch.object(guard, 'upsert_artifact', side_effect=lambda **kw: kw))
             result = guard.repair_outline('j', '比較', {'checks': [{'status':'fail', 'reason':'無料範囲が誤り'}]})
+        request = send.call_args.kwargs
+        self.assertIn('家庭を守りながら本音で話したい', request['messages'][0]['content'])
+        self.assertIn(guard.READER_PRESENTATION_POLICY, request['system'])
         return original, result, save
 
     def test_preserves_other_blocks_and_requires_new_review(self):

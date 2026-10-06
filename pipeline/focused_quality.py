@@ -2,6 +2,7 @@
 import json
 from datetime import datetime, timezone
 from .ai import create_with_retry, get_step_config
+from .reader_presentation import RECOMMENDATION_REVIEW
 from .content_edits import content_blocks
 from .readability import READABILITY_POLICY, readability_issues
 from .quality_context import review_requirements, compact_enabled, review_facts
@@ -15,10 +16,10 @@ ROLES = {
 }
 ROLE_INSTRUCTIONS = {
     'evidence': '原文との事実照合専任。具体的主張・比較条件・数値の対象/期間・安全保証を検査する。本文の表だけで根拠確認を済ませない。',
-    'coverage': '重要論点と記事目的の達成専任。requirements、content_contract、調査計画と本文を照合し、各重要な疑問に実質的な回答があるか検査。CV目的の推奨商材がある場合、順位だけ・機能列挙だけ・他社と同列の結論だけで終わらず、検索意図に合う読者のメリットと第一候補にする理由があるか確認。自社の有利な比較軸は許可するが、利用判断に重要な制限を隠すのは不可。構成自体の漏れにも注意。未調査を非公表として通さない。',
+    'coverage': '重要論点と記事目的の達成専任。requirements、content_contract、調査計画と本文を照合し、各重要な疑問への実質的な回答を確認する。共通提示基準「検索語・結論・推奨理由」の検索語・推薦理由・検索意図への接続を担当し、構成自体の漏れも確認する。未調査を非公表として通さない。',
     'language': '文章の自然さ専任。全段落を前後の文脈と読んで主述・指示語・不自然な語の組合せ・文の途切れ・文体/表記を検査。記事全体の重複や表示形式は他工程の担当。好みの言い換えや感情の原文例を欠陥と扱わない。',
-    'consistency': '記事全体の整合性専任。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
-    'organization': '情報整理と読みやすさ専任。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、見出し直下の回答の順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
+    'consistency': '記事全体の整合性専任。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
+    'organization': '情報整理と読みやすさ専任。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
 }
 
 
@@ -63,10 +64,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             from .review_scope import ROUTING_POLICY
             system+=ROUTING_POLICY+'\n今回は網羅性担当。requires_source_checkはfalse。補う情報のresearch_idsを指定する。'
         if role == 'coverage':
-            system += ('\nintent_value_contextがあれば、推奨理由が読者の望み・避けたいこと・葛藤に接続しているか照合する。'
-                       '重点対象は指定の推奨商材、指定がなければ根拠あるランキング上位・主要推奨候補。'
-                       '全社への均等な感情訴求は不要。機能から葛藤のどの部分に応えるかを示し、単に便利・安心という説明だけで終えない。'
-                       '感情への接点が薄い検索意図に重い葛藤を要求しない。仮説の願望を成果保証や全読者の実態へ読み替えない。')
+            system += RECOMMENDATION_REVIEW
+            system += ('\nrequirementsのintent_value_context、なければintent_analysisを読み、'
+                       '共通提示基準「検索語・結論・推奨理由」に照らして本文の具体的な該当箇所を照合する。')
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled()),
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])

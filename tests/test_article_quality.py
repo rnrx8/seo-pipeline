@@ -36,6 +36,8 @@ def complete_article():
 
 class ArticleQualityTests(unittest.TestCase):
     def setUp(self):
+        evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
+        evidence.start();self.addCleanup(evidence.stop)
         for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
             patcher=patch('pipeline.research_requirements.'+target, return_value=value)
             patcher.start(); self.addCleanup(patcher.stop)

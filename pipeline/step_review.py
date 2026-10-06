@@ -1,6 +1,6 @@
 from .section_identity import bind_sections
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, source_evidence, writing_evidence
+from .content_quality import ContentQualityError, source_evidence
 import json
 import re
 import anthropic
@@ -9,7 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
-from .readability import EMPATHY_ENDING_POLICY
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -37,25 +37,19 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 """ + EMPATHY_ENDING_POLICY + """
 
 ### 【構造チェック】
-2. H2直下の結論文チェック（見出しへの直答・順序）
-   - 結論文なしでリストや表から始まっているH2を検出 →「〜です。」形式の1文結論を冒頭に追加する
-   - 一文目が前置き・背景・遠回しから始まっている（見出しの問いに直接答えていない）H2を検出し、
-     見出しに端的に答える一文を冒頭に置き直す（背景説明は後段へ移す）
-   - 寄り添い・共感文が答えより前に来ている場合は、答え→（リスト/表）→寄り添いの順に並べ直す
-   - 内容・事実は変えず、順序と一文目の端的さのみ調整する
+2. H2直下の結論文チェック
+   - 共通提示基準「検索語・結論・推奨理由」に照らし、H2の問いと直下の回答を照合する。欠落・順序違反がある箇所を、事実と対象条件を維持して修正する。
 
 3. H3直下の本文チェック
-   - 本文なしでリストや表から始まっているH3を検出
-   - 導入文を1文追加する
+   - 同じ共通提示基準で個別章の役割を確認し、H2からの単なる反復や回答の欠落を修正する。分量は「節の分量」に従う。
 
 4. 表・リスト直前の導入文チェック
    - 表やリストの直前に導入文がない場合を検出
-   - 「〜は以下の通りです。」「〜を整理します。」などを追加する
+   - 必要なリスト・表に「〜は以下の通りです。」「〜を整理します。」などを追加する。不要な表後の注意点リストに導入文を足して温存せず、共通の提示基準に従い必要条件を該当セル・説明へまとめる
 
 ### 【文字数・文体】
 5. プレーンテキスト連続300字超の検出・修正
-   - H2直下・H3・H4内でプレーンテキストが300字を超えて連続している箇所を検出
-   - 箇条書きリスト・表・H4見出しのいずれかで分割する
+""" + READABILITY_POLICY + """
 
 6. 長文チェック
    - 一文が80字を超えている場合に検出
@@ -75,7 +69,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
    - 主題自体は変えず、語順・装飾・冗長語の調整にとどめること
 
 9. 紹介サービス見出しの重複チェック
-   - 同じサービスを主題にしたH2が複数ある場合は、記事の流れに合う1つへ統合する
+   - 同じサービスを主題にしたH2が複数ある場合、重複する本文を各章の問いに合う説明へ整理する。H2の統合・削除は構成段階の担当とし、校閲で確定済み見出しを削除しない
    - 比較H2内のサービス別H3で十分に説明できる場合、汎用的な「特徴・料金・始め方」H2を追加しない
    - 料金・始め方は検索意図や利用判断に必要な場合だけ残し、機械的に必須扱いしない
 
@@ -193,7 +187,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_artifact = get_artifact(job_id, "article")
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
-    fact_sheet_text = writing_evidence(get_artifact(job_id, "fact_sheet")["content_text"], source_evidence(get_artifact(job_id, "fresh_sources")))
+    from .generation_context import generation_evidence
+    fact_sheet_text = generation_evidence(job_id, get_artifact(job_id, 'fact_sheet')['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')))
     outline_text = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
     try:

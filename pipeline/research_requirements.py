@@ -50,6 +50,7 @@ confirmedは主要な回答に必要な対象・期間・条件を満たし、�
 explicitly_undisclosedは非公開と公式に明記されている場合だけ。searched_not_foundは調べたが見つからない場合。
 証拠はsourcesに実在するURLと、そのページの短い連続した原文quoteを返す。省略記号や言い換えは禁止。
 複数社や複数条件の質問はそれぞれの証拠を返す。要約だけを証拠にしない。
+answerには対象・条件・期間を含む回答事実だけを書く。出典の種別、取得成否、採用経緯はreason・basis・applicable_at等の管理フィールドへ分ける。実際の過去時点や利用条件はanswerから落とさない。
 JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答","evidence":[{"url":"...","quote":"..."}],"reason":"判断理由/不足の対象と項目"}]} のみ。'''
 
 PLAN_SYSTEM += EVIDENCE_POLICY

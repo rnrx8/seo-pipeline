@@ -1,7 +1,7 @@
 from .section_identity import bind_sections
 from .claim_scope import scope_issues
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, writing_evidence, explicit_risk_guarantees
+from .content_quality import ContentQualityError, confirmed_facts, require_audit, requirements_for, snapshot, source_evidence, explicit_risk_guarantees
 import json
 import re as _re
 import time
@@ -12,7 +12,7 @@ from .ai import create_with_retry, get_step_config, message_text
 from .content_contract import contract_prompt, reference_prompt
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
-from .readability import EMPATHY_ENDING_POLICY
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -57,20 +57,10 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 ▼ H2見出し
 - 疑問詞を積極的に使う（〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？）
 
-▼ H2直下の構成（順序厳守・例外なし）
-  ①一文目は見出しの問いに直接答える端的な結論（主語＋述語で断言）。
-    前置き・背景説明・遠回しを入れず、見出しが問うた答えを最初に出す。
-    （悪い例：「転職市場は近年大きく変化しています。その中で…」と背景から入る。
-      良い例：「30代におすすめは総合型2社＋特化型1社の併用です。」と先に答える）
-  ②（必要なら）並列・列挙の要点はリストまたは表で整理する
-    （リスト/表の直前に「ポイントは以下の通りです」等の導入文を1文添える。
-     要素2つ以下や1文で済む場合は無理にリスト化しない）。
-  ③読者の不安・期待に寄り添う補完／意図の汲み取りは、①②の後（後段）に置く。
-    寄り添いを答えより前に出さない。冷たくする必要はないが、順序は崩さない。
-
-▼ H3直下
-- 一文目は見出しに直接答える端的な一文から始める（前置き・遠回し・表/リストのみの開始は禁止）。
-- 寄り添い・補足はそのあと。各H3は200字以上。
+▼ 見出し直下と訴求の執筆
+- 共通提示基準「検索語・結論・推奨理由」「節の分量」に従い、構成の各章の役割を本文へ実現する。
+- 構成で選んだ読者の望み・避けたい状況と根拠を引き継ぎ、例文を転記するのではなく章に対応した説明を書く。
+- 並列要素を表やリストへ整理する際は、要素2つ以下や1文で済む場合に形式を強制しない。表・リストには内容を示す短い導入を置く。
 - 構成案の各H3に記載された「セクション内容」「表現形式」「掲載項目」に沿って執筆する。
 - 構成案で表・リストが指定されている場合は、その目的と掲載項目を守る。ただし要素が不足している場合は、情報を捏造して埋めない。
 - 構成案にH4がある場合は、その区分とセクション内容を守ってH4見出しとして執筆する。
@@ -89,13 +79,10 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
   対比リスト（または2列表）にする。手順・順序があるものは番号付きリストにする。
 - 視覚的・SEO的な分かりやすさを優先する。ただし要素が2つ以下、または1文で自然に収まる場合は
   無理にリスト化しない（リストの乱用で文章を痩せさせない）。
-- リスト・表の直前には、それが何を示すかの導入文を1文必ず添える。
+- 必要なリスト・表の直前には、それが何を示すかの導入文を1文添える。この規則を理由に表の後へ注意点リストや前置きを新設しない。
 
 ▼ プレーンテキストの制限
-- H2直下・H3・H4内でプレーンテキストが連続する場合、300字を超えたら必ず以下のいずれかで分割：
-  - 箇条書きリスト
-  - 比較表・データ表
-  - H4見出しで分割
+""" + READABILITY_POLICY + """
 - 数値・統計が複数並ぶ箇所は必ず表にまとめ、
   本文はその表から「何が言えるか」を1〜2文で要約するだけにする
 
@@ -368,6 +355,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     instruction = (
         '\n【このパートの完成条件】以下の構成のH2/H3/H4をすべて本文まで書き切る。'
         '見出しは表記を維持し、次パートに持ち越さない。'
+        '構成の推薦例文・目的別リスト・注釈は原文転記の指定ではない。読者向け提示基準と衝突する表現は整え、根拠・比較条件・必要な対象制限は保持する。'
         '内部メモ・執筆予定・要確認の比較表は禁止。根拠は提供された確認済み要約または直接取得本文。要約の欠落を非公表扱いにしない。\n'
         + ('上記に掲載済みの構成案から、今回指定されたH2とその配下のH3/H4を参照する。'
            if outline_present else required_outline)
@@ -629,6 +617,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     intent = get_artifact(job_id, "search_intent")
     outline = get_artifact(job_id, "outline")
+    from .outline_policy import require_current_outline
+    require_current_outline(outline)
     fact = get_artifact(job_id, "fact_sheet")
     fact = {**fact, 'content_text': confirmed_facts(fact['content_text'])}
     sources = source_evidence(get_artifact(job_id, 'fresh_sources'))
@@ -670,8 +660,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .research_requirements import require_matrix
     matrix = require_matrix(job_id)
     from .quality_context import compact_enabled
-    if not compact_enabled():
-        structure_prompts += '\n## 共通の調査採用・省略判断（省略情報を復活させない）\n' + json.dumps(matrix,ensure_ascii=False)
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
                                      contract, requirements_for(job, keyword), sources), stage="research")

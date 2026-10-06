@@ -11,7 +11,7 @@ from .price_comparison import comparison_evidence
 from .claim_scope import conditional_facts, scope_instructions, scope_issues
 from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
-from .reader_presentation import READER_PRESENTATION_POLICY
+from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
 POLICY_VERSION = 'content-quality-v14-scoped-resolution'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
@@ -60,7 +60,7 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .quality_context import compact_enabled, CONTEXT_POLICY
     from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
     from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
-    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -150,7 +150,7 @@ def requirements_for(job: dict, keyword: str) -> dict:
     return result
 
 
-def final_review_requirements(job: dict, keyword: str) -> dict:
+def intent_review_requirements(job: dict, keyword: str) -> dict:
     requirements = requirements_for(job, keyword)
     if job.get('id'):
         from .db import get_optional_artifact
@@ -165,6 +165,15 @@ def final_review_requirements(job: dict, keyword: str) -> dict:
             context = intent_value_context(chains)
             if context:
                 requirements['intent_value_context'] = context
+        if not requirements.get('intent_value_context'):
+            analysis = get_optional_artifact(job['id'], 'search_intent')
+            if analysis and analysis.get('content_text'):
+                requirements['intent_analysis'] = analysis['content_text']
+    return requirements
+
+
+def final_review_requirements(job: dict, keyword: str) -> dict:
+    requirements = intent_review_requirements(job, keyword)
     if astra_review_enabled():
         from .db import get_learned_style_rules
         from .step_review import SYSTEM_PROMPT
@@ -262,6 +271,7 @@ redundancy: stage=articleでは長い説明段落や複数の文が、新情報�
 stage=researchのprose_qualityとredundancyはnot_applicableとする。
 
 stage=researchでは、構成の各重要項目を確認済み事実だけで執筆できるか判定。
+coverageは確認済み事実の充足と記事目的の達成を区別し、構成の説明設計を検査する。完成本文は要求しない。
 モデルが勝手に掲げた件数も未充足ならfail。ユーザー指定数を減らす提案はしない。
 stage=articleでは完成本文全体を対象にし、構成の誤った結論は本文へ要求しない。
 出力例: {"checks":[{"key":"coverage","reason":"全対象と必須項目を照合した具体的根拠","status":"pass"}, ...]}
@@ -408,7 +418,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     from .quality_context import compact_enabled
     compact=compact_enabled()
     evidence_trace=[]
-    keys=CHECKS;system=AUDIT_SYSTEM
+    keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
     if compact:
         from .focused_quality import ROLES
         evidence_keys=ROLES['evidence']

@@ -10,7 +10,7 @@ from .article_quality import validate_delivery
 from .readability import readability_issues
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import WRITING_POLICY
-from .claim_scope import conditional_facts, scope_issues
+from .claim_scope import scope_issues
 from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, final_review_requirements,
                               response_text, audit_facts, source_evidence, explicit_risk_guarantees,
@@ -150,11 +150,15 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             if (requirements.get('intent_value_context') and
                     any(c['key']=='coverage' and c['status']=='fail' for c in report['checks'])):
                 packet['requirements']['intent_value_context'] = requirements['intent_value_context']
+            if (requirements.get('intent_analysis') and
+                    any(c['key']=='coverage' and c['status']=='fail' for c in report['checks'])):
+                packet['requirements']['intent_analysis'] = requirements['intent_analysis']
             repair_data=packet
         else:
+            from .generation_context import generation_evidence, repair_requirements
             repair_data={
-                'confirmed_facts':facts,'source_documents':sources,'requirements':requirements,
-                'content_contract':contract,'conditional_facts':conditional_facts(facts),
+                'confirmed_facts':generation_evidence(job_id, facts, sources),'source_documents':sources,'requirements':repair_requirements(requirements),
+                'content_contract':contract,
                 'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
                 'structural_issues':issues,'article_blocks':content_blocks(text)}
         messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]

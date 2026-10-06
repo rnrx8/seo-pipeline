@@ -1,3 +1,4 @@
+from pipeline.outline_policy import current_policy
 import copy
 import json
 import os
@@ -9,9 +10,14 @@ from pipeline.quality_context import review_facts,decision_brief
 from pipeline.content_quality import ContentQualityError,digest
 
 class GenerationContextTests(unittest.TestCase):
+    def setUp(self):
+        policy=patch("pipeline.research_requirements.matrix_policy",return_value="current-test-policy")
+        policy.start();self.addCleanup(policy.stop)
+
     def data(self):
         plan,pages,matrix=fixture()
         matrix['valid']=True
+        matrix['policy_sha256']='current-test-policy'
         matrix['items'][0]['verified']=True
         matrix['items'][0]['future_condition']={'audience':'男性','term':'2025年のみ'}
         matrix['items'][0]['reviewed_source_urls']=['https://review-bookkeeping.example']
@@ -32,6 +38,25 @@ class GenerationContextTests(unittest.TestCase):
         self.assertEqual(data['sources']['ref1']['quote'],pages[1]['text'])
         self.assertEqual(matrix,original)
 
+    def test_acceptance_metadata_is_not_article_content(self):
+        plan,pages,matrix=self.data()
+        matrix['items'][0]['reason']='ACCEPTANCE_REASON_ONLY'
+        plan['items'][0]['priority_reason']='RESEARCH_PRIORITY_ONLY'
+        original=copy.deepcopy(matrix)
+        body=decision_bundle(plan,matrix,quotes=True)
+        data=json.loads(body[body.index('{'):])
+        row=data['decisions'][0]
+        for field in ('basis','reason','applicable_at','omission_reason','source_requirement','priority_reason'):
+            self.assertNotIn(field,row)
+        self.assertNotIn('ACCEPTANCE_REASON_ONLY',body)
+        self.assertNotIn('RESEARCH_PRIORITY_ONLY',body)
+        self.assertEqual(data['usage_constraints']['q1']['applicable_at'],matrix['items'][0]['applicable_at'])
+        self.assertEqual(row['answer'],matrix['items'][0]['answer'])
+        self.assertFalse(row['supports_current_conclusion'])
+        self.assertTrue(row['publishable'])
+        self.assertNotIn('source_kind',data['sources']['ref1'])
+        self.assertEqual(matrix,original)
+
     def test_outline_keeps_source_urls_but_no_quote_bodies(self):
         plan,pages,matrix=self.data()
         data=decision_bundle(plan,matrix,quotes=False)
@@ -47,13 +72,14 @@ class GenerationContextTests(unittest.TestCase):
         matrix['items'][0]['verified']=False
         with self.assertRaises(ContentQualityError):decision_bundle(plan,matrix,quotes=True)
 
-    def test_production_boundary_requires_revision_check_and_legacy_stays_unchanged(self):
+    def test_all_providers_require_validated_projected_evidence(self):
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'}),patch('pipeline.research_requirements.require_matrix',side_effect=ContentQualityError('stale')) as check:
             with self.assertRaises(ContentQualityError):generation_evidence('job','facts','sources')
             check.assert_called_once_with('job')
-        with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'astra'}),patch('pipeline.content_quality.writing_evidence',return_value='legacy') as old:
-            self.assertEqual(generation_evidence('job','facts','sources'),'legacy')
-            old.assert_called_once_with('facts','sources')
+        plan,_,matrix=self.data()
+        for provider in ('astra','sonnet','tiered'):
+            with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
+                self.assertIn('generation-evidence-v2',generation_evidence('job','facts','sources'))
 
     def test_canonical_facts_can_reference_decisions_but_extra_facts_are_retained(self):
         facts='男性のみ、2025年価格。\n出典：https://source.example｜確認箇所："原文"'
@@ -79,18 +105,19 @@ class GenerationContextTests(unittest.TestCase):
         matrix['runtime_debug_marker']='MATRIX_BOOKKEEPING_SENTINEL'
         outline,_=step_outline.ensure_complete_volume_design(OUTLINE,'5,000字')
         artifacts={'serp':{'content_text':'{}'},'search_intent':{'content_text':'読者の料金比較'},
-                   'outline':{'content_text':outline},'fact_sheet':{'content_text':'男性のみ [confirmed]'},
+                   'outline':{'content_text':outline,'meta':{'editorial_policy':current_policy()}},'fact_sheet':{'content_text':'男性のみ [confirmed]'},
                    'fresh_sources':{'content_text':json.dumps(pages)},'content_contract':{'content_text':json.dumps(CONTRACT)},
                    'research_validation':{'content_text':'{}'}}
         class Captured(Exception):pass
-        for module in (step_outline,step_article,step_service_map):
+        import itertools
+        for module,provider in itertools.product((step_outline,step_article,step_service_map),("tiered","astra","sonnet")):
             captured=[]
             def send(*args,**kwargs):
                 messages=kwargs.get('messages',args[1] if len(args)>1 else [])
                 captured.append(json.dumps(messages,ensure_ascii=False))
                 raise Captured()
-            with self.subTest(stage=module.__name__),ExitStack() as stack:
-                stack.enter_context(patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'}))
+            with self.subTest(stage=module.__name__,provider=provider),ExitStack() as stack:
+                stack.enter_context(patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':'focused'}))
                 stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
                 stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
                 stack.enter_context(patch.object(module,'get_artifact',side_effect=lambda j,k:artifacts[k]))
@@ -110,3 +137,29 @@ class GenerationContextTests(unittest.TestCase):
             self.assertIn('https://media-one.example/a',captured[0])
             if module==step_article:
                 self.assertIn('ACCOUNT_STYLE_SENTINEL',captured[0])
+
+    def test_repair_projection_preserves_conditions_sources_and_audit_record(self):
+        from pipeline.generation_context import repair_requirements
+        plan,_,matrix=self.data()
+        matrix['items'][0]['reason']='INTERNAL_ADOPTION_SENTINEL'
+        requirements={'research_plan':plan,'research_decisions':matrix,'unrelated_requirement':'keep'}
+        original=copy.deepcopy(requirements)
+        projected=repair_requirements(requirements)
+        row=projected['research_decisions']['items'][0]
+        self.assertEqual(row['answer'],matrix['items'][0]['answer'])
+        self.assertEqual(row['future_condition'],matrix['items'][0]['future_condition'])
+        self.assertEqual(row['evidence'][0]['url'],matrix['items'][0]['evidence'][0]['url'])
+        self.assertEqual(row['evidence'][0]['quote'],matrix['items'][0]['evidence'][0]['quote'])
+        self.assertFalse(row['supports_current_conclusion'])
+        self.assertNotIn('INTERNAL_ADOPTION_SENTINEL',json.dumps(projected))
+        self.assertNotIn('basis',row)
+        self.assertEqual(projected['usage_constraints']['q1']['applicable_at'],matrix['items'][0]['applicable_at'])
+        self.assertEqual(projected,repair_requirements(projected))
+        self.assertEqual(requirements,original)
+
+    def test_direct_projection_rejects_stale_answers_even_when_marked_valid(self):
+        plan,_,matrix=self.data()
+        for policy in (None,'old-policy'):
+            matrix['policy_sha256']=policy
+            with self.assertRaises(ContentQualityError):
+                decision_bundle(plan,matrix,quotes=False)

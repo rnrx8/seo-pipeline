@@ -1,3 +1,4 @@
+from pipeline.outline_policy import current_policy
 """Offline behavioral tests for scope, durable limits, and evidence handoff."""
 import copy
 import json
@@ -185,7 +186,7 @@ class ScopedReviewTests(unittest.TestCase):
     def test_normal_outline_repair_recheck_and_restart_use_same_durable_flow(self):
         from pipeline import step_research_guard as guard
         from pipeline import content_quality as cq
-        artifacts={'outline':{'content_text':self.text,'meta':{}},'fact_sheet':{'content_text':''},
+        artifacts={'outline':{'meta':{'editorial_policy':current_policy()},'content_text':self.text},'fact_sheet':{'content_text':''},
                    'fresh_sources':{'content_text':json.dumps([{**p,'status':'success'} for p in self.pages])},
                    'content_contract':{'content_text':'{}'}}
         requests=[]
@@ -211,7 +212,7 @@ class ScopedReviewTests(unittest.TestCase):
             stack.enter_context(patch.object(guard,'get_job',return_value={'id':'offline-job'}))
             stack.enter_context(patch.object(guard,'get_artifact',side_effect=lambda j,s:copy.deepcopy(artifacts[s])))
             stack.enter_context(patch.object(guard,'upsert_artifact',side_effect=write))
-            stack.enter_context(patch.object(guard,'requirements_for',return_value=self.req))
+            stack.enter_context(patch.object(guard,'intent_review_requirements',return_value=self.req))
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value={}))
             stack.enter_context(patch('pipeline.step_outline.ensure_complete_volume_design',side_effect=lambda t,w:(t,False)))
             stack.enter_context(patch('pipeline.step_structure_guard.validate_structure',return_value=[]))

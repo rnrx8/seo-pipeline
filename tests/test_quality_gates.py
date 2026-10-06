@@ -23,6 +23,17 @@ class QualityGateTests(unittest.TestCase):
         self.assertFalse(readability_issues('## 説明\n'+'あ'*300))
         self.assertTrue(readability_issues('#### 小見出し\n'+'あ'*301))
 
+    def test_model_pass_cannot_override_continuous_prose(self):
+        text = '# 記事\n\n## 説明\n\n' + 'あ' * 170 + '\n\n**補足**\n\n' + 'い' * 170
+        with patch.object(q, 'create_with_retry', side_effect=responses()):
+            report = q.audit(None, stage='article', text=text, facts='', outline='',
+                             contract={}, requirements={})
+        self.assertTrue(all(c['status'] == 'pass' for c in report['checks']))
+        self.assertFalse(report['valid'])
+        self.assertEqual(report['readability_issues'][0]['characters'], 342)
+        with self.assertRaises(q.ContentQualityError):
+            q.require_audit(report, report['snapshot'], stage='article')
+
     def test_h4_addition_keeps_existing_section_ids(self):
         outline='### H2：比較\n#### H3：料金\n##### H4：条件\n### H2：まとめ'
         before='## 比較\n説明\n### 料金\n料金の説明\n#### 条件\n既存条件\n## まとめ\nまとめ'

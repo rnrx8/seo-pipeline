@@ -182,6 +182,8 @@ def repair_packet(text, requirements, sources, report):
         fail('修正箇所を特定できない指摘があります。全文修正を自動実行せず対象を確認してください。')
     packet = scoped_packet({'article_blocks':content_blocks(text),'requirements':requirements,
                             'source_documents':sources},failed+issues)
+    from .generation_context import repair_requirements
+    packet['requirements']=repair_requirements(packet.get('requirements',{}))
     packet['structural_issues']=issues
     packet['failed_checks']=failed
     return packet

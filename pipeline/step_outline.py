@@ -1,5 +1,6 @@
 from .fresh_sources import WRITING_POLICY
-from .content_quality import ContentQualityError, source_evidence, writing_evidence
+from .outline_policy import current_policy
+from .content_quality import ContentQualityError, source_evidence
 import json
 import re
 import anthropic
@@ -39,10 +40,11 @@ USER_TEMPLATE = """\
 
 以下の形式で記事構成案を作成してください。
 構成案は完成本文ではなく、執筆に必要な設計のみを簡潔に出力する。
-セクション内容・直下方針は各1文を基本とし、同じ説明を重複しない。
+セクション内容・直下方針は各1文を基本とし、同じ説明を重複しない。共通提示基準に沿って、各章で答える読者の疑問、選ぶ理由として使う確認済みの強み、その章で加える説明を対応づける。資料の全項目を掲載項目へ転記する必要はない。
 表は列項目と比較対象を設計し、完成記事用の全行の料金表や本文をここで書かない。
 根拠は短い要旨とURLで対応を示し、引用全文や調査判断理由を再掲しない。
-出典表示は記事設定に従い、内部の採用理由・確認日と適用開始日の区別などを読者向け注釈として設計しない。料金・機能の利用判断に必要な条件は設計に残す。
+出典表示は記事設定に従い、内部の採用理由・確認日と適用開始日の区別などを読者向け注釈として設計しない。料金・機能の利用判断に必要な条件は該当する列名・セル・商材説明に割り当てる。比較表の後に共通注意点リストを置くことを固定指定しない。
+目的別リストを設計する場合は読者が実現したい状態を軸にし、根拠のない年代限定や機能名だけの推薦を指示しない。年代データと推薦対象を分け、必要な利用条件は保持する。
 調査質問の数だけ見出しを作らず、同じ読者の疑問に答える項目をまとめる。
 必要な論点・出典との対応・末尾のボリューム設計は省略しない。
 
@@ -78,15 +80,15 @@ USER_TEMPLATE = """\
   - 長さの目安は30〜35字。これを大きく超える場合は heading_vocab を削って主題を優先する。
   - 良い例：「30代向け転職エージェントの選び方（失敗しないために）」
   - 悪い例：「【タイプ別診断】30代が"失敗しない"あなたに合う転職エージェントの選び方｜後悔しない」（先頭にvocab・装飾過多・vocab過多・長すぎ）
-- H2直下方針（順序厳守）：①見出しの問いに直接答える端的な結論を一文目に（前置き・遠回し禁止）→②並列要素はリスト/表で整理→③読者の不安に寄り添う補完・意図の汲み取りは後段に置く（答えより前に出さない）
+- H2直下方針：共通提示基準「検索語・結論・推奨理由」を、その章で扱う問い・結論・根拠・配置へ具体化する。完成本文の例文を各章に複製せず、執筆で引き継ぐ判断内容を指定する。
 - H2直下方針の直後に、そのH2全体について以下を必ず記載すること：
-  - セクション内容：H2全体で伝える結論、扱う範囲、読者が得られる判断材料を1〜3文で具体的に記載する
+  - セクション内容：H2全体で扱う範囲と、共通提示基準に沿って選んだ「主要な読者の望み→根拠のある強み→選ぶ価値」を簡潔に対応づける。H2直下へ要約する内容と、各H3で具体化する内容をここで振り分ける
   - 表現形式：H2直下で使う文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は何を解説するためかも記載する
   - 掲載項目：H2直下の表なら列項目、リストなら列挙する観点を具体的に記載する。文章のみの場合は「なし」とする
   - 使用する根拠：提供された[confirmed]要約と直接取得本文から、対象・条件を照合してH2直下で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する。根拠がない場合は「該当資料なし」とする
 - 配下の各H3について、以下を必ず記載すること：
   - H3タイトル
-  - セクション内容：そのH3で伝える結論、解説する論点、読者が得られる判断材料を1〜3文で具体的に記載する。「概要を説明する」のような抽象的な記述だけで終わらせない
+  - セクション内容：H2で割り当てた価値について、この商材の利用場面・使い方・必要条件から何を具体的に説明するかを1〜3文で記載する。H2の選定理由を別の語尾で再指定せず、表の前の概要と表の後の掘り下げを分ける
   - 表現形式：文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は、何を解説するために使うかも記載する
   - 掲載項目：表なら列項目、リストなら列挙する観点や手順を具体的に記載する。文章のみの場合は「なし」とする
   - 使用する根拠：ファクトシート内の[confirmed]情報から、このH3で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する
@@ -409,8 +411,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     from .generation_context import generation_evidence
     from .quality_context import compact_enabled
     fact = {**fact, 'content_text': generation_evidence(job_id,fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')),quotes=False)}
-    if not compact_enabled():
-        fact['content_text'] += '\n## 必須質問と照合済み回答\n' + json.dumps({'plan':load_plan(job_id),'matrix':matrix},ensure_ascii=False)
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""
@@ -550,6 +550,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             "input_tokens": total_input,
             "output_tokens": total_output,
             "volume_design_repaired": volume_repaired,
+            "editorial_policy": current_policy(),
         },
     )
     print(f"[outline] Done → artifact id={artifact['id']}")

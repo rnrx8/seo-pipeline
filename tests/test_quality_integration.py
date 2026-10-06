@@ -1,3 +1,4 @@
+from pipeline.outline_policy import current_policy
 import json
 
 SOURCE = {"content_text": json.dumps([{"url": "https://official.example/", "status": "success", "text": "直接取得した原文です"}])}
@@ -45,12 +46,12 @@ class QualityIntegrationTests(unittest.TestCase):
         with self.assertRaises(ContentQualityError):step_fact_review._verified_facts(report, fresh)
 
     def test_service_map_cannot_reintroduce_hypothesis_via_placement_instructions(self):
-        artifacts = {'outline':{'content_text':'### H2：料金の比較'},
+        artifacts = {'outline':{'content_text':'### H2：料金の比較','meta':{'editorial_policy':current_policy()}},
                      'fresh_sources':SOURCE, 'fact_sheet':{'content_text':'> 月額500円 [confirmed]\n\n> 月額123456円 [hypothesis]'}}
         response = SimpleNamespace(content=[SimpleNamespace(text=json.dumps({
             'service_section_type':'none','primary_h2':'','per_section_instructions':{},'cta_after_h2':[]}))],
             usage=SimpleNamespace(input_tokens=1,output_tokens=1))
-        with patch.object(step_service_map,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
+        with patch.object(step_service_map,'generation_evidence',return_value='月額500円'), patch.object(step_service_map,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
              patch.object(step_service_map,'get_job',return_value={}), \
              patch.object(step_service_map.anthropic,'Anthropic'), \
              patch.object(step_service_map,'create_with_retry',return_value=response) as model, \
