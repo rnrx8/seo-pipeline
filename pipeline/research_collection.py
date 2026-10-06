@@ -124,7 +124,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             task={**task,'items':[i for i in task['items'] if i['id'] in ids]}
             if not task['items']:continue
             task_ids={i['id'] for i in task['items']}
-        request_key=digest(json.dumps({'version':'subject-bounded-search-v2','plan':plan_hash,'task':task,
+        request_key=digest(json.dumps({'version':'subject-bounded-search-v3-answer-notes','plan':plan_hash,'task':task,
             'gaps':gap_rows,'system':system+DIRECT_POLICY,'prompt':prompt,'model':model,
             'search_tool':tool,'fetch_tool':FETCH_TOOL,'max_rounds':rounds,'max_tokens':tokens},ensure_ascii=False,sort_keys=True))
         receipt=get_optional_artifact(job_id,'collection_receipt_'+request_key)
@@ -139,7 +139,10 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             {k:p.get(k) for k in ('url','title','status')} for p in fresh.pages.values()],ensure_ascii=False)
         focused = (prompt + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
             + '\n必須の回答と主要な比較条件から確認する。同じ対象の関連資料をまとめて読み、補助質問ごとに個別検索を義務にしない。補助情報が関連資料にもなければ、探索済み範囲と記事から省く候補を記録し、判定は後段へ渡す。未探索・取得失敗を探索済みとしない。'
-            + '\n全ファクトシートを書き直さない。担当質問ごとに回答と出典を残す。まず関連する公式資料の本文を取得する。'
+            + '\n出力は記事本文や資料の全文転記ではなく、担当質問への執筆用根拠メモとする。質問IDごとに、直接の回答、回答に必要な対象・プラン・期間等の条件、根拠の順に短く記録する。'
+              'すべての担当質問を一巡して回答し、資料の掲載項目を網羅するために一問の説明を膨らませない。代表プランを尋ねる質問にはその料金・利用条件を答え、全プラン・全期間の表は質問が求める場合に限る。'
+              '同じ事実・引用を複数の質問で再掲せず、初出の質問IDを参照する。取得資料の本文は別途保存されるため、メモに転記しない情報まで削除されたと考えない。'
+              '未確認の項目は質問IDと理由を残す。回答を端的にする際も、必須の論点・比較条件・判断が変わる留保・根拠を省略しない。まず関連する公式資料の本文を取得する。'
               'リンク先に料金・FAQ・規約があれば必要な本文まで読む。未取得の質問は検索の要約で済ませない。'
               '公式で確認できない場合は独立した第三者本文を照合する。expert_allowedの補足説明は適切な専門家解説と資格・執筆/監修の関与を確認し、個別サービスの適法性や判決原文まで調査を拡大しない。探索した資料と不足を記録する。'
               '各事実は短い独立段落。数表全体を一つの引用にせず、事実ごとにURL・確認日・連続8〜240文字の正確な引用・判定タグを付ける。'
