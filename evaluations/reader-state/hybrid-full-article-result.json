@@ -1,18 +1,18 @@
 {
-  "status": "draft_complete_review_interrupted_not_accepted",
+  "status": "first_article_audit_complete_repair_budget_blocked",
   "test_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
   "source_job_id": "a401a011-bfd9-44c9-86e7-4bb9f61b2988",
   "preset": "meetingtechnology",
   "keyword": "マッチングアプリ 40代 既婚者",
   "yen_per_usd": 200,
   "authorized_cap_jpy": 500,
-  "settled_usage_priced_jpy": 139.251025,
+  "settled_usage_priced_jpy": 204.925525,
   "unsettled_maximum_reserved_jpy": 101.62299999999999,
-  "spent_plus_reserved_jpy": 240.874025,
-  "total_remaining_jpy": 259.125975,
-  "quality_remaining_jpy": 121.94117499999999,
+  "spent_plus_reserved_jpy": 306.548525,
+  "total_remaining_jpy": 193.45147500000002,
+  "quality_remaining_jpy": 56.26667499999999,
   "draft_generation_jpy": 112.8152,
-  "paid_requests": 7,
+  "paid_requests": 11,
   "generation_requests": 3,
   "opus_repairs": 0,
   "completed_stages": [
@@ -21,19 +21,21 @@
     "cta_inject"
   ],
   "incomplete_stages": [
-    "content_audit",
     "conditional_opus_repair",
     "post_repair_audit",
     "final_structure_validation"
   ],
   "stop": {
-    "stage": "coverage",
-    "provider": "openai",
-    "model": "gpt-6.1-sol",
-    "event_type": "error",
-    "cause": "unknown; error details and request ID were not retained",
-    "response_saved": false,
-    "automatic_retry": false
+    "stage": "before_opus_repair",
+    "cause": "quality budget remainder below measured conservative reservation",
+    "quality_limit_jpy": 250,
+    "quality_remaining_jpy": 56.26667499999999,
+    "repair_actual_input_tokens": 27969,
+    "repair_input_token_bound": 35168,
+    "repair_output_token_limit": 6000,
+    "repair_reservation_jpy": 80.2688,
+    "repair_request_sent": false,
+    "further_boundary": "Coverage has two counted attempts including the failed stream; a changed-text re-audit would exceed its two-attempt limit."
   },
   "storage_adapter_incident": {
     "fixed": true,
@@ -73,5 +75,33 @@
       "https://developers.openai.com/api/reference/overview",
       "https://developers.openai.com/api/docs/guides/streaming-responses"
     ]
+  },
+  "authorized_resume": {
+    "user_message": "再開して",
+    "same_job_and_ledger": true,
+    "resubmitted_failed_request_once": true,
+    "successful_cached_evidence_scope_reused": true,
+    "additional_cost_jpy": 65.6745,
+    "no_article_regeneration": true
+  },
+  "first_article_audit": {
+    "evidence": "pass",
+    "coverage": "pass",
+    "language": "fail",
+    "consistency": "pass",
+    "organization": "fail",
+    "repair_required": true,
+    "final_acceptance": false
+  },
+  "next_proposal_not_authorized": {
+    "total_limit_jpy": 500,
+    "isolate_to_this_test": true,
+    "quality_allocation": "Allow the remaining total allowance to be used for quality; production/default JPY250 quality allowance unchanged.",
+    "attempt_change": "One additional coverage-role attempt only, for re-audit after correction; retain the failed call and its reserved cost. No additional calls for other roles.",
+    "repair_conservative_reservation_jpy": 80.2688,
+    "reaudit_scenario_jpy": 70,
+    "resulting_total_scenario_jpy": 456.817325,
+    "not_a_completion_or_price_guarantee": true,
+    "no_new_research_or_drafting": true
   }
 }

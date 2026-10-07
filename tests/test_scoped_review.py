@@ -405,6 +405,14 @@ class ScopedReviewTests(unittest.TestCase):
                 budget.guard_review(ledger,.1)
                 self.assertAlmostEqual(budget.review_remaining(ledger),.3)
                 with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.31)
+                prior['retry_authorization']['reason']='provider_stream_error'
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                for event in ('error','response.failed'):
+                    prior['interruption']['event_type']=event
+                    budget.guard_review(ledger,.1)
+                prior['retry_authorization']['user_message']=''
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                prior['retry_authorization']['user_message']='再開して'
                 for field in ('process_exit_confirmed','response_saved'):
                     original=prior['interruption'][field]
                     prior['interruption'][field]=not original

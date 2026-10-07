@@ -11,7 +11,7 @@ import traceback
 from pathlib import Path
 
 
-def main(root, resume_unstarted_audit=False):
+def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
     root = Path(root).resolve()
     manifest = json.loads((root / 'manifest.json').read_text())
     assert manifest['authorized_cap_jpy'] == 500
@@ -88,11 +88,21 @@ def main(root, resume_unstarted_audit=False):
         assert not (artifacts / 'content_audit.json').exists()
         status['completed_stages'] = previous['completed_stages']
         (root / 'storage-error-status.json').write_text(json.dumps(previous))
+    if resume_authorized_review:
+        assert not resume_unstarted_audit
+        previous = json.loads((root / 'status.json').read_text())
+        assert previous['status'] == 'stopped' and previous['error_type'] == 'ContentQualityError'
+        assert previous['stage'] == 'content_audit'
+        assert previous['completed_stages'] == ['research_validation', 'article', 'cta_inject']
+        status['completed_stages'] = previous['completed_stages']
+        (root / 'provider-error-status.json').write_text(json.dumps(previous))
 
     def report():
         (root / 'status.json').write_text(json.dumps(status, ensure_ascii=False, indent=2))
 
     marker = 'resume-unstarted-audit.json' if resume_unstarted_audit else 'started.json'
+    if resume_authorized_review:
+        marker = 'resume-authorized-review.json'
     with (root / marker).open('x') as file:
         json.dump({'pid': os.getpid(), 'job_id': job['id']}, file)
     try:
@@ -101,7 +111,17 @@ def main(root, resume_unstarted_audit=False):
         require_current_outline(get(job['id'], 'outline'))
         with scope(job['id']):
             with ledger() as value:
-                if resume_unstarted_audit:
+                if resume_authorized_review:
+                    assert value['total_limit_usd'] == 2.5
+                    unsettled = [c for c in value['calls'] if c['status'] != 'accounted']
+                    assert len(unsettled) == 1
+                    call = unsettled[0]
+                    assert call['status'] == 'unknown_cost_reserved'
+                    assert call['review_operation']['role'] == 'coverage'
+                    assert call['retry_authorization']['reason'] == 'provider_stream_error'
+                    assert call['retry_authorization']['user_message'] == '再開して'
+                    assert call['retry_authorization']['request_sha256'] == call['review_operation']['request_sha256']
+                elif resume_unstarted_audit:
                     assert value['total_limit_usd'] == 2.5
                     assert all(c['status'] == 'accounted' for c in value['calls'])
                     assert all(c['stage'] in ('research_validation', 'article') for c in value['calls'])
@@ -117,7 +137,7 @@ def main(root, resume_unstarted_audit=False):
         selected += stages[start:]
         assert [key for key, _ in selected] == ['research_validation', 'article', 'cta_inject',
                                                 'content_audit', 'final_structure_validation']
-        if resume_unstarted_audit:
+        if resume_unstarted_audit or resume_authorized_review:
             selected = selected[3:]
         for key, fn in selected:
             status.update(status='running', stage=key)
@@ -142,4 +162,5 @@ def main(root, resume_unstarted_audit=False):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], resume_unstarted_audit='--resume-unstarted-audit' in sys.argv[2:])
+    main(sys.argv[1], resume_unstarted_audit='--resume-unstarted-audit' in sys.argv[2:],
+         resume_authorized_review='--resume-authorized-review' in sys.argv[2:])
