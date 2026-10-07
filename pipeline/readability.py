@@ -2,6 +2,8 @@
 import re
 from .content_edits import content_blocks
 
+SENTENCE_REVIEW_LIMIT = 80
+
 EMPATHY_ENDING_POLICY = '''「ですよね」は1記事で2回までとし、語尾を単調に反復しない。
 「〜はずです」「〜ではないでしょうか」「〜が大切です」「〜をおすすめします」などを文脈に合わせて使う。
 自然に締まる場合は共感表現を省略してよい。アカウント独自の学習済み文体ルールがある場合はそちらを優先する。'''
@@ -48,3 +50,38 @@ def readability_issues(text):
             if clean: run.append(clean); ids.append(block['id'])
     flush()
     return issues
+
+
+def long_sentence_candidates(text, limit=SENTENCE_REVIEW_LIMIT):
+    """Review hints, never automatic failures: style/empathy exceptions need context.
+
+    Count visible Japanese prose, excluding headings, table/list rows and code.
+    Markdown destinations and HTML markup do not contribute to the count.
+    """
+    from html import unescape
+    candidates = []
+    fenced = False
+    for block in content_blocks(text):
+        prose = []
+        for line in block['text'].splitlines():
+            stripped = line.strip()
+            if stripped.startswith(('```', '~~~')):
+                fenced = not fenced
+                continue
+            if fenced or re.match(r'^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|!\[|\|)', stripped):
+                continue
+            # A Markdown table without leading pipes is still a table.
+            if re.search(r'(?m)^\s*\|?\s*:?-{3,}:?\s*\|', block['text']):
+                continue
+            prose.append(re.sub(r'^>\s?', '', stripped))
+        visible = '\n'.join(prose)
+        visible = re.sub(r'<!--.*?-->', '', visible, flags=re.S)
+        visible = re.sub(r'!?\[([^\]]*)\]\([^\n]*?\)', r'\1', visible)
+        visible = unescape(re.sub(r'<[^>]*>', '', visible))
+        visible = re.sub(r'[*_`]', '', visible)
+        for sentence in re.findall(r'[^。！？!?]+[。！？!?]*', visible):
+            sentence = sentence.strip()
+            characters = len(re.sub(r'\s', '', sentence))
+            if characters > limit:
+                candidates.append({'id': block['id'], 'sentence': sentence, 'characters': characters})
+    return candidates

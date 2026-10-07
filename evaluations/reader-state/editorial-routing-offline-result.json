@@ -1,0 +1,72 @@
+{
+  "status": "offline_verified_live_model_not_tested",
+  "test_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
+  "paid_requests": 0,
+  "production_deployment": false,
+  "article_edited": false,
+  "previous_report_unchanged": true,
+  "residuals": [
+    {
+      "id": "block-0094",
+      "text": "家族や知人に知られにくい仕組みは、5社とも土台はそろっています。Webやブラウザで使えるため、ホーム画面にアイコンが残りません。",
+      "unchanged_from_draft": true
+    },
+    {
+      "id": "block-0142",
+      "text": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないとしたうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。個別の事案の判断は、弁護士への相談が必要です。",
+      "unchanged_from_draft": true
+    }
+  ],
+  "current_long_sentence_candidates": [
+    {
+      "id": "block-0142",
+      "sentence": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないとしたうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。",
+      "characters": 98
+    }
+  ],
+  "draft_long_sentence_candidates": [
+    {
+      "id": "block-0124",
+      "sentence": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないとしたうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。",
+      "characters": 98
+    }
+  ],
+  "editorial_checklist_characters": {
+    "evidence": {
+      "before": 2267,
+      "after": 85
+    },
+    "coverage": {
+      "before": 2267,
+      "after": 487
+    },
+    "language": {
+      "before": 2267,
+      "after": 846
+    },
+    "consistency": {
+      "before": 2267,
+      "after": 520
+    },
+    "organization": {
+      "before": 2267,
+      "after": 1301
+    }
+  },
+  "limitations": [
+    "Semantic subject/predicate miss is not deterministically resolved; no live quality pass claimed.",
+    "Long-sentence hints are model review candidates, not automatic failure; criteria and style exceptions unchanged.",
+    "One initial audit plus one existing repair/re-audit; call limits and costs not raised."
+  ],
+  "free_tests_passed": 512,
+  "next_paid_probe_not_authorized": {
+    "scope": "One language-role review of the original Sonnet draft, using the existing normal request builder. No repair, no other review roles, no regeneration.",
+    "previous_language_review_jpy": 13.006,
+    "proposed_cap_jpy": 30,
+    "success_criteria": [
+      "Reports both previously missed concrete prose defects, including the 98-character sentence.",
+      "Does not manufacture stylistic failures or require new disclaimers."
+    ],
+    "semantic_improvement_unverified": true
+  }
+}

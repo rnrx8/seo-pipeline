@@ -9,7 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
-from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -52,7 +52,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 """ + READABILITY_POLICY + """
 
 6. 長文チェック
-   - 一文が80字を超えている場合に検出
+   - 一文が""" + str(SENTENCE_REVIEW_LIMIT) + """字を超えている場合に検出
    - 自然な区切りで2文に分割する
 
 7. 文体チェック

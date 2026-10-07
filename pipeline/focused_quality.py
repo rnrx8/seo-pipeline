@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from .ai import create_with_retry, get_step_config
 from .reader_presentation import RECOMMENDATION_REVIEW
 from .content_edits import content_blocks
-from .readability import READABILITY_POLICY, readability_issues
-from .quality_context import review_requirements, compact_enabled, review_facts
+from .readability import READABILITY_POLICY, readability_issues, long_sentence_candidates, SENTENCE_REVIEW_LIMIT
+from .quality_context import review_requirements, compact_enabled, review_facts, editorial_rules_for_role
 
 ROLES = {
     'evidence': ('evidence_support', 'comparison_conditions', 'metric_scope', 'unsupported_guarantees'),
@@ -62,10 +62,17 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
     for role, keys in ROLES.items():
         # Source-heavy context is restricted to the roles that actually need it.
         payload = {'current_date':reference_date, 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
+        if 'editorial_rules' in payload['requirements']:
+            payload['requirements']['editorial_rules'] = editorial_rules_for_role(payload['requirements']['editorial_rules'], role)
+        if role == 'language':
+            payload['long_sentence_candidates'] = long_sentence_candidates(text)
         if role in ('evidence','coverage'):
             payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources
         system = (AUDIT_SYSTEM if role in ('evidence','coverage') else EDITORIAL_SYSTEM)
+        if role == 'language':
+            system += (f'\nlong_sentence_candidatesは既存の{SENTENCE_REVIEW_LIMIT}字超基準による実測候補であり、不合格判定ではない。'
+                       '文脈と学習済み文体ルールを照合して判断する。候補以外の全段落も主述・修飾・指示語を確認する。')
         system += ('\n【今回の担当範囲：上記の全項目出力指定より優先】\n' + ROLE_INSTRUCTIONS[role]
                    + '\n今回返すchecksは次のキーだけ、各1件：' + ', '.join(keys)
                    + '\nstatusはpass/failのみ。各checkにaffected_blocksを必ず付ける。'
