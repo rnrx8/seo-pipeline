@@ -1,0 +1,39 @@
+{
+  "status": "prepared_not_authorized_for_paid_execution",
+  "keyword": "既婚者マッチングアプリ やばい",
+  "preset_name": "既婚者クラブ｜meeting technology掲載用",
+  "word_count_setting": null,
+  "article_purpose": "cv",
+  "citation_style": "none",
+  "writing": "Sonnet draft + Opus scoped repair",
+  "review": "existing tiered checks; acceptance criteria unchanged",
+  "stages": [
+    "serp",
+    "search_intent",
+    "research_plan",
+    "fact_sheet",
+    "research_completeness",
+    "reference_structure",
+    "content_contract",
+    "outline",
+    "structure_guard",
+    "research_validation",
+    "service_map",
+    "article",
+    "cta_inject",
+    "content_audit",
+    "final_structure_validation"
+  ],
+  "model_api_calls": 0,
+  "production_job_created": false,
+  "article_specific_old_text_or_findings_reused": false,
+  "paid_cap_authorized": null,
+  "previous_trial_closed": "No further paid correction of the 40s article; retain its actual unresolved result",
+  "evaluation_questions": [
+    "Does the flow complete within its fixed attempts and budget?",
+    "Does a different search intent receive appropriate structure and recommendation?",
+    "Are source attribution and reader empathy consistent with agreed requirements?",
+    "What are research, generation and quality-check costs separately?"
+  ],
+  "reporting": "Report completion status, representative text and defects, cost by stage. Do not make zero individual prose issues a development completion condition; do not relabel failures as passes."
+}
