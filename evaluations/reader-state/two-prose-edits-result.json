@@ -29,5 +29,18 @@
   "production_deployment": false,
   "normal_flow_success_claimed": false,
   "source_sha256": "cf7b4204d0456fba4d9311c4076a910ce4916c08cd7935c9dd3f63e0be508e85",
-  "manual_candidate_sha256": "06c710bab1354a2d5107a159b30a3623126b7c775b902028d545ebed89191fe0"
+  "manual_candidate_sha256": "06c710bab1354a2d5107a159b30a3623126b7c775b902028d545ebed89191fe0",
+  "frontend_reflection": {
+    "article_url": "https://app.deepintentgraph.com/article/7b3faf7b-0675-44a3-b023-d94e2381db78",
+    "saved": true,
+    "database_exact_match": true,
+    "characters": 9778,
+    "source_article_preserved": true,
+    "status": "failed",
+    "display_status": "本文保存済み・確認未完了",
+    "manual_edit_recorded": true,
+    "full_article_reaudit": false,
+    "browser_verification": "login required; rendered article not verified",
+    "model_api_calls": 0
+  }
 }
