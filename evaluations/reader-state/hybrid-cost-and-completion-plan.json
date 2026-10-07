@@ -1,5 +1,5 @@
 {
-  "status": "implemented_offline_verified_live_validation_pending",
+  "status": "local_model_test_passed_full_flow_validation_pending",
   "new_paid_calls": 0,
   "pricing_basis": "Recorded usage priced by existing pipeline rates at 200 JPY/USD; not a reconciled provider invoice.",
   "cost_jpy": {
@@ -30,7 +30,7 @@
       "finding": "The two-block prose request contains 12149 system-prompt characters versus 543 serialized article-block characters. Source-document selection is already empty; fixed repair instructions dominate this small request."
     }
   ],
-  "next_step": "Separately authorize at most one repair plus one local review on existing two paragraphs. Historical full audit predates current policy, so this narrow model test cannot establish normal-flow or whole-article acceptance. Do not silently repeat a full audit or increase budget.",
+  "next_step": "Plan the minimum remaining normal-flow completion validation, with explicit scope and paid cap before execution; no production deployment yet.",
   "production_code_changed": false,
   "implemented_design": {
     "design": "Use the existing repair and audit machinery; route by actual edit scope rather than adding a new agent or always repeating five checks.",
@@ -58,5 +58,13 @@
     "new_paid_calls": 0,
     "original_full_audit_snapshot_unchanged_by_flag": true,
     "local_receipt_binds_prompts_models_and_exact_diff": true
+  },
+  "local_model_test": {
+    "result_file": "local-prose-finish-live-result.json",
+    "paid_calls": 2,
+    "usage_cost_jpy": 6.4662,
+    "cap_jpy": 80,
+    "local_passed": true,
+    "full_flow_passed": false
   }
 }
