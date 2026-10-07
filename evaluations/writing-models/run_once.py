@@ -6,20 +6,22 @@ import anthropic
 
 def run(root, arm):
     root=Path(root)
-    assert arm in ('sonnet','opus_edit','sonnet_edit'), 'Full Opus arm is not authorized'
+    models = {'sonnet':'claude-sonnet-5-5','opus_edit':'claude-opus-5-5','sonnet_edit':'claude-sonnet-5-5','reader_sonnet':'claude-sonnet-5-5','reader_control_edit':'claude-opus-5-5','reader_candidate_edit':'claude-opus-5-5'}
+    allocations = {'sonnet':50,'opus_edit':50,'sonnet_edit':15,'reader_sonnet':50,'reader_control_edit':25,'reader_candidate_edit':25}
+    assert arm in models, 'Arm is not authorized'
     with (root/'budget.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         state=json.loads((root/'budget.json').read_text())
         assert state['approved'] and state['max_total_jpy']==200
         assert arm not in state['calls'], 'Arm already attempted; do not resend'
         request=json.loads((root/f'{arm}-request.json').read_text())
-        assert request['model']==('claude-sonnet-5-5' if arm in ('sonnet','sonnet_edit') else 'claude-opus-5-5')
+        assert request['model']==models[arm]
         assert request['max_tokens']<=10000
         client=anthropic.Anthropic(max_retries=0)
         count=client.messages.count_tokens(model=request['model'],system=request['system'],messages=request['messages'],timeout=45).input_tokens
-        ir,orr=(2,10) if arm in ('sonnet','sonnet_edit') else (4,20)
+        ir,orr=(2,10) if models[arm]=='claude-sonnet-5-5' else (4,20)
         bound=((count*1.05+1024)*ir+request['max_tokens']*orr)/1e6*200
-        allocation = 15 if arm == 'sonnet_edit' else 50
+        allocation = allocations[arm]
         assert bound<=allocation, 'Per-arm allocation would be exceeded'
         used=sum(x.get('cost_jpy',x['reserved_jpy']) for x in state['calls'].values())
         assert used+allocation<=state['max_total_jpy']
