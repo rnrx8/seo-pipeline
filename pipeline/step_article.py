@@ -329,7 +329,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
     """Single API call. Returns (text, input_tokens, output_tokens)."""
     msg = create_with_retry(
         client,
-        model=MODEL,
+        model=get_step_config("article")[0],
         max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=messages,
@@ -802,7 +802,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         step="article_draft",
         content_type="text/markdown",
         content_text=article_text,
-        meta={"model": MODEL, "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
+        meta={"model": get_step_config("article")[0], "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
     )
 
     # --- A: [hypothesis] validation ---
@@ -848,7 +848,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_type="text/markdown",
         content_text=article_text,
         meta={
-            "model": MODEL,
+            "model": get_step_config("article")[0],
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,

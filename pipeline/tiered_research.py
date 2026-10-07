@@ -61,7 +61,7 @@ def cached_result(job_id,step,request):
   return json.loads(saved['content_text'])
  return None
 
-def checked_request(job_id,step,request):
+def checked_request(job_id,step,request,*,client=None):
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  old=cached_result(job_id,step,request)
  if old is not None:
@@ -69,7 +69,7 @@ def checked_request(job_id,step,request):
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
-  msg=create_with_retry(None,**request)
+  msg=create_with_retry(client,**request)
  value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
  previous=get_optional_artifact(job_id,step)
  meta=copy.deepcopy((previous or {}).get('meta',{}))

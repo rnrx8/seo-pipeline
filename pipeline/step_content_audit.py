@@ -5,7 +5,7 @@ from .step_cta_inject import cta_placement_issues
 
 import anthropic
 
-from .ai import create_with_retry, get_step_config, astra_review_enabled
+from .ai import create_with_retry, get_step_config, astra_review_enabled, hybrid_writing_enabled
 from .article_quality import validate_delivery
 from .readability import readability_issues, READABILITY_POLICY
 from .section_identity import bind_sections, carry_sections
@@ -53,7 +53,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
     section_map = (artifact.get('meta') or {}).get('section_map') or bind_sections(text, outline, contract)
     requirements = final_review_requirements(job, keyword)
-    client = None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, max_retries=0) if hybrid_writing_enabled() else (None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key))
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
     first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
     attempt_limit = 2
@@ -167,9 +167,11 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             request = dict(model=model, max_tokens=max_tokens,
                            system=repair_system, messages=messages, output_config=REPAIR_OUTPUT_CONFIG)
             from .ai import tiered_review_enabled
+            if hybrid_writing_enabled():
+                request['output_budget_includes_thinking'] = True
             if tiered_review_enabled():
                 from .tiered_research import checked_request
-                value, _ = checked_request(job_id, f'tiered_content_repair_{attempt + 1}_{encoding_attempt}', request)
+                value, _ = checked_request(job_id, f'tiered_content_repair_{attempt + 1}_{encoding_attempt}', request, **({'client':client} if hybrid_writing_enabled() else {}))
                 raw = json.dumps(value, ensure_ascii=False)
             else:
                 result = create_with_retry(client, **request)
