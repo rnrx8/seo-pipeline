@@ -22,6 +22,8 @@ REVIEW_PHASE_LIMITS={'outline':.5,'article':LIMIT}
 
 
 def review_operation(step):
+ if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
+ if step=='tiered_prose_finish_review':return 'article','prose_finish_review',1
  if step=='tiered_audit_research':return 'outline','audit',2
  if step=='outline_local_repair_response':return 'outline','repair',1
  if step.startswith('tiered_research_evidence_'):return 'outline',step.removeprefix('tiered_research_evidence_'),2
@@ -120,6 +122,11 @@ def guard_review(value,amount):
    raise ContentQualityError('追加確認の承認設定が不正です。')
   if meta['phase']==phase and (phase=='article' or meta['role']=='audit') and (not extension.get('role') or extension['role']==meta['role']):
    extra=extension['extra_calls_per_role']
+ if meta['role'] in ('prose_finish_repair','prose_finish_review'):
+  extra=0 # A terminal local finish cannot be extended into another loop.
+  repairs=[c for c in previous if c['review_operation']['role'] in ('repair','prose_finish_repair')]
+  if meta['role']=='prose_finish_repair' and len(repairs)>=2:
+   raise ContentQualityError('既存の修正回数枠を使い切っています。局所修正を追加しません。')
  if len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)

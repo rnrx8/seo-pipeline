@@ -489,8 +489,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     return report
 
 
-def require_audit(report: dict, expected: str, *, stage: str | None = None) -> None:
+def require_audit(report: dict, expected: str, *, stage: str | None = None, context: dict | None = None) -> None:
     checked = parse_audit(json.dumps(report, ensure_ascii=False))
+    if report.get('local_completion') and stage != 'article':
+        raise ContentQualityError('局所文章修正の完了には記事全体との照合が必要です。')
     if stage and report.get('stage') != stage:
         raise ContentQualityError('監査工程が現在の本文に対応していません。')
     if stage == 'article':
@@ -500,7 +502,11 @@ def require_audit(report: dict, expected: str, *, stage: str | None = None) -> N
         phases = report.get('phases', {})
         if set(phases) != set(ROLES):
             raise ContentQualityError('分割品質検査が不足しています。')
-        for role, keys in ROLES.items():
+        local = report.get('local_completion')
+        if local:
+            from .prose_completion import validate_completion
+            validate_completion(report, expected, context)
+        for role, keys in (() if local else ROLES.items()):
             phase = phases[role]
             checks = phase.get('checks', [])
             if phase.get('snapshot') != expected or len(checks) != len(keys) or {c.get('key') for c in checks} != set(keys) or any(c.get('status') != 'pass' for c in checks):

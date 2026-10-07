@@ -1,5 +1,5 @@
 {
-  "status": "cost_inventory_and_design_only",
+  "status": "implemented_offline_verified_live_validation_pending",
   "new_paid_calls": 0,
   "pricing_basis": "Recorded usage priced by existing pipeline rates at 200 JPY/USD; not a reconciled provider invoice.",
   "cost_jpy": {
@@ -30,7 +30,9 @@
       "finding": "The two-block prose request contains 12149 system-prompt characters versus 543 serialized article-block characters. Source-document selection is already empty; fixed repair instructions dominate this small request."
     }
   ],
-  "proposal_not_implemented": {
+  "next_step": "Separately authorize at most one repair plus one local review on existing two paragraphs. Historical full audit predates current policy, so this narrow model test cannot establish normal-flow or whole-article acceptance. Do not silently repeat a full audit or increase budget.",
+  "production_code_changed": false,
+  "implemented_design": {
     "design": "Use the existing repair and audit machinery; route by actual edit scope rather than adding a new agent or always repeating five checks.",
     "primary_change": "Select existing repair instructions needed for prose-only fixes; retain immutable facts/conditions, links, headings, CTA and user style constraints. Do not copy fact-acquisition instructions into purely grammatical repairs.",
     "completion_rule": "At most one bounded final local correction when full re-audit has passed all non-prose criteria and remaining failures are locally addressable prose defects. Otherwise keep existing unresolved result.",
@@ -46,6 +48,15 @@
       "Verify bounded attempts survive restart, use shared remaining budget, and failed scoped checks cannot promote completion."
     ]
   },
-  "next_step": "Implement the narrow scope routing and acceptance lineage on the test branch after agreement; finish offline checks before requesting a paid test.",
-  "production_code_changed": false
+  "implementation": {
+    "branch": "codex/writing-model-comparison",
+    "flag": "ARTICLE_LOCAL_PROSE_FINISH=1",
+    "default_enabled": false,
+    "offline_tests_passed": 529,
+    "live_model_quality_verified": false,
+    "production_deployed": false,
+    "new_paid_calls": 0,
+    "original_full_audit_snapshot_unchanged_by_flag": true,
+    "local_receipt_binds_prompts_models_and_exact_diff": true
+  }
 }
