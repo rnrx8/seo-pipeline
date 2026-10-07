@@ -1,0 +1,77 @@
+{
+  "status": "draft_complete_review_interrupted_not_accepted",
+  "test_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
+  "source_job_id": "a401a011-bfd9-44c9-86e7-4bb9f61b2988",
+  "preset": "meetingtechnology",
+  "keyword": "マッチングアプリ 40代 既婚者",
+  "yen_per_usd": 200,
+  "authorized_cap_jpy": 500,
+  "settled_usage_priced_jpy": 139.251025,
+  "unsettled_maximum_reserved_jpy": 101.62299999999999,
+  "spent_plus_reserved_jpy": 240.874025,
+  "total_remaining_jpy": 259.125975,
+  "quality_remaining_jpy": 121.94117499999999,
+  "draft_generation_jpy": 112.8152,
+  "paid_requests": 7,
+  "generation_requests": 3,
+  "opus_repairs": 0,
+  "completed_stages": [
+    "research_validation",
+    "article",
+    "cta_inject"
+  ],
+  "incomplete_stages": [
+    "content_audit",
+    "conditional_opus_repair",
+    "post_repair_audit",
+    "final_structure_validation"
+  ],
+  "stop": {
+    "stage": "coverage",
+    "provider": "openai",
+    "model": "gpt-6.1-sol",
+    "event_type": "error",
+    "cause": "unknown; error details and request ID were not retained",
+    "response_saved": false,
+    "automatic_retry": false
+  },
+  "storage_adapter_incident": {
+    "fixed": true,
+    "cause": "FileNotFoundError instead of production missing-row ValueError",
+    "paid_repeat_calls": 0,
+    "resume": "content_audit only; same job and ledger"
+  },
+  "known_draft_issues": {
+    "continuous_prose_characters": [
+      339,
+      392
+    ],
+    "unnecessary_disclaimer_example": "業者の完全な排除を約束するものではないため",
+    "automated_semantic_review_completed": false
+  },
+  "free_tests_after_diagnostic_fix": 504,
+  "production_writes": false,
+  "deployment": false,
+  "comparison": {
+    "historical_opus_draft_token_pricing_jpy": 248.9544,
+    "historical_is_not_matched_run": true,
+    "hybrid_final_quality_and_total_cost_established": false
+  },
+  "diagnostic_fix": {
+    "records": [
+      "http_status",
+      "request_id",
+      "response_id_when_available",
+      "event_type",
+      "error_code",
+      "error_type",
+      "error_digest"
+    ],
+    "raw_messages_or_headers_saved": false,
+    "automatic_retries_or_budget_changes": false,
+    "docs": [
+      "https://developers.openai.com/api/reference/overview",
+      "https://developers.openai.com/api/docs/guides/streaming-responses"
+    ]
+  }
+}

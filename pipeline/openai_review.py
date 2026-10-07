@@ -1,6 +1,8 @@
 """Responses API adapter for the bounded final audit/repair, never a fallback."""
 import json
 import os
+import re
+import hashlib
 import time
 from types import SimpleNamespace
 
@@ -36,7 +38,14 @@ def count_review_input(payload):
         if response is not None:response.close()
 
 
-def _completed_response(response, started):
+def _diagnostic_identifier(value):
+    """Keep bounded provider identifiers, never arbitrary messages or headers."""
+    if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value) and not value.startswith('sk-'):
+        return value
+    return None
+
+
+def _completed_response(response, started, diagnostics=None):
     """Consume SSE privately; partial JSON is never accepted or published."""
     from .content_quality import ContentQualityError
     event_lines, received = [], 0
@@ -56,6 +65,10 @@ def _completed_response(response, started):
             if raw == '[DONE]':
                 break
             event = json.loads(raw)
+            if diagnostics is not None:
+                response_id = _diagnostic_identifier((event.get('response') or {}).get('id'))
+                if response_id:
+                    diagnostics['response_id'] = response_id
             if event.get('type') == 'response.completed':
                 return event['response']
             if event.get('type') in ('error', 'response.failed', 'response.incomplete'):
@@ -64,6 +77,13 @@ def _completed_response(response, started):
                 error = (event.get('response') or {}).get('error') or event.get('error') or event
                 code = error.get('code') if isinstance(error, dict) else None
                 kind = error.get('type') if isinstance(error, dict) else None
+                if diagnostics is not None:
+                    diagnostics.update(event_type=event['type'],
+                                       error_code=_diagnostic_identifier(code),
+                                       error_type=_diagnostic_identifier(kind),
+                                       error_sha256=hashlib.sha256(json.dumps(error, sort_keys=True).encode()).hexdigest())
+                    if details.get('reason') in ('max_output_tokens', 'content_filter'):
+                        diagnostics['incomplete_reason'] = details['reason']
                 if code == 'credit_balance_exhausted':
                     raise ContentQualityError('OpenAI APIの利用残高がありません。残高追加後に確認工程から再開してください。')
                 if code == 'insufficient_quota' or kind == 'insufficient_quota':
@@ -94,6 +114,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
         response = None
         reservation = None
         accounted = False
+        diagnostics = {}
         started = time.monotonic()
         try:
             if tiered:
@@ -103,6 +124,10 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
             response = requests.post("https://api.openai.com/v1/responses",
                 headers={"Authorization": "Bearer " + key}, json=payload,
                 stream=True, timeout=(15, 600))
+            diagnostics['http_status'] = response.status_code
+            request_id = _diagnostic_identifier(response.headers.get('x-request-id'))
+            if request_id:
+                diagnostics['request_id'] = request_id
             if response.status_code == 429:
                 try:
                     error = response.json().get("error", {})
@@ -118,7 +143,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
                     continue
             if response.status_code != 200:
                 raise ContentQualityError(f"品質確認に失敗しました（HTTP {response.status_code}）。")
-            data = _completed_response(response, started)
+            data = _completed_response(response, started, diagnostics)
             if tiered and data.get("usage"):
                 settle(reservation,data["usage"]);accounted=True
             if data.get("status") != "completed":
@@ -138,6 +163,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
         except ContentQualityError:
             raise
         except requests.RequestException as exc:
+            diagnostics['transport_exception'] = type(exc).__name__
             # Preserve only the exception type, never URLs/headers or raw errors.
             raise ContentQualityError(f"品質確認の通信に失敗しました（{type(exc).__name__}）。未確認の本文は完了にしません。") from None
         except (ValueError, KeyError, TypeError):
@@ -145,5 +171,9 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
         finally:
             if reservation is not None and not accounted:
                 settle(reservation)
+            if reservation is not None:
+                from .quality_budget import ledger
+                with ledger() as value:
+                    value['calls'][reservation]['diagnostics'] = diagnostics
             if response is not None:
                 response.close()
