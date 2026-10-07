@@ -177,7 +177,11 @@ def save_resolution(stage, packet, checks, original, trace):
 def repair_packet(text, requirements, sources, report):
     from .content_edits import content_blocks
     failed = [c for c in report['checks'] if c['status']=='fail']
-    issues = report.get('structural_issues', [])
+    from .readability import readability_issues
+    # Derive whole prose runs from the exact edit input, including standalone
+    # focused-review reports. Do not trust cached paragraph addresses.
+    issues = [i for i in report.get('structural_issues', []) if i.get('key') != 'continuous_prose']
+    issues += readability_issues(text)
     if any(not c.get('affected_blocks') for c in failed+issues):
         fail('修正箇所を特定できない指摘があります。全文修正を自動実行せず対象を確認してください。')
     packet = scoped_packet({'article_blocks':content_blocks(text),'requirements':requirements,
