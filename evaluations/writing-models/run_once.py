@@ -6,23 +6,24 @@ import anthropic
 
 def run(root, arm):
     root=Path(root)
-    assert arm in ('sonnet','opus_edit'), 'Full Opus arm is not authorized'
+    assert arm in ('sonnet','opus_edit','sonnet_edit'), 'Full Opus arm is not authorized'
     with (root/'budget.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         state=json.loads((root/'budget.json').read_text())
         assert state['approved'] and state['max_total_jpy']==200
         assert arm not in state['calls'], 'Arm already attempted; do not resend'
         request=json.loads((root/f'{arm}-request.json').read_text())
-        assert request['model']==('claude-sonnet-5-5' if arm=='sonnet' else 'claude-opus-5-5')
+        assert request['model']==('claude-sonnet-5-5' if arm in ('sonnet','sonnet_edit') else 'claude-opus-5-5')
         assert request['max_tokens']<=10000
         client=anthropic.Anthropic(max_retries=0)
         count=client.messages.count_tokens(model=request['model'],system=request['system'],messages=request['messages'],timeout=45).input_tokens
-        ir,orr=(2,10) if arm=='sonnet' else (4,20)
+        ir,orr=(2,10) if arm in ('sonnet','sonnet_edit') else (4,20)
         bound=((count*1.05+1024)*ir+request['max_tokens']*orr)/1e6*200
-        assert bound<=50, 'Per-arm JPY50 allocation would be exceeded'
+        allocation = 15 if arm == 'sonnet_edit' else 50
+        assert bound<=allocation, 'Per-arm allocation would be exceeded'
         used=sum(x.get('cost_jpy',x['reserved_jpy']) for x in state['calls'].values())
-        assert used+50<=state['max_total_jpy']
-        state['calls'][arm]={'status':'pending','reserved_jpy':50,'input_count':count,'request_sha256':hashlib.sha256(json.dumps(request,ensure_ascii=False,sort_keys=True).encode()).hexdigest()}
+        assert used+allocation<=state['max_total_jpy']
+        state['calls'][arm]={'status':'pending','reserved_jpy':allocation,'input_count':count,'request_sha256':hashlib.sha256(json.dumps(request,ensure_ascii=False,sort_keys=True).encode()).hexdigest()}
         def save():
             tmp=root/'budget.tmp';tmp.write_text(json.dumps(state,ensure_ascii=False,indent=2));tmp.replace(root/'budget.json')
         save();started=time.monotonic()
