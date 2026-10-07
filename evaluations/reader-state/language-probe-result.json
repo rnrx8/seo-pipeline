@@ -1,0 +1,70 @@
+{
+  "status": "partial_improvement_target_detection_1_of_2",
+  "authorization": {
+    "user_message": "はい",
+    "cap_jpy": 30,
+    "source_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
+    "probe_id": "09c6f5af-4c91-46d0-aecd-2fff93d0f529",
+    "scope": "one language review of original draft; no retries or repairs"
+  },
+  "execution": {
+    "status": "complete",
+    "whole_article_accepted": false,
+    "requests": 1,
+    "cost_plus_reserved_jpy": 11.6065,
+    "unsettled": 0
+  },
+  "result": {
+    "role": "language",
+    "checks": [
+      {
+        "key": "prose_quality",
+        "reason": "修飾関係が意図とずれる見出し、不自然な動詞と名詞の組合せ、および編集基準の80字を超える一文があります。該当箇所の語句と文の区切りを局所修正してください。",
+        "status": "fail",
+        "affected_blocks": [
+          {
+            "id": "block-0016",
+            "reason": "「同世代の既婚者と話せる相手」は、探す相手が別の既婚者と話せるという修飾関係になっています。探す相手自身が同世代の既婚者であると伝わるよう、「同世代の既婚者の話し相手」などに修正してください。"
+          },
+          {
+            "id": "block-0124",
+            "reason": "「浅野総合法律事務所の浅野英之弁護士は」から「解説しています」までが98字の一文です。80字超の文を分割する編集基準に従い、利用自体の違法性の説明と、不貞行為に発展した場合の説明を自然な位置で分けてください。"
+          },
+          {
+            "id": "block-0138",
+            "reason": "「通知と閲覧履歴を設定しておく」は、「閲覧履歴を設定する」という不自然な組合せになっています。本文の手順に合わせ、通知の設定と閲覧履歴の削除を区別した見出しにしてください。"
+          },
+          {
+            "id": "block-0140",
+            "reason": "「スマホの通知と閲覧履歴は、利用前に設定しておく」は、削除する対象である閲覧履歴まで設定する対象として扱っています。通知は利用前に設定し、履歴は利用後に削除するという後続の手順に合わせて修正してください。"
+          },
+          {
+            "id": "block-0154",
+            "reason": "「美人局や口止め料を求められたら」は、「美人局を求められる」という意味になり、動詞との対応が不自然です。美人局の被害に遭うことと、口止め料を要求されることを分けて表現してください。"
+          },
+          {
+            "id": "block-0156",
+            "reason": "冒頭の「美人局や口止め料を求められたら」も、「求められる」が美人局にかかっています。見出しと同様に、美人局の被害と金銭の要求を区別した表現に修正してください。"
+          }
+        ]
+      }
+    ],
+    "snapshot": "43fb715488f5c00fe52ca09e858fc386c481d7d42cfc37a80621e36754e47486",
+    "model": "gpt-6.1-sol",
+    "input_tokens": 19137,
+    "output_tokens": 1019
+  },
+  "assessment": {
+    "long_sentence_detected": true,
+    "subject_predicate_issue_detected": false,
+    "target_detection_complete": false,
+    "remaining_findings": "The other five block findings refer to original-draft wording already changed in the previous Opus repair; they do not add five new defects to the current article.",
+    "unnecessary_disclaimer_requested": false,
+    "new_prohibition_added": false,
+    "article_changed": false,
+    "production_changed": false,
+    "whole_article_accepted": false
+  },
+  "free_tests_passed": 512,
+  "next_action_not_executed": "No further model request. Keep the known two residual issues in the current article; do not claim the language review now detects all defects."
+}
