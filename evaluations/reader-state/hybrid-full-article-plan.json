@@ -1,5 +1,5 @@
 {
-  "status": "first_article_audit_complete_repair_budget_blocked",
+  "status": "one_opus_repair_complete_reaudit_failed_prose",
   "source_job": "a401a011-bfd9-44c9-86e7-4bb9f61b2988",
   "keyword": "マッチングアプリ 40代 既婚者",
   "preset": "meetingtechnology",
@@ -63,5 +63,14 @@
     "outline_audit_counts_inside_cap": true,
     "free_tests_passed": 503
   },
-  "result_file": "hybrid-full-article-result.json"
+  "result_file": "hybrid-full-article-result.json",
+  "authorized_repair_resume": {
+    "total_cap_jpy": 500,
+    "isolated_quality_allocation_jpy": 500,
+    "extra_role": "coverage",
+    "extra_calls": 1,
+    "production_defaults_unchanged": true,
+    "completed": true,
+    "final_acceptance": false
+  }
 }

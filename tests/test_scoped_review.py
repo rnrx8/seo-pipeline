@@ -443,6 +443,20 @@ class ScopedReviewTests(unittest.TestCase):
                     value['calls'].append({'status':'accounted','reserved_usd':0,'cost_usd':0,'category':'quality','review_operation':{**budget.REQUEST.get(),'request_sha256':'old-repair'}})
                     with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
 
+    def test_article_extension_is_limited_to_named_role(self):
+        req={'messages':[{'content':'{}'}]}
+        for role in ('coverage','language'):
+            with budget.request_scope('offline-job','tiered_article_'+role,'new',req):
+                with budget.ledger() as value:
+                    meta=dict(budget.REQUEST.get())
+                    value['calls']=[{'status':'accounted','reserved_usd':.1,'cost_usd':.1,'category':'quality',
+                        'review_operation':{**meta,'request_sha256':str(i)}} for i in range(2)]
+                    value['additional_review_authorization']={'phase':'article','role':'coverage',
+                        'extra_calls_per_role':1,'user_message':'はい'}
+                    if role=='coverage':budget.guard_review(value,.1)
+                    else:
+                        with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
+
     def test_review_date_survives_midnight_but_changes_with_snapshot(self):
         from pipeline.quality_context import review_reference_date
         from datetime import datetime, timezone

@@ -118,7 +118,7 @@ def guard_review(value,amount):
       or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')
       or (phase=='outline' and (extension['extra_calls_per_role']!=1 or extension.get('role')!='audit'))):
    raise ContentQualityError('追加確認の承認設定が不正です。')
-  if meta['phase']==phase and (phase=='article' or meta['role']=='audit'):
+  if meta['phase']==phase and (phase=='article' or meta['role']=='audit') and (not extension.get('role') or extension['role']==meta['role']):
    extra=extension['extra_calls_per_role']
  if len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')

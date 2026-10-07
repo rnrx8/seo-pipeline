@@ -11,7 +11,7 @@ import traceback
 from pathlib import Path
 
 
-def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
+def main(root, resume_unstarted_audit=False, resume_authorized_review=False, resume_repair=False):
     root = Path(root).resolve()
     manifest = json.loads((root / 'manifest.json').read_text())
     assert manifest['authorized_cap_jpy'] == 500
@@ -76,10 +76,23 @@ def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
     ai.create_with_retry = measured_create
     from pipeline.step_plan import build_step_plan
     from pipeline.quality_budget import scope, ledger
+    if resume_repair:
+        from pipeline import quality_budget
+        authorization = json.loads((root / 'repair-authorization.json').read_text())
+        assert authorization == {'user_message': 'はい', 'total_limit_usd': 2.5,
+                                  'quality_limit_usd': 2.5, 'extra_coverage_calls': 1}
+        # This worker process only; the production default remains unchanged.
+        quality_budget.LIMIT = 2.5
+        quality_budget.REVIEW_PHASE_LIMITS = {'outline': .5, 'article': 2.5}
     from pipeline.research_requirements import require_matrix
     from pipeline.outline_policy import require_current_outline
     from pipeline.ai import validate_model_credentials
     status = {'status': 'preflight', 'test_job_id': job['id'], 'completed_stages': []}
+    if resume_repair:
+        assert not resume_unstarted_audit and not resume_authorized_review
+        previous = json.loads((root / 'status.json').read_text())
+        assert previous['status'] == 'stopped' and previous['stage'] == 'content_audit'
+        status['completed_stages'] = previous['completed_stages']
     if resume_unstarted_audit:
         previous = json.loads((root / 'status.json').read_text())
         assert previous['status'] == 'stopped' and previous['error_type'] == 'FileNotFoundError'
@@ -103,6 +116,8 @@ def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
     marker = 'resume-unstarted-audit.json' if resume_unstarted_audit else 'started.json'
     if resume_authorized_review:
         marker = 'resume-authorized-review.json'
+    if resume_repair:
+        marker = 'resume-repair.json'
     with (root / marker).open('x') as file:
         json.dump({'pid': os.getpid(), 'job_id': job['id']}, file)
     try:
@@ -111,7 +126,12 @@ def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
         require_current_outline(get(job['id'], 'outline'))
         with scope(job['id']):
             with ledger() as value:
-                if resume_authorized_review:
+                if resume_repair:
+                    assert value['total_limit_usd'] == 2.5
+                    assert len(value['calls']) == 11
+                    assert value['additional_review_authorization'] == {
+                        'phase': 'article', 'role': 'coverage', 'extra_calls_per_role': 1, 'user_message': 'はい'}
+                elif resume_authorized_review:
                     assert value['total_limit_usd'] == 2.5
                     unsettled = [c for c in value['calls'] if c['status'] != 'accounted']
                     assert len(unsettled) == 1
@@ -137,7 +157,7 @@ def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
         selected += stages[start:]
         assert [key for key, _ in selected] == ['research_validation', 'article', 'cta_inject',
                                                 'content_audit', 'final_structure_validation']
-        if resume_unstarted_audit or resume_authorized_review:
+        if resume_unstarted_audit or resume_authorized_review or resume_repair:
             selected = selected[3:]
         for key, fn in selected:
             status.update(status='running', stage=key)
@@ -163,4 +183,5 @@ def main(root, resume_unstarted_audit=False, resume_authorized_review=False):
 
 if __name__ == '__main__':
     main(sys.argv[1], resume_unstarted_audit='--resume-unstarted-audit' in sys.argv[2:],
-         resume_authorized_review='--resume-authorized-review' in sys.argv[2:])
+         resume_authorized_review='--resume-authorized-review' in sys.argv[2:],
+         resume_repair='--resume-repair' in sys.argv[2:])
