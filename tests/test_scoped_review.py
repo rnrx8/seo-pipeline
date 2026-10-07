@@ -325,6 +325,84 @@ class ScopedReviewTests(unittest.TestCase):
                 budget.guard_review(ledger,1.0)  # > previous .75 article ceiling
                 with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.11)
 
+    def test_article_first_source_screen_after_repair_keeps_call_and_cost_caps(self):
+        with budget.ledger() as ledger:
+            ledger['calls']=[{'reserved_usd':.2,'cost_usd':.2,'category':'quality',
+                'review_operation':{'phase':'article','role':'repair','request_sha256':'repair'}}]
+        request={'messages':[{'content':json.dumps({'source_documents':self.pages[:1]})}]}
+        with budget.request_scope('offline-job','tiered_article_evidence_screen','screen',request):
+            with budget.ledger() as ledger:
+                budget.guard_review(ledger,.01)
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.1)
+                ledger['calls'].extend([{'reserved_usd':.01,'cost_usd':.01,'category':'quality',
+                    'review_operation':{'phase':'article','role':'evidence_screen','request_sha256':str(i)}} for i in range(2)])
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.01)
+
+    def test_catalog_selects_only_requested_fetched_body_without_whole_collection(self):
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request)
+            value['review'].update(needed=step.endswith('screen'),block_ids=[self.a],
+                                   source_urls=[self.pages[1]['url']],reason='対象の条件の補足がB資料にあるため確認')
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch('pipeline.review_scope.save_resolution') as save:
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(len(seen),2)
+        self.assertEqual(seen[0]['source_documents'],self.pages[:1])
+        self.assertEqual(seen[1]['source_documents'],self.pages[:2])
+        self.assertTrue(all('text' not in p for p in seen[0]['source_catalog']))
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+        save.assert_not_called() # Never bind the expanded result to the smaller initial packet.
+
+    def test_catalog_cannot_be_claimed_as_read_or_request_unfetched_url(self):
+        for needed,url in [(False,self.pages[1]['url']),(True,'https://not-fetched.example')]:
+            def send(job,step,request):
+                value=self.message(request)
+                value['review'].update(needed=needed,block_ids=[self.a],source_urls=[url])
+                return value,NS(input_tokens=0,output_tokens=0)
+            with self.subTest(url=url),patch.object(research,'checked_request',side_effect=send),self.assertRaises(ContentQualityError):
+                evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+
+    def test_adjudicator_can_request_one_fetched_missing_body_in_existing_expansion(self):
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request)
+            value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
+                source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(len(seen),3)
+        self.assertEqual(seen[-1]['source_documents'],self.pages[:2])
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+
+    def test_expansion_preserves_resolved_checks_and_sends_only_remaining_claim(self):
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request,fail=not step.endswith('expanded'))
+            value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
+                source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
+            if step.endswith('adjudicate'):
+                next(c for c in value['checks'] if c['key']=='comparison_conditions')['reason']='already resolved comparison'
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(seen[-1]['target_block_ids'],[self.a])
+        self.assertEqual(seen[-1]['source_documents'],self.pages[1:2])
+        self.assertEqual(next(c for c in checks if c['key']=='comparison_conditions')['reason'],'already resolved comparison')
+
+    def test_fetched_phrase_lookup_keeps_requested_host_and_does_not_invent_sources(self):
+        pages=[{'url':'https://a.example/faq','text':'問い合わせ一覧'},
+               {'url':'https://a.example','text':'通知の時間帯を細かく指定できます。'},
+               {'url':'https://other.example','text':'通知の時間帯を細かく指定できます。料金も無料です。'}]
+        blocks=[{'id':'x','text':'通知の時間帯を細かく指定できます。料金も無料です。'}]
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://a.example/faq'],blocks,{'x'}),pages[1:2])
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://missing.example'],blocks,{'x'}),[])
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://a.example/faq'],blocks,{'absent'}),[])
+
     def test_generation_allocation_preserves_quality_budget(self):
         with budget.ledger() as ledger:
             ledger.update(total_limit_usd=5,category_limits_usd={'generation':3.75,'quality':1.25})

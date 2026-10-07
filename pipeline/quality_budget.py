@@ -91,7 +91,10 @@ def guard_review(value,amount):
           and kept.get('review_operation',{}).get('phase')==c['review_operation']['phase']
           and replacement.get('retained_request_sha256')==kept.get('review_operation',{}).get('request_sha256'))
  same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c) and not superseded_duplicate(c)]
- if meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
+ # Article re-audits cover the whole repaired text, so their first source screen
+ # may occur after repair. Source selection remains restricted to fetched pages
+ # by validate_routes/scoped_packet; this guard is for research-scope expansion.
+ if meta['phase']=='outline' and meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
   allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
   allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}
   if not same or not set(meta['source_urls'])<=allowed_urls or not set(meta['research_ids'])<=allowed_questions:
