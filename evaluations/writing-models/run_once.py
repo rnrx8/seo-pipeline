@@ -6,8 +6,8 @@ import anthropic
 
 def run(root, arm):
     root=Path(root)
-    models = {'sonnet':'claude-sonnet-5-5','opus_edit':'claude-opus-5-5','sonnet_edit':'claude-sonnet-5-5','reader_sonnet':'claude-sonnet-5-5','reader_control_edit':'claude-opus-5-5','reader_candidate_edit':'claude-opus-5-5','reader_v2_sonnet':'claude-sonnet-5-5','reader_v2_edit':'claude-opus-5-5','reader_auto_edit':'claude-opus-5-5'}
-    allocations = {'sonnet':50,'opus_edit':50,'sonnet_edit':15,'reader_sonnet':50,'reader_control_edit':25,'reader_candidate_edit':25,'reader_v2_sonnet':50,'reader_v2_edit':25,'reader_auto_edit':25}
+    models = {'sonnet':'claude-sonnet-5-5','opus_edit':'claude-opus-5-5','sonnet_edit':'claude-sonnet-5-5','reader_sonnet':'claude-sonnet-5-5','reader_control_edit':'claude-opus-5-5','reader_candidate_edit':'claude-opus-5-5','reader_v2_sonnet':'claude-sonnet-5-5','reader_v2_edit':'claude-opus-5-5','reader_auto_edit':'claude-opus-5-5','organization_edit':'claude-opus-5-5'}
+    allocations = {'sonnet':50,'opus_edit':50,'sonnet_edit':15,'reader_sonnet':50,'reader_control_edit':25,'reader_candidate_edit':25,'reader_v2_sonnet':50,'reader_v2_edit':25,'reader_auto_edit':25,'organization_edit':13}
     assert arm in models, 'Arm is not authorized'
     with (root/'budget.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
