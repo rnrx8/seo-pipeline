@@ -1,0 +1,33 @@
+{
+  "status": "manual_local_review_complete_automated_acceptance_pending",
+  "paid_calls": 0,
+  "current_article_modified": false,
+  "target_blocks": [
+    "block-0094",
+    "block-0142"
+  ],
+  "included_neighbor_blocks": 6,
+  "source_documents": 0,
+  "request_bytes_with_slack": 55095,
+  "output_limit": 6000,
+  "reference_mechanical_issues": [],
+  "reference_sentence_candidates": [],
+  "reference_edits": [
+    {
+      "id": "block-0094",
+      "new": "5社とも、家族や知人に知られにくい基本的な仕組みがそろっています。Webやブラウザで使えるため、ホーム画面にアイコンが残りません。"
+    },
+    {
+      "id": "block-0142",
+      "new": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないと解説しています。また、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。個別の事案の判断は、弁護士への相談が必要です。"
+    }
+  ],
+  "full_article_acceptance": false,
+  "manual_article_path": "/Users/ryoka/seo-saas/tmp/hybrid-full-article-20261007/manually-reviewed-article.md",
+  "preview_url": "http://127.0.0.1:8873/manual-review.html",
+  "original_automated_artifact_preserved": true,
+  "production_deployment": false,
+  "normal_flow_success_claimed": false,
+  "source_sha256": "cf7b4204d0456fba4d9311c4076a910ce4916c08cd7935c9dd3f63e0be508e85",
+  "manual_candidate_sha256": "06c710bab1354a2d5107a159b30a3623126b7c775b902028d545ebed89191fe0"
+}
