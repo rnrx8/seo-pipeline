@@ -1,0 +1,24 @@
+{
+  "stage": "bounded_source_handoff_verified_repair_not_sent",
+  "new_spend_jpy": 1.072225,
+  "total_trial_jpy": 1017.24082,
+  "article_generated": false,
+  "production_writes": false,
+  "free_tests_passed": 571,
+  "saved_model_result_reused_without_charge": true,
+  "fixes": [
+    "Restore a unique literal source span after whitespace or table-row formatting changes; retain intervening source conditions. No fuzzy fact matching.",
+    "Ignore unsolicited failures in unrouted review roles; preserve caller audit responsibility.",
+    "Do not mutate saved review during source span reconstruction."
+  ],
+  "actual_repair_payload_chars": 16953,
+  "previous_repair_payload_chars": 86842,
+  "raw_source_documents_removed": true,
+  "repair_token_count": 17794,
+  "repair_output_cap_including_thinking": 14000,
+  "repair_reservation_jpy": 93.872,
+  "outline_phase_used_jpy": 29.173425,
+  "outline_phase_remaining_jpy": 70.826575,
+  "reason_not_sent": "Existing outline phase ceiling100JPY would be exceeded. Total1500/quality850 unchanged. No automatic cap or output budget change.",
+  "remaining": "Local outline repair, normal re-audit, then article generation and final checks. No article completion claim."
+}

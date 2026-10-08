@@ -1,11 +1,32 @@
 import copy
 import unittest
-from pipeline.repair_evidence import VERSION, validate
+from pipeline.repair_evidence import VERSION, validate, original_span
 from pipeline.review_scope import repair_packet
 from pipeline.content_quality import ContentQualityError
 
 
 class RepairEvidenceTests(unittest.TestCase):
+    def test_whitespace_changes_restore_original_without_changing_words(self):
+        self.assertEqual(original_span('特に、既婚者。結果として。','前。特に、既婚者。 結果として。後。'),
+                         '特に、既婚者。 結果として。')
+
+    def test_table_lines_restore_intervening_conditions(self):
+        body='Basic 12 ヶ月 プラン （360日） ¥ 8,480 /月 一括 ¥ 101,760 Prime 12 ヶ月 プラン （360日） 1ヶ月プランから 約30%OFF ¥ 13,980 /月 一括 ¥ 167,760 次。'
+        quote='12 ヶ月 プラン （360日）\n¥ 13,980 /月\n一括 ¥ 167,760'
+        # Multiple possible starts are deliberately ambiguous: do not silently
+        # use Basic as the subject for a Prime price.
+        self.assertIsNone(original_span(quote,body))
+        prime=body[body.index('Prime'):]
+        self.assertEqual(original_span(quote,prime),'12 ヶ月 プラン （360日） 1ヶ月プランから 約30%OFF ¥ 13,980 /月 一括 ¥ 167,760')
+
+    def test_wrong_numbers_words_and_unbounded_gaps_are_not_repaired(self):
+        self.assertIsNone(original_span('料金は19,980円。','料金は14,980円。'))
+        self.assertIsNone(original_span('登録だけで利用可能。','登録後は本人確認で利用可能。'))
+        self.assertIsNone(original_span('Primeプランの条件\n月額料金は19,980円','Primeプランの条件'+'別'*201+'月額料金は19,980円'))
+
+    def test_normalized_ambiguous_quote_is_rejected(self):
+        self.assertIsNone(original_span('料金は\n19,980円','料金は 19,980円。他社料金は 19,980円'))
+
     def setUp(self):
         self.quote='男性Primeは30日14,980円。シークレット機能を含む。'
         self.pages=[{'url':'https://a.example/price','text':'無関係。'*10000+self.quote+'別条件。'*10000}]
@@ -39,6 +60,13 @@ class RepairEvidenceTests(unittest.TestCase):
         packet=repair_packet(self.text,self.req,self.pages,self.report)
         self.assertEqual(len(packet['correction_sources']),1)
         self.assertEqual(packet['failed_checks'][0]['correction_source_ids'],packet['failed_checks'][1]['correction_source_ids'])
+
+    def test_reconstructed_quote_does_not_mutate_saved_review(self):
+        self.pages[0]['text']=self.quote.replace('。','。 ')
+        before=copy.deepcopy(self.report)
+        packet=repair_packet(self.text,self.req,self.pages,self.report)
+        self.assertIn(packet['correction_sources']['correction-1']['quote'],self.pages[0]['text'])
+        self.assertEqual(self.report,before)
 
     def test_changed_or_fabricated_quote_is_rejected(self):
         for ref in ({'url':'https://invented.example','quote':self.quote},

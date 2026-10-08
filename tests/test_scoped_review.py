@@ -104,6 +104,18 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
 
+    def test_unrouted_role_cannot_add_a_failure_to_source_handoff(self):
+        def reply(j,s,request):
+            value=self.message(request,True)
+            other=next(c for c in value['checks'] if c['key']=='unsupported_guarantees')
+            other.update(status='fail',reason='範囲外の新規指摘',
+                         affected_blocks=[{'id':self.a,'reason':'範囲外'}],correction_evidence=[])
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=reply):
+            checks,_,_=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertNotIn('unsupported_guarantees',[c['key'] for c in checks])
+        self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
+
     def test_durable_limits_apply_to_direct_calls_and_survive_restarts(self):
         step='outline_local_repair_response'
         req={'model':'gpt-6-luna','max_tokens':100,'system':'repair','messages':[{'role':'user','content':'{}'}]}

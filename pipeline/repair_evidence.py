@@ -19,6 +19,43 @@ def add_schema(schema, urls):
     row['required'].append('correction_evidence')
 
 
+def original_span(quote, body):
+    """Resolve display formatting to one original span, never fuzzy-match facts.
+
+    Models sometimes return table rows on separate lines. Every line must
+    occur literally in order (ignoring whitespace), and omitted material is
+    restored, not silently discarded. Ambiguous or broad spans are rejected.
+    """
+    if quote in body:
+        return quote
+    positions = [i for i, ch in enumerate(body) if not ch.isspace()]
+    compact = ''.join(body[i] for i in positions)
+    joined = ''.join(quote.split())
+    pieces = [''.join(line.split()) for line in quote.splitlines() if line.strip()]
+    def matches(parts):
+        spans = set()
+        start = compact.find(parts[0])
+        while start >= 0:
+            end = start + len(parts[0])
+            for part in parts[1:]:
+                at = compact.find(part, end)
+                if at < 0 or at - end > 200:
+                    break
+                end = at + len(part)
+            else:
+                if positions[end-1] - positions[start] + 1 <= 1800:
+                    spans.add((positions[start], positions[end-1]+1))
+            start = compact.find(parts[0], start+1)
+        return spans
+    spans = matches([joined])
+    if not spans and len(pieces) > 1 and all(len(p) >= 8 for p in pieces):
+        spans = matches(pieces)
+    if len(spans) != 1:
+        return None
+    start, end = spans.pop()
+    return body[start:end]
+
+
 def validate(checks, pages, *, unresolved):
     from .review_scope import canonical, fail
     bodies = {canonical(p['url']):p.get('text','') for p in pages}
@@ -26,12 +63,16 @@ def validate(checks, pages, *, unresolved):
         refs = check.get('correction_evidence', [])
         if not isinstance(refs,list) or (check['status']=='fail' and not unresolved and not refs):
             fail('訂正に必要な原文引用がありません。資料全文を修正担当へ転送しません。')
+        resolved = []
         for ref in refs:
             if (not isinstance(ref,dict) or not isinstance(ref.get('url'),str)
-                or not isinstance(ref.get('quote'),str) or not ref['quote'].strip()
-                or ref['quote'] not in bodies.get(canonical(ref['url']),'')):
+                or not isinstance(ref.get('quote'),str) or not ref['quote'].strip()):
                 fail('訂正用引用が提示原文と一致しません。未確認の訂正を渡しません。')
-        check['correction_evidence'] = copy.deepcopy(refs)
+            quote = original_span(ref['quote'], bodies.get(canonical(ref['url']),''))
+            if quote is None:
+                fail('訂正用引用が提示原文と一致しません。未確認の訂正を渡しません。')
+            resolved.append({**ref, 'quote':quote})
+        check['correction_evidence'] = copy.deepcopy(resolved)
 
 
 def compact_repair_sources(packet, report):
@@ -42,7 +83,7 @@ def compact_repair_sources(packet, report):
         fail('保存済み照合結果に訂正用引用がありません。該当範囲の照合更新が必要です。全資料を再送しません。')
     if report.get('evidence_pending') or any(c.get('requires_source_check') for c in report['checks'] if c['status']=='fail'):
         fail('原文照合が未完了のため局所修正へ進めません。')
-    checks = [c for c in report['checks'] if c['status']=='fail']
+    checks = packet['failed_checks']
     # Check sources again against this exact repair snapshot. Model text cannot
     # become a quotation merely because a receipt or prior report contains it.
     validate([c for c in checks if 'correction_evidence' in c], packet['source_documents'], unresolved=False)
