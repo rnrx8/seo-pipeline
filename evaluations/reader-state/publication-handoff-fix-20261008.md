@@ -213,3 +213,19 @@ gpt-6.1-sol 1回、30.7030円。coverageはfail。「主回答H2が900字の独�
 最終全体確認はSol入力47,618／出力2,826、valid=true。構成対象7項目はすべてpass、構造・scope・riskの機械指摘0、本文のprose／redundancyは構成段階のため対象外。目視で主回答3H3、対策との役割、KW入りの直下結論、根拠ID・必要条件・個別表・分量合計12,300を確認。今回の通算費用236.4349円で250円以内。これは通常生成の構成を既存処理で修正して構成全体の合格を得た結果であり、最初から1回の通常実行だけで全項目が合格した証明ではない。本文生成・本文品質・本番反映は未実施。新しい検索意図／判断過程設計も未実装。
 
 証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/{outline-main-answer-generation-test,outline-target-repair-test,outline-source-findings-test,outline-final-condition-test} の各authorization/request/response/review/result/ledger。最後のcaseにはoutline-diff.txtとmanual-assessment.json、preview-state.jsonを保存。http://127.0.0.1:8873/outline-current-policy.htmlを更新し、合格・8H2・236.43円・本文未生成／本番未反映がローカル確認画面で表示されることを確認。スクリーンショットはoutline-final-condition-test/preview-status.png。run開始時のPython import path／ログ先ディレクトリ設定の失敗はAPI送信前で費用0、送信済み生成の再試行はしていない。
+
+## 2026-10-09: 章設計の本文引継ぎテスト（初稿のみ、最終校閲は別）
+
+ユーザー「続けて」で、直前に提示した追加250円上限の本文試験を実行。保存済みの調査・合格構成を再使用し、通常service_map 1回、step_articleのSonnet5.5本文3パート各1回を隔離保存で実行した。新しい検索・調査・構成生成、有料の最終校閲、Opus修正、自動再生成、構造補修、本番DB書込・デプロイは含めない。試験ラッパーは同じパートへの追加課金を送信前に止める。旧応答・台帳・構成は不変。別ケースchapter-body-handoff-test-20261009の総額上限1.25 USDを送信前予約で適用した。
+
+実行前には通常本文処理のrequire_matrix、構成方針、研究確認snapshot、分量設計の判定を通し、3パートへ最新構成と回答要素が渡ることを確認した。計数だけの要求捕捉では後続本文は未生成のプレースホルダーとして明記し、生成結果とは扱わない。前のservice_mapやarticle、content_auditは引き継いでいない。想定費用は配置と本文約169.15円、出力上限と入力余裕を含む上側推計214.93円。有料校閲や再生成はこの推計に含めない。
+
+実結果は配置1回＋本文3回、全4呼出精算済み、141.3008円（内部料金・USDJPY200）。Sonnetの本文出力は2532/2342/4413、合計9287トークン、本文10157文字（Markdown含む）。構成の8H2・17H3を保ち、構造・本文対応検査は指摘なし。171字のリードに商材推薦はなく、主回答のKW入り第一文から法的・金銭・身バレの3H3へ続く。3H3は各476/321/322字程度で、状況・仕組み・影響を説明する。4商材に個別表あり。主回答の章設計引継ぎは確認できた。
+
+記事全体は合格にしない。無料readability_issuesで既婚者クラブの表の後に593字の通常文章連続を検出。目視では配下H4なしの3H3が181/156/129字、比較表の女性料金セルに「確認できた範囲では記載せず」、複数節に不要な保証否定、番号付きリストを「次の表」と呼ぶ参照不整合が残る。これらを個別編集して成果物に混ぜていない。
+
+実際のrequest-4のsystemには既存の300字条件、H3全体200字条件、不要な保証否定を本文に添えない共通基準がある。条件未設定ではなく、今回の初稿が従わない事象である。通常content_auditは同じ読みやすさ検出器と独立した文章・整合性・情報整理の役割を持つが、今回の新しい本文に対する有料確認・Opus修正は未実行。したがって通常最終フローがこの本文を合格扱いした証拠はなく、修正できることも未証明。禁止事項を重ねて追加する根拠にしない。
+
+構成とservice_mapは比較表に女性料金列を残す一方、MarriedGoの料金論点は採用しない設計。これが内部メモ型セルの入力側の具体的な緊張点である。掲載項目を確認済み情報と読者の判断に合わせる設計の問題として扱い、サービス固有の禁止句や「全社すべて同じ情報が揃わなければ比較不可」といった新条件へ拡張しない。保証境界が本文化されたことも入力と出力で観測したが、モデル内部の原因を断定しない。
+
+証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/chapter-body-preflight/{preflight,test-plan,prepared-request-0..3}.json、chapter-body-test/{authorization,request-1..4,response-1..4,result,article.md,free-checks,manual-assessment,ledger,preview-status.png}。既存iabタブ10をhttp://127.0.0.1:8873/chapter-body.htmlへ切替え、実本文・141.30円・修正必要・有料最終校閲/本番未実施が表示されることを確認。次は既存の最終確認・Opus修正工程の範囲と費用を決めて検証する。今回の250円枠にその有料工程は含めていない。
