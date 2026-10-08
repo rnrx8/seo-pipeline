@@ -4,6 +4,7 @@ from unittest.mock import patch
 from pipeline.outline_design import assignment_issues, topic_assignments
 from pipeline.outline_length import planning_setting
 from pipeline import step_outline, step_article
+from pipeline.content_contract import build_content_contract
 
 
 PLAN = {'items': [
@@ -18,6 +19,21 @@ BRIEF = '''### H2：主な危険とは？
 
 
 class OutlineDesignTests(unittest.TestCase):
+    def test_purpose_changes_service_role_without_losing_information_intent(self):
+        for purpose, treatment in (("cv", "integrated"), ("awareness", "none"), ("", "none")):
+            job = {"article_purpose": purpose}
+            contract = build_content_contract(keyword="既婚者マッチングアプリ やばい",
+                intent_text="Primary：リスクを理解したい", query_attrs_text="{}", fact_text="",
+                job=job, service={"name":"既婚者クラブ"})
+            self.assertEqual(contract["service_treatment"], treatment)
+            self.assertEqual(contract["primary_intent"], "Primary：リスクを理解したい")
+            prompt = step_outline._build_extra_instructions(job)
+            if purpose:
+                self.assertIn("【記事目的】" + purpose, prompt)
+                self.assertIn("論点の採否・章の役割", prompt)
+            else:
+                self.assertNotIn("【記事目的】", prompt)
+
     def test_missing_required_topic_fails_but_unused_supporting_does_not(self):
         self.assertEqual(assignment_issues(BRIEF, PLAN), [])
         self.assertEqual(topic_assignments(BRIEF)[0]['ids'], ['q01'])

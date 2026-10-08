@@ -397,7 +397,7 @@ def _build_extra_instructions(job: dict) -> str:
     purpose = job.get("article_purpose")
     if purpose:
         lines.append(f"\n【記事目的】{purpose}")
-        lines.append("上記の目的に合わせてCTA・誘導文・CV導線の設計を行うこと。")
+        lines.append("上記の目的を、共通の構成設計基準に従って論点の採否・章の役割・説明の強弱・順序へ反映すること。CTAや申込みへの誘導は目的に合う場合に設計する。")
 
     target = job.get("target_audience")
     if target:
