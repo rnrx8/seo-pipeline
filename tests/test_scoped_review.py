@@ -125,6 +125,17 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
 
+    def test_scoped_source_response_only_requires_routed_check_categories(self):
+        def send(job,step,request):
+            value=self.message(request)
+            value['checks']=[c for c in value['checks'] if c['key']=='evidence_support']
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            checks,_,_=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertEqual([c['key'] for c in checks],['evidence_support'])
+        self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
+
     def test_source_pass_cannot_omit_one_of_two_named_findings(self):
         def send(job,step,request):
             value=self.message(request)
@@ -550,6 +561,9 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertTrue(all(c['status']=='pass' for c in checks))
 
     def test_expansion_preserves_resolved_checks_and_sends_only_remaining_claim(self):
+        # A retained verdict must actually belong to this routed source task.
+        self.payload['candidate_checks'].append({**self.check,'key':'comparison_conditions',
+            'affected_blocks':[{'id':self.summary,'reason':'比較条件'}]})
         seen=[]
         def send(job,step,request):
             data=json.loads(request['messages'][0]['content']);seen.append(data)

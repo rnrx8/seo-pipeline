@@ -146,12 +146,15 @@ def evidence_audit(stage, payload, keys, text):
         request=dict(model=model,max_tokens=tokens,system=source_system+'\n今回の役割：'+role,output_config=schema,
                      messages=[{'role':'user','content':json.dumps(data,ensure_ascii=False)}])
         value,usage=checked_request(JOB.get(),f'tiered_{stage}_evidence_{name}',request)
-        checks=parse_focus(json.dumps(value,ensure_ascii=False),keys,text)
-        # The caller only replaces the explicitly routed checks. Do not let
-        # unsolicited findings in other roles block this bounded source task
-        # or become saved source decisions. Their original audit is preserved.
-        routed_keys={c['key'] for c in candidates}
-        checks=[c for c in checks if c['key'] in routed_keys or c['status']=='pass']
+        # Source routing requests only the named checks. The schema's enum
+        # lists possible categories, not a requirement to repeat the untouched
+        # whole-article checks. Keep the caller's original verdicts for those.
+        routed_keys=tuple(dict.fromkeys(c['key'] for c in data['candidate_checks']))
+        try:
+            routed={'checks':[c for c in value['checks'] if c['key'] in routed_keys]}
+        except (KeyError,TypeError) as exc:
+            raise ContentQualityError('原文照合の判定形式が不正です。') from exc
+        checks=parse_focus(json.dumps(routed,ensure_ascii=False),routed_keys,text)
         validate_claim_verdicts(checks, data['candidate_checks'])
         # parse_focus reconstructs IDs from full article; targeted blocks must
         # keep those addresses, and the reviewer may not cite an unseen block.

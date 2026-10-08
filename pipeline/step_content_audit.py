@@ -61,6 +61,33 @@ def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
         return None
 
 
+def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
+                         word_count_setting, contract, section_map):
+    """Validate a saved model patch with the same gates as a fresh repair."""
+    if packet is not None:
+        from .review_scope import validate_edits
+        validate_edits(raw,packet)
+    candidate = apply_block_edits(text, raw)
+    required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
+                    for loc in check.get('affected_blocks', [])}
+    required_ids.update(loc['id'] for issue in issues if issue['key'] != 'continuous_prose' for loc in issue.get('affected_blocks', []))
+    edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
+    missed = required_ids - {edit['id'] for edit in edits}
+    if missed:
+        raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
+    unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
+    unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
+    unresolved += [v for v in validate_delivery(candidate, outline, word_count_setting, contract=contract)
+                   if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
+    if unresolved:
+        raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
+    try:
+        candidate_sections = carry_sections(text, candidate, outline, section_map, allow_h4=True)
+    except ValueError as exc:
+        raise ContentQualityError(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。') from exc
+    return candidate, candidate_sections
+
+
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     artifact = get_artifact(job_id, 'article')
@@ -225,27 +252,9 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             upsert_artifact(job_id=job_id, step=response_step,
                             content_type='application/json', content_text=raw, meta={'audited': False})
             try:
-                if packet is not None:
-                    from .review_scope import validate_edits
-                    validate_edits(raw,packet)
-                candidate = apply_block_edits(text, raw)
-                required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
-                                for loc in check.get('affected_blocks', [])}
-                required_ids.update(loc['id'] for issue in issues if issue['key'] != 'continuous_prose' for loc in issue.get('affected_blocks', []))
-                edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
-                missed = required_ids - {edit['id'] for edit in edits}
-                if missed:
-                    raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
-                unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
-                unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
-                unresolved += [v for v in validate_delivery(candidate, outline, job.get('word_count_setting'), contract=contract)
-                               if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
-                if unresolved:
-                    raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
-                try:
-                    candidate_sections = carry_sections(text, candidate, outline, section_map, allow_h4=True)
-                except ValueError as exc:
-                    raise ContentQualityError(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。') from exc
+                candidate, candidate_sections = apply_reviewed_edits(
+                    text, raw, packet, report, issues, facts, outline,
+                    job.get('word_count_setting'), contract, section_map)
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:

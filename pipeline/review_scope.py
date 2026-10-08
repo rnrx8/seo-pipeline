@@ -231,8 +231,34 @@ def repair_packet(text, requirements, sources, report, *, planning=False):
     issues += readability_issues(text)
     if any(not c.get('affected_blocks') for c in failed+issues):
         fail('修正箇所を特定できない指摘があります。全文修正を自動実行せず対象を確認してください。')
-    packet = scoped_packet({'article_blocks':content_blocks(text),'requirements':requirements,
-                            'source_documents':sources},failed+issues)
+    blocks = content_blocks(text)
+    by_id = {b['id']: b for b in blocks}
+    primary = {l['id'] for c in failed+issues for l in c.get('affected_blocks', [])}
+    # Reviewers may name a condition's destination in a finding without marking
+    # that destination as defective. Keep those explicit dependencies editable.
+    import re
+    related = {ref for c in failed+issues for loc in c.get('affected_blocks', [])
+               for ref in re.findall(r'(?<![A-Za-z0-9_-])block-\d+(?!\d)', loc['reason'])}
+    if not related <= by_id.keys():
+        fail('修正指示が参照する段落IDが現在の本文にありません。')
+    # Updating a table can require its immediately preceding prose introduction
+    # to change too. Neighboring context elsewhere remains read-only.
+    for i, block in enumerate(blocks):
+        if block['id'] not in primary|related or not i:
+            continue
+        if re.search(r'(?m)^\s*\|?\s*:?-{3,}:?\s*\|', block['text']):
+            previous = blocks[i-1]
+            if not re.match(r'^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\|)', previous['text'].lstrip()):
+                related.add(previous['id'])
+    dependencies = related-primary
+    scope_checks = failed+issues
+    if dependencies:
+        scope_checks = scope_checks + [{'affected_blocks':[
+            {'id':ref, 'reason':'既存指摘の参照先または表の導入を整合させるための関連段落'}
+            for ref in sorted(dependencies)]}]
+    packet = scoped_packet({'article_blocks':blocks,'requirements':requirements,
+                            'source_documents':sources},scope_checks)
+    packet['related_block_ids'] = sorted(dependencies)
     from .generation_context import repair_requirements
     packet['requirements']=repair_requirements(packet.get('requirements',{}),planning=planning)
     packet['structural_issues']=issues
@@ -245,7 +271,8 @@ def repair_packet(text, requirements, sources, report, *, planning=False):
 def validate_edits(raw, packet):
     try:
         edits=json.loads(raw)['edits']
-        if any(e['id'] not in packet['target_block_ids'] for e in edits):
-            fail('指摘対象外の段落を変更する修正は適用しません。')
+        outside = any(e['id'] not in packet['target_block_ids'] for e in edits)
     except (ValueError,KeyError,TypeError):
         fail('局所修正の形式が不正です。')
+    if outside:
+        fail('指摘対象外の段落を変更する修正は適用しません。')
