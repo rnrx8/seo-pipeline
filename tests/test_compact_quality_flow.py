@@ -43,6 +43,12 @@ class CompactQualityFlowTests(unittest.TestCase):
         if 'correction_evidence' in fields:
             for c in result['checks']:
                 c['correction_evidence']=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail else []
+        if 'claim_verdicts' in fields:
+            data = json.loads(request['messages'][0]['content'])
+            expected = {c['key']: c['affected_blocks'] for c in data['candidate_checks'] if c['status']=='fail'}
+            for c in result['checks']:
+                c['claim_verdicts'] = [{'id':l['id'],'status':'fail' if fail else 'pass','reason':'対象条件の照合'}
+                                      for l in expected.get(c['key'],[])]
         if 'review' in root['properties']:
             result['review']={'needed':review,'block_ids':[self.blocks[2]['id']] if review else [],
                               'source_urls':[self.pages[0]['url']],'reason':'契約条件を確認'}

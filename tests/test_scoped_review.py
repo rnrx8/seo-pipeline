@@ -44,12 +44,20 @@ class ScopedReviewTests(unittest.TestCase):
 
     def message(self,request,fail=False):
         fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
-        return {'checks':[{'key':k,'status':'fail' if fail and k=='evidence_support' else 'pass',
+        value = {'checks':[{'key':k,'status':'fail' if fail and k=='evidence_support' else 'pass',
             'reason':'女性の標準プランが無料。メッセージを含む。',
             'affected_blocks':[{'id':self.a,'reason':'条件欠落'}] if fail and k=='evidence_support' else [],
             'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail and k=='evidence_support' else []}
             for k in fields['key']['enum']],
             'review':{'needed':False,'block_ids':[],'source_urls':[self.pages[0]['url']],'reason':'原文で対応確認済み'}}
+        if 'claim_verdicts' in fields:
+            data = json.loads(request['messages'][0]['content'])
+            expected = {c['key']: c['affected_blocks'] for c in data['candidate_checks'] if c['status']=='fail'}
+            for check in value['checks']:
+                failed = {l['id'] for l in check['affected_blocks']}
+                check['claim_verdicts'] = [{'id':l['id'],'status':'fail' if l['id'] in failed else 'pass',
+                    'reason':'対象条件を原文で照合した判定'} for l in expected.get(check['key'],[])]
+        return value
 
     def fake_provider(self,fail=False):
         def send(_,**request):
@@ -117,11 +125,64 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
 
+    def test_source_pass_cannot_omit_one_of_two_named_findings(self):
+        def send(job,step,request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check['claim_verdicts']=check['claim_verdicts'][:1]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'指摘ごとの判定'):
+                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
+
+    def test_source_check_cannot_pass_when_one_named_finding_still_fails(self):
+        def send(job,step,request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check['claim_verdicts'][1].update(status='fail',reason='写真の対象条件が欠ける')
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'個別判定と集約判定'):
+                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
+
+    def test_source_resolution_preserves_local_failure_and_overrules_other_candidate(self):
+        def send(client,**request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check.update(status='fail',reason='一つは原文一致、別の対象条件は欠落',
+                         affected_blocks=[{'id':self.summary,'reason':'対象条件が欠ける'}],
+                         correction_evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+            check['claim_verdicts'][1].update(status='fail',reason='対象条件が欠ける')
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(value,ensure_ascii=False))],
+                      usage=NS(input_tokens=0,output_tokens=0))
+        with patch.object(research,'create_with_retry',side_effect=send) as calls:
+            checks,_,_=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+            again,_,trace=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        check=next(c for c in checks if c['key']=='evidence_support')
+        self.assertEqual(check['status'],'fail')
+        self.assertEqual([l['id'] for l in check['affected_blocks']],[self.summary])
+        self.assertEqual(check['claim_verdicts'][0]['status'],'pass')
+        self.assertEqual(again,checks)
+        self.assertEqual(trace[0]['phase'],'reused')
+        changed=copy.deepcopy(self.blocks)
+        changed[8]['text']='結論の条件を修正した。'
+        receipts=scope.source_resolutions('research',changed,self.pages,self.req)
+        self.assertTrue(any(r['reviewed_blocks']==[self.blocks[2]] and
+                            all(c['status']=='pass' for c in r['checks']) for r in receipts))
+
     def test_source_excerpt_survives_edit_but_old_verdict_does_not(self):
         with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
             evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
         changed=copy.deepcopy(self.blocks);changed[2]['text']='女性・標準プランは無料。'
-        self.assertEqual(scope.source_resolutions('research',changed,self.pages,self.req),[])
+        receipts=scope.source_resolutions('research',changed,self.pages,self.req)
+        self.assertTrue(receipts)
+        self.assertTrue(all(r['reviewed_blocks']==[self.blocks[8]] and
+                            all(c['status']=='pass' for c in r['checks']) for r in receipts))
         refs=scope.source_excerpts('research',self.pages)
         self.assertEqual(refs,[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
         self.assertNotIn('status',refs[0])
@@ -155,7 +216,9 @@ class ScopedReviewTests(unittest.TestCase):
             audit(None,stage='research',**args)
             audit_article(None,**args)
         for step in ('tiered_audit_research','tiered_article_evidence_scope'):
-            self.assertEqual(requests[step]['requirements']['source_resolutions'],[])
+            self.assertTrue(all(r['reviewed_blocks']==[self.blocks[8]] and
+                                all(c['status']=='pass' for c in r['checks'])
+                                for r in requests[step]['requirements']['source_resolutions']))
             self.assertEqual(requests[step]['source_excerpts'],[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
 
     def test_unrouted_role_cannot_add_a_failure_to_source_handoff(self):

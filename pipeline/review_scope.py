@@ -139,6 +139,12 @@ def source_resolutions(stage, blocks, sources, requirements):
         packet = scoped_packet({'article_blocks':blocks,'source_documents':sources,'requirements':requirements}, r['scope'])
         binding = receipt_binding(packet['article_blocks'] + packet['heading_context'], packet['source_documents'], packet['requirements'],r['scope'],stage)
         if binding == r.get('binding'):
+            from .tiered_evidence import validate_claim_verdicts
+            from .content_quality import ContentQualityError
+            try:
+                validate_claim_verdicts(r['checks'], r['scope'])
+            except ContentQualityError:
+                continue
             valid.append(r)
     return valid
 
@@ -187,7 +193,7 @@ def save_resolution(stage, packet, checks, original, trace):
     # Store independently addressable resolved groups as well as the complete
     # scope. A correction in another group must not discard this proof.
     scopes=[packet['candidate_checks']]
-    for target in packet['target_block_ids'] if all(c['status']=='pass' for c in checks) else []:
+    for target in packet['target_block_ids']:
         scopes.append([{**c,'affected_blocks':[l for l in c['affected_blocks'] if l['id']==target]}
                        for c in packet['candidate_checks'] if any(l['id']==target for l in c['affected_blocks'])])
     for scope in scopes:
@@ -197,8 +203,12 @@ def save_resolution(stage, packet, checks, original, trace):
         verdicts=[]
         for c in checks:
             locations=[l for l in c['affected_blocks'] if l['id'] in relevant]
+            decisions=[r for r in c.get('claim_verdicts',[]) if r['id'] in relevant]
             verdicts.append(c if scope==packet['candidate_checks'] else
-                {**c,'affected_blocks':locations,'status':'fail' if locations else 'pass'})
+                {**c,'affected_blocks':locations,'status':'fail' if locations else 'pass',
+                 'reason':' / '.join(r['reason'] for r in decisions) or '今回の対象に指摘なし',
+                 'claim_verdicts':decisions,
+                 'correction_evidence':c.get('correction_evidence',[]) if locations else []})
         additions.append({'binding':binding,'scope':scope,
             'reviewed_blocks':[b for b in view['article_blocks'] if b['id'] in relevant],
             'checks':verdicts,'source_urls':[p['url'] for p in view['source_documents']],
