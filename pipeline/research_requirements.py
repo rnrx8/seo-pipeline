@@ -82,8 +82,8 @@ MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum'
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['properties'].update({
     'subject': {'type':'string'}, 'priority': {'type':'string','enum':['essential','important','supporting']},
     'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','general_guidance','expert_allowed','primary_only']},
-    'requires_current': {'type':'boolean'}})
-PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current']
+    'requires_current': {'type':'boolean'}, 'official_check_required': {'type':'boolean'}})
+PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current','official_check_required']
 mp = MATRIX_SCHEMA['format']['schema']['properties']['items']['items']
 mp['properties'].update({'basis':{'type':'string','enum':['primary','guidance','expert','corroborated','historical','omitted','unresolved']},
     'official_checked_urls':{'type':'array','items':{'type':'string'}}, 'applicable_at':{'type':'string'},
@@ -108,6 +108,8 @@ def validate_plan(value):
     if not 1 <= len(items) <= 120 or len({i['id'] for i in items}) != len(items):
         raise ContentQualityError('調査計画の項目数・IDが不正です。')
     for i in items:
+        if 'official_check_required' in i and type(i['official_check_required']) is not bool:
+            raise ContentQualityError('公式先行確認の適用条件が不正です。')
         if i.get('priority') not in ('essential','important','supporting') or not i.get('subject','').strip() or not i.get('priority_reason','').strip():
             raise ContentQualityError('調査計画の対象・重要度・理由が不足しています。計画から再実行してください。')
         if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','general_guidance','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
@@ -371,7 +373,14 @@ def validate_matrix(value, plan_value, pages):
                 }
             attempted = [normalize_url(u) for u in item.get('official_checked_urls', [])]
             visited = {normalize_url(p['url']) for p in pages}
-            explored = bool(attempted) and all(u and u in visited for u in attempted) and item.get('exploration_complete') is True and bool(item.get('exploration_reason','').strip())
+            # Missing classification on saved plans retains the old official-first rule.
+            official_required = planned.get('official_check_required', True)
+            if type(official_required) is not bool:
+                raise ContentQualityError('公式先行確認の適用条件が不正です。')
+            explored = ((not official_required or bool(attempted))
+                and all(u and u in visited for u in attempted)
+                and item.get('exploration_complete') is True
+                and bool(item.get('exploration_reason','').strip()))
             primary = any(r.get('source_kind') == 'primary' for r in refs)
             expert = (planned['source_requirement'] == 'expert_allowed' and any(
                 r.get('source_kind') == 'secondary' and r.get('expert_name','').strip()
@@ -385,7 +394,16 @@ def validate_matrix(value, plan_value, pages):
             if basis == 'primary': accepted = accepted and primary
             elif basis == 'guidance': accepted = accepted and planned['source_requirement']=='general_guidance'
             elif basis == 'expert': accepted = accepted and expert
-            elif basis == 'corroborated': accepted = accepted and planned['source_requirement']=='standard' and corroborated
+            elif basis == 'corroborated':
+                accepted = accepted and planned['source_requirement']=='standard' and corroborated
+                if not accepted and not item.get('validation_issue'):
+                    item['validation_issue'] = {
+                        'code':'corroboration_requirements_unmet',
+                        'official_check_required':official_required,
+                        'official_attempt_recorded':bool(attempted),
+                        'exploration_complete':explored,
+                        'independent_groups':len(groups), 'independent_domains':len(domains),
+                    }
             elif basis == 'historical':
                 accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or expert or (planned['source_requirement']=='standard' and corroborated))
             elif basis == 'omitted':
@@ -399,7 +417,7 @@ def validate_matrix(value, plan_value, pages):
         if (required[item['id']]['required'] or 'priority' in required[item['id']]) and not accepted:
             reason = item.get('reason','根拠不足')
             issue = item.get('validation_issue')
-            if issue:
+            if issue and issue['code'] == 'source_basis_mismatch':
                 reason = f"根拠区分の不整合：{issue['source_requirement']}に{issue['basis']}は採用できません。モデルの説明：" + reason
             gaps.append({**required[item['id']], 'status':item['status'],'reason':reason,
                          **({'validation_issue':issue} if issue else {})})

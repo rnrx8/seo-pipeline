@@ -91,3 +91,43 @@ class SourceBasisContractTests(unittest.TestCase):
             req.supplement_once('job','keyword',plan,gaps,matrix=value)
         self.assertEqual(collect.call_count,1)
         self.assertEqual(collect.call_args.kwargs['research_question_ids'],['q1'])
+
+class OfficialExplorationScopeTests(unittest.TestCase):
+    def case(self):
+        plan,pages,value=fixture()
+        plan['items'][0].update(question='代表的な手口の説明',official_check_required=False)
+        value['items'][0].update(official_checked_urls=[])
+        return plan,pages,value
+
+    def test_general_corroboration_does_not_need_unrelated_official_source(self):
+        plan,pages,value=self.case()
+        self.assertEqual(req.validate_matrix(value,plan,pages),[])
+        self.assertTrue(value['items'][0]['verified'])
+
+    def test_commercial_and_legacy_questions_keep_official_first_condition(self):
+        for explicit in (True,False):
+            plan,pages,value=self.case()
+            if explicit:plan['items'][0].update(question='料金',official_check_required=True)
+            else:plan['items'][0].pop('official_check_required')
+            self.assertTrue(req.validate_matrix(value,plan,pages))
+            self.assertTrue(value['items'][0]['validation_issue']['official_check_required'])
+            value['items'][0]['official_checked_urls']=[pages[0]['url']]
+            self.assertEqual(req.validate_matrix(value,plan,pages),[])
+
+    def test_general_scope_keeps_independence_quotes_exploration_and_legal_rules(self):
+        for change in (
+            lambda p,v:v['items'][0]['evidence'].pop(),
+            lambda p,v:v['items'][0]['evidence'][1].update(independence_group=v['items'][0]['evidence'][0]['independence_group']),
+            lambda p,v:v['items'][0]['evidence'][0].update(quote='not in source'),
+            lambda p,v:v['items'][0].update(exploration_complete=False),
+            lambda p,v:v['items'][0].update(official_checked_urls=['https://not-fetched.example']),
+            lambda p,v:p['items'][0].update(source_requirement='expert_allowed'),
+            lambda p,v:p['items'][0].update(source_requirement='primary_only')):
+            plan,pages,value=self.case();change(plan,value)
+            self.assertTrue(req.validate_matrix(value,plan,pages))
+
+    def test_new_plan_schema_requires_classification_and_rejects_non_boolean(self):
+        row=req.PLAN_SCHEMA['format']['schema']['properties']['items']['items']
+        self.assertIn('official_check_required',row['required'])
+        plan,_,_=self.case();plan['items'][0]['official_check_required']='false'
+        with self.assertRaises(ContentQualityError):req.validate_plan(plan)
