@@ -50,7 +50,9 @@ confirmedは主要な回答に必要な対象・期間・条件を満たし、�
 explicitly_undisclosedは非公開と公式に明記されている場合だけ。searched_not_foundは調べたが見つからない場合。
 証拠はsourcesに実在するURLと、そのページの短い連続した原文quoteを返す。省略記号や言い換えは禁止。
 複数社や複数条件の質問はそれぞれの証拠を返す。要約だけを証拠にしない。
-answerには対象・条件・期間を含む回答事実だけを書く。出典の種別、取得成否、採用経緯はreason・basis・applicable_at等の管理フィールドへ分ける。実際の過去時点や利用条件はanswerから落とさない。
+answerには対象・条件・期間を含む回答事実だけを書く。publication_conditionsには、採用した回答と一緒に示す必要のある対象、プラン、総額払い、税込・税抜、実際の集計・適用期間等を短い文字列配列で記す。answerに条件がある場合も、別欄にしか残っていない条件がないか確認する。条件が不要なら空配列。根拠本文が支える条件だけを使う。
+claim_limitsには、回答を広げてよい範囲・省く細目・保証へ変換しない境界を短い文字列配列で記す。例「機能の存在だけを説明し、無料範囲や対象プランを推測しない」。必要な制限がなければ空配列。これは読者向けの免責文ではない。
+出典の種別、取得成否、採用経緯、根拠の公開・更新・取得日はreason・basis・applicable_at・omission_reason等の調査記録へ分ける。調査記録は構成・本文生成へ渡さず、出典表示機能と確認処理が使う。実際の過去時点や利用条件はanswerとpublication_conditionsへ保持し、公開・更新・取得日を適用開始日や集計期間に置き換えない。体験報告・意見の発信者やアンケート調査主体など、主張の意味を限定する帰属は回答に保持する。通常の採用事実に出典種別の説明を付けない。
 JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答","evidence":[{"url":"...","quote":"..."}],"reason":"判断理由/不足の対象と項目"}]} のみ。'''
 
 PLAN_SYSTEM += EVIDENCE_POLICY
@@ -88,6 +90,8 @@ mp = MATRIX_SCHEMA['format']['schema']['properties']['items']['items']
 mp['properties'].update({'basis':{'type':'string','enum':['primary','guidance','expert','corroborated','historical','omitted','unresolved']},
     'official_checked_urls':{'type':'array','items':{'type':'string'}}, 'applicable_at':{'type':'string'},
     'supports_current_conclusion':{'type':'boolean'}, 'omission_reason':{'type':'string'},
+    'publication_conditions':{'type':'array','items':{'type':'string'}},
+    'claim_limits':{'type':'array','items':{'type':'string'}},
     'exploration_complete':{'type':'boolean'}, 'exploration_reason':{'type':'string'}})
 mp['required'] = list(mp['properties'])
 ep = mp['properties']['evidence']['items']
@@ -348,6 +352,11 @@ def validate_matrix(value, plan_value, pages):
     if any(not isinstance(r,dict) or not isinstance(r.get('url'),str) or not isinstance(r.get('quote'),str) for i in items for r in i['evidence']):
         raise ContentQualityError('調査確認の引用形式が不正です。')
     if len(items)!=len(required) or {i.get('id') for i in items}!=set(required): raise ContentQualityError('調査確認の質問が不足・重複しています。')
+    # A malformed handoff is not missing source material; stop before retrieval.
+    from .generation_context import publication_scope
+    for item in items:
+        if 'publication_conditions' in item or 'claim_limits' in item:
+            publication_scope(item)
     normalize=lambda s: re.sub(r'\s+','',s)
     bodies={p['url']:normalize(p['text']) for p in pages if p.get('status','success')=='success' and p.get('text')}
     gaps=[]
@@ -607,4 +616,7 @@ def require_matrix(job_id):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
     if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
+    from .generation_context import publication_scope
+    for item in matrix['items']:
+        publication_scope(item)
     return matrix

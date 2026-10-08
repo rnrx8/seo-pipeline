@@ -50,7 +50,9 @@ class GenerationContextTests(unittest.TestCase):
             self.assertNotIn(field,row)
         self.assertNotIn('ACCEPTANCE_REASON_ONLY',body)
         self.assertNotIn('RESEARCH_PRIORITY_ONLY',body)
-        self.assertEqual(data['usage_constraints']['q1']['applicable_at'],matrix['items'][0]['applicable_at'])
+        self.assertNotIn('usage_constraints',data)
+        self.assertEqual(row['publication_conditions'],matrix['items'][0]['publication_conditions'])
+        self.assertEqual(row['claim_limits'],matrix['items'][0]['claim_limits'])
         self.assertEqual(row['answer'],matrix['items'][0]['answer'])
         self.assertFalse(row['supports_current_conclusion'])
         self.assertTrue(row['publishable'])
@@ -79,7 +81,7 @@ class GenerationContextTests(unittest.TestCase):
         plan,_,matrix=self.data()
         for provider in ('astra','sonnet','tiered'):
             with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
-                self.assertIn('generation-evidence-v3',generation_evidence('job','facts','sources'))
+                self.assertIn('generation-evidence-v4',generation_evidence('job','facts','sources'))
 
     def test_canonical_facts_can_reference_decisions_but_extra_facts_are_retained(self):
         facts='男性のみ、2025年価格。\n出典：https://source.example｜確認箇所："原文"'
@@ -103,6 +105,9 @@ class GenerationContextTests(unittest.TestCase):
         plan,pages,matrix=self.data()
         pages.append({'url':'https://unrelated.example','status':'success','text':'UNRELATED_BODY_SENTINEL'})
         matrix['runtime_debug_marker']='MATRIX_BOOKKEEPING_SENTINEL'
+        matrix['items'][0]['applicable_at']='SOURCE_KIND_AND_DATE_SENTINEL 第三者掲載情報。確認日は適用開始日ではない。'
+        matrix['items'][0]['omission_reason']='OMISSION_ADOPTION_SENTINEL 公式本文の取得に失敗。'
+        matrix['items'][0]['publication_conditions'].append('税込')
         outline,_=step_outline.ensure_complete_volume_design(OUTLINE,'5,000字')
         artifacts={'serp':{'content_text':'{}'},'search_intent':{'content_text':'読者の料金比較'},
                    'outline':{'content_text':outline,'meta':{'editorial_policy':current_policy()}},'fact_sheet':{'content_text':'男性のみ [confirmed]'},
@@ -142,6 +147,9 @@ class GenerationContextTests(unittest.TestCase):
             self.assertEqual(len(captured),1)
             self.assertNotIn('UNRELATED_BODY_SENTINEL',captured[0])
             self.assertNotIn('MATRIX_BOOKKEEPING_SENTINEL',captured[0])
+            self.assertNotIn('SOURCE_KIND_AND_DATE_SENTINEL',captured[0])
+            self.assertNotIn('OMISSION_ADOPTION_SENTINEL',captured[0])
+            self.assertIn('税込',captured[0])
             self.assertIn('2025年1月',captured[0])
             self.assertIn('https://media-one.example/a',captured[0])
             if module==step_article:
@@ -162,7 +170,9 @@ class GenerationContextTests(unittest.TestCase):
         self.assertFalse(row['supports_current_conclusion'])
         self.assertNotIn('INTERNAL_ADOPTION_SENTINEL',json.dumps(projected))
         self.assertNotIn('basis',row)
-        self.assertEqual(projected['usage_constraints']['q1']['applicable_at'],matrix['items'][0]['applicable_at'])
+        self.assertNotIn('usage_constraints',projected)
+        self.assertEqual(row['publication_conditions'],matrix['items'][0]['publication_conditions'])
+        self.assertEqual(row['claim_limits'],matrix['items'][0]['claim_limits'])
         self.assertEqual(projected,repair_requirements(projected))
         self.assertEqual(requirements,original)
 
@@ -172,3 +182,60 @@ class GenerationContextTests(unittest.TestCase):
             matrix['policy_sha256']=policy
             with self.assertRaises(ContentQualityError):
                 decision_bundle(plan,matrix,quotes=False)
+
+    def test_internal_records_never_enter_writer_but_actual_conditions_survive(self):
+        plan,_,matrix=self.data()
+        item=matrix['items'][0]
+        item.update(answer='男性の3か月契約は月額換算4,980円、総額14,940円。',
+                    publication_conditions=['男性スタンダード','3か月契約・総額払い','税込'],
+                    claim_limits=['他の期間・プランの料金を推測しない'],
+                    applicable_at='INTERNAL_DATE_SENTINEL 2026-10-07確認時点の第三者掲載情報。税込。',
+                    omission_reason='INTERNAL_OMISSION_SENTINEL 公式本文の取得に失敗。')
+        original=copy.deepcopy(matrix)
+        body=decision_bundle(plan,matrix,quotes=False)
+        data=json.loads(body[body.index('{'):])
+        text=json.dumps(data,ensure_ascii=False)
+        self.assertNotIn('INTERNAL_DATE_SENTINEL',text)
+        self.assertNotIn('INTERNAL_OMISSION_SENTINEL',text)
+        self.assertEqual(data['decisions'][0]['publication_conditions'],item['publication_conditions'])
+        self.assertEqual(data['decisions'][0]['claim_limits'],item['claim_limits'])
+        self.assertEqual(matrix,original)
+
+    def test_missing_handoff_stops_without_guessing_from_internal_prose(self):
+        plan,_,matrix=self.data()
+        matrix['items'][0].pop('publication_conditions')
+        matrix['items'][0]['applicable_at']='男性のみ、税込、第三者掲載情報'
+        with self.assertRaises(ContentQualityError):decision_bundle(plan,matrix,quotes=False)
+        from pipeline.generation_context import repair_requirements
+        with self.assertRaises(ContentQualityError):repair_requirements({'research_decisions':matrix})
+
+    def test_empty_scope_is_allowed_and_invalid_scope_is_not_a_source_gap(self):
+        from pipeline.generation_context import publication_scope
+        from pipeline.research_requirements import validate_matrix
+        self.assertEqual(publication_scope({'publication_conditions':[], 'claim_limits':[]}),
+                         {'publication_conditions':[], 'claim_limits':[]})
+        plan,pages,matrix=self.data()
+        for value in ('税込', [None], ['']):
+            matrix['items'][0]['publication_conditions']=value
+            with self.assertRaises(ContentQualityError):validate_matrix(matrix,plan,pages)
+
+    def test_repair_drops_legacy_notes_without_decisions(self):
+        from pipeline.generation_context import repair_requirements
+        self.assertEqual(repair_requirements({'usage_constraints':{'q1':{'applicable_at':'internal'}}, 'other':'keep'}),
+                         {'other':'keep'})
+
+    def test_third_party_certification_is_a_fact_not_an_adoption_record(self):
+        plan,_,matrix=self.data()
+        matrix['items'][0]['answer']='個人情報保護の第三者認証を取得している。'
+        body=decision_bundle(plan,matrix,quotes=False)
+        self.assertIn('第三者認証を取得',body)
+
+    def test_schema_carries_publication_scope_without_an_extra_review_step(self):
+        from pipeline.research_requirements import MATRIX_SCHEMA
+        from pipeline.source_spans import span_schema
+        plan,_,_=self.data()
+        schema=span_schema(MATRIX_SCHEMA,['q1'],questions=plan['items'])
+        row=schema['format']['schema']['properties']['items']['properties']['q1']
+        for field in ('publication_conditions','claim_limits'):
+            self.assertIn(field,row['required'])
+            self.assertEqual(row['properties'][field],{'type':'array','items':{'type':'string'}})

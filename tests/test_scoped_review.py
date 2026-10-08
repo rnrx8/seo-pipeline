@@ -26,8 +26,8 @@ class ScopedReviewTests(unittest.TestCase):
                     {'url':'https://b.example/price','text':'12ヶ月一括1200円。','fetched_at':'2026-10-01'},
                     {'url':'https://unrelated.example','text':'unrelated'*1000}]
         self.req={'keyword':'比較','research_plan':{'items':[{'id':'a','subject':'A'},{'id':'b','subject':'B'}]},
-                  'research_decisions':{'items':[{'id':'a','answer':'女性は基本無料','evidence_sources':[{'url':self.pages[0]['url']}]},
-                                                  {'id':'b','answer':'月額換算100円','evidence_sources':[{'url':self.pages[1]['url']}]}]}}
+                  'research_decisions':{'items':[{'id':'a','answer':'女性は基本無料','publication_conditions':['女性・標準プラン'], 'claim_limits':[], 'evidence_sources':[{'url':self.pages[0]['url']}]},
+                                                  {'id':'b','answer':'月額換算100円','publication_conditions':['12か月一括払い・総額1,200円'], 'claim_limits':[], 'evidence_sources':[{'url':self.pages[1]['url']}]}]}}
         self.check={'key':'evidence_support','status':'fail','reason':'標準プランとメッセージの対応',
                     'requires_source_check':True,'research_ids':['a'],'source_urls':[],
                     'affected_blocks':[{'id':self.a,'reason':'無料範囲'},{'id':self.summary,'reason':'同じ主張'}]}

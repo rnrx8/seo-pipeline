@@ -18,7 +18,9 @@ def fixture(priority='essential'):
     value={'coverage_sufficient':True,'coverage_reason':'主要な料金比較に回答できる','items':[
         {'id':'q1','status':'confirmed','answer':'2025年1月時点で月額2,000円','reason':'条件と時点が一致',
          'basis':'corroborated','official_checked_urls':[pages[0]['url']],'applicable_at':'2025年1月',
-         'supports_current_conclusion':False,'omission_reason':'','exploration_complete':True,'exploration_reason':'関連公式資料と独立メディア本文を確認','evidence':refs}]}
+         'supports_current_conclusion':False,'omission_reason':'',
+         'publication_conditions':['2025年1月時点'], 'claim_limits':['現在の価格との比較には使わない'],
+         'exploration_complete':True,'exploration_reason':'関連公式資料と独立メディア本文を確認','evidence':refs}]}
     return plan,pages,value
 
 
@@ -35,6 +37,7 @@ class EvidencePolicyTests(unittest.TestCase):
         note='media-one：更新2026-09-19。media-two：更新日不明。確認2026-10-04。第三者掲載情報。'
         item.update(answer='男性スタンダードの1ヶ月契約6,480円。3ヶ月契約は総額14,940円、月額換算4,980円。',
                     applicable_at=note,supports_current_conclusion=True,
+                    publication_conditions=['男性スタンダード','1ヶ月契約6,480円','3ヶ月契約は総額14,940円・月額換算4,980円'],claim_limits=[],
                     reason='独立した具体的な料金表2件で対象・契約期間・金額が一致。他資料の別料金は現行公式料金による否定ではなく、選択元の掲載情報として限定する。')
         self.assertEqual(validate_matrix(value,plan,pages),[])
         value['valid']=True
@@ -42,7 +45,8 @@ class EvidencePolicyTests(unittest.TestCase):
         from pipeline.research_requirements import matrix_policy
         value['policy_sha256']=matrix_policy()
         bundle=decision_bundle(plan,value,quotes=True)
-        self.assertIn(note,bundle)
+        self.assertNotIn(note,bundle)
+        self.assertIn(note,accepted_facts(value,plan))
         self.assertNotIn(item['reason'],bundle)
         self.assertIn('月額換算4,980円',bundle)
         # Source selection still needs independent bodies and exact quotations.

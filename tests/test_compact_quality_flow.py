@@ -27,6 +27,7 @@ class CompactQualityFlowTests(unittest.TestCase):
             'research_plan':{'items':[{'id':'q1','required':True,'priority':'essential','question':'契約期間は？'}]},
             'research_decisions':{'coverage_sufficient':True,'items':[{'id':'q1','verified':True,'status':'confirmed',
                 'answer':'男性・年契約。','applicable_at':'2025年','supports_current_conclusion':False,
+                'publication_conditions':['男性・年契約','2025年時点'], 'claim_limits':['現在の価格とは比較しない'],
                 'basis':'historical','reason':'過去時点','new_condition':'将来追加された条件も維持',
                 'omission_reason':'','evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text'],
                   'source_kind':'primary','expert_scope_reason':'適用範囲'}]}]}}

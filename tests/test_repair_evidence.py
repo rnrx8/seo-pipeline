@@ -37,7 +37,9 @@ class RepairEvidenceTests(unittest.TestCase):
                     'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.quote}]}
         self.req={'research_decisions':{'items':[{'id':'q1','status':'confirmed','verified':True,'basis':'primary',
             'answer':'Basicは男性30日9,980円。','supports_current_conclusion':False,
-            'applicable_at':'2025年の条件','omission_reason':'女性条件は未確認','evidence_sources':[{'url':self.pages[0]['url']}]}]}}
+            'applicable_at':'2025年の条件','omission_reason':'女性条件は未確認',
+            'publication_conditions':['2025年の条件'], 'claim_limits':['女性の利用条件を推測しない'],
+            'evidence_sources':[{'url':self.pages[0]['url']}]}]}}
         self.report={'checks':[self.check],'evidence_pending':False,
                      'evidence_routing':[{'repair_evidence_version':VERSION,'review':{'needed':False}}]}
 
@@ -51,8 +53,9 @@ class RepairEvidenceTests(unittest.TestCase):
         row=packet['requirements']['research_decisions']['items'][0]
         self.assertEqual(row['answer'],self.req['research_decisions']['items'][0]['answer'])
         self.assertFalse(row['supports_current_conclusion'])
-        self.assertEqual(packet['requirements']['usage_constraints']['q1'],
-                         {'applicable_at':'2025年の条件','omission_reason':'女性条件は未確認'})
+        self.assertNotIn('usage_constraints',packet['requirements'])
+        self.assertEqual(row['publication_conditions'],['2025年の条件'])
+        self.assertEqual(row['claim_limits'],['女性の利用条件を推測しない'])
         self.assertEqual(self.report,before)
 
     def test_same_quote_shared_across_checks_is_sent_once(self):
