@@ -15,10 +15,37 @@ def topic_assignments(text):
     result = []
     for section in outline_sections(text):
         body = text[section['start']:section['end']]
-        lines = re.findall(r'^\s*-\s*対応論点\s*[：:]\s*(.+)$', body, re.M)
-        ids = list(dict.fromkeys(re.findall(r'\bq\d+\b', ' '.join(lines))))
+        ids = list(dict.fromkeys(re.findall(r'\bq\d+\b', _design_field(body, '対応論点'))))
         result.append({'title': section['title'], 'level': section['level'], 'ids': ids})
     return result
+
+
+def _design_field(body, name):
+    """Read a design field independent of inline emphasis and list wrapping.
+
+    Field names are metadata; a nested list is the field's value, not a new
+    field. Stop at the next sibling so an empty answer cannot borrow roots
+    or publication items from another field.
+    """
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        plain = line.replace('**', '').replace('__', '')
+        match = re.match(r'^([ \t]*)[-*+]\s+' + re.escape(name) + r'\s*(?:[：:]\s*(.*))?$', plain)
+        if not match:
+            continue
+        value = [match.group(2) or '']
+        indentation = len(match.group(1).expandtabs(4))
+        for following in lines[i + 1:]:
+            if not following.strip():
+                continue
+            leading = len(following) - len(following.lstrip(' \t'))
+            if len(following[:leading].expandtabs(4)) <= indentation:
+                break
+            nested = re.sub(r'^\s*[-*+]\s*', '', following).strip()
+            if nested.strip('*_ :：'):
+                value.append(nested)
+        return '\n'.join(value).strip()
+    return ''
 
 
 def assignment_issues(text, plan):
@@ -33,6 +60,6 @@ def assignment_issues(text, plan):
     for section in outline_sections(text):
         body = text[section['start']:section['end']]
         for field in ('読者の疑問', '回答要素'):
-            if not re.search(r'^\s*-\s*' + field + r'\s*[：:]\s*\S', body, re.M):
+            if not _design_field(body, field):
                 issues.append({'key': 'missing_outline_answer_design', 'title': section['title'], 'field': field})
     return issues

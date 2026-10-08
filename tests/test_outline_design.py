@@ -44,6 +44,28 @@ class OutlineDesignTests(unittest.TestCase):
         self.assertIn('unknown_outline_topic', [i['key'] for i in assignment_issues(BRIEF.replace('q01', 'q999'), PLAN)])
         self.assertIn('missing_outline_answer_design', [i['key'] for i in assignment_issues(BRIEF.split('- 回答要素')[0], PLAN)])
 
+    def test_bold_labels_and_nested_values_keep_same_design(self):
+        text = '''### H2：主な危険とは？
+- **読者の疑問**：どのような被害があるか
+- **対応論点**：
+  - q01
+- **回答要素**
+  - 金銭被害
+  - 個人情報の流出
+- **表現形式**：比較表
+'''
+        self.assertEqual(assignment_issues(text, PLAN), [])
+        self.assertEqual(topic_assignments(text)[0]['ids'], ['q01'])
+
+    def test_empty_nested_answer_does_not_borrow_other_fields(self):
+        for empty in ('', '\n  -', '\n  - ** **'):
+            text = BRIEF.split('- 回答要素')[0] + '- **回答要素**：' + empty + '\n- 掲載項目：金銭被害\n'
+            self.assertIn('missing_outline_answer_design', [i['key'] for i in assignment_issues(text, PLAN)])
+
+    def test_question_ids_in_other_fields_are_not_assignments(self):
+        text = BRIEF.replace('- 対応論点：q01', '- 対応論点：\n- 回答要素：q01を説明')
+        self.assertIn('unassigned_required_topic', [i['key'] for i in assignment_issues(text, PLAN)])
+
     def test_qa_and_video_do_not_change_article_length_reference(self):
         pages = [{'url':'https://example.com/article', 'fetch_status':'success', 'word_count':4000}]
         reference = step_outline._calc_target_word_count(json.dumps({'competitor_headings': pages}))
