@@ -142,7 +142,10 @@ class GenerationContextTests(unittest.TestCase):
         matrix['items'][0]['applicable_at']='SOURCE_KIND_AND_DATE_SENTINEL 第三者掲載情報。確認日は適用開始日ではない。'
         matrix['items'][0]['omission_reason']='OMISSION_ADOPTION_SENTINEL 公式本文の取得に失敗。'
         matrix['items'][0]['publication_conditions'].append('税込')
-        outline,_=step_outline.ensure_complete_volume_design(OUTLINE,'5,000字')
+        # The brief can reference approved facts without copying price cells.
+        brief=OUTLINE.replace('#### H3：', '- 対応論点：q1\n- 回答要素：月額料金と対象期間を確認済み回答から説明する\n- 使用する根拠：q1：https://media-one.example/a\n#### H3：', 1)
+        outline,_=step_outline.ensure_complete_volume_design(brief,'5,000字')
+        self.assertNotIn(matrix['items'][0]['answer'],outline)
         artifacts={'serp':{'content_text':'{}'},'search_intent':{'content_text':'読者の料金比較'},
                    'outline':{'content_text':outline,'meta':{'editorial_policy':current_policy()}},'fact_sheet':{'content_text':'男性のみ [confirmed]'},
                    'fresh_sources':{'content_text':json.dumps(pages)},'content_contract':{'content_text':json.dumps(CONTRACT)},
@@ -189,6 +192,10 @@ class GenerationContextTests(unittest.TestCase):
             self.assertIn('https://media-one.example/a',captured[0])
             if module==step_article:
                 self.assertIn('ACCOUNT_STYLE_SENTINEL',captured[0])
+                self.assertIn('q1：https://media-one.example/a',captured[0])
+                self.assertIn(matrix['items'][0]['answer'],captured[0])
+                self.assertIn(matrix['items'][0]['future_condition']['term'],captured[0])
+                self.assertIn(matrix['items'][0]['claim_limits'][0],captured[0])
 
     def test_repair_projection_preserves_conditions_sources_and_audit_record(self):
         from pipeline.generation_context import repair_requirements
