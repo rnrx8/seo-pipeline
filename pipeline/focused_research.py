@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v9-saved-exploration'
+VERSION = 'focused-research-v10-retain-disputed-candidates'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -125,7 +125,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
     def require_enough_sources(result):
         for item in result['items']:
             if item.get('additional_sources_needed'):
-                item['unresolved_candidate']={k:copy.deepcopy(item.get(k)) for k in ('answer','evidence','reason','applicable_at','supports_current_conclusion')}
+                item.setdefault('unresolved_candidate',{k:copy.deepcopy(item.get(k)) for k in
+                    ('answer','evidence','reason','applicable_at','publication_conditions','claim_limits','supports_current_conclusion')})
                 item.update(status='unresearched', verified=False, basis='unresolved', answer='', evidence=[],
                             reason='保存済み資料の追加提示後も必要な根拠を確認できません。')
         return result
@@ -155,7 +156,10 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         if any(needs_saved_expansion(i) for i in result['items']) and not complete:
             bodies = packed_sources(selected, unknown)
             result = expand_pending(result, 'gpt-6-luna', 'reread_expanded', READ_POLICY+FOCUS_POLICY)
-        replace(require_enough_sources(result))
+        # Keep rejected candidates unverified until the existing independent
+        # audit can inspect them. The first reader's source-gap flag is a
+        # finding to check, not proof that a saved source lacks the answer.
+        replace(result)
         packed = merge_visible_sources(packed, bodies)
         packed = merge_visible_sources(packed, pages_visible)
 
@@ -164,8 +168,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
     # the existing bounded audit instead of erasing the answer as an omission.
     pending = [i for i in value['items'] if i.get('basis') != 'omitted'
                and ((i.get('verified') and needs_adjudication(i, planned[i['id']]))
-                    or (not i.get('verified') and i.get('additional_sources_needed') is False
-                        and i.get('answer','').strip() and i.get('evidence')))]
+                    or (not i.get('verified') and i.get('answer','').strip() and i.get('evidence')))]
     if pending:
         # Preserve each already-visible page in full, including neighboring spans.
         pending_ids = {i['id'] for i in pending}
@@ -178,4 +181,6 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
             # At most one expansion. No search, recursive escalation, or new budget.
             result = expand_pending(result, 'gpt-6.1-sol', 'expanded', FOCUS_POLICY)
         replace(require_enough_sources(result))
+    # Never publish a candidate whose final reader still needs evidence.
+    require_enough_sources(value)
     return value, SimpleNamespace(input_tokens=inputs, output_tokens=outputs)

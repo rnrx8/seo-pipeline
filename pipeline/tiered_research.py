@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls, normalize_url
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v4-keyed-question-responses'
+VERSION='tiered-research-v5-publication-scope'
 POLICY='''
 previous_findingsは前回の全体確認で指摘された具体的な不足。previous_candidates・omission_candidate_from・unresolved_candidateは未採用の参考情報であり、確認済み事実ではない。資料から再確認し、根拠のある部分と未確認部分を分ける。参考情報だけで合格にしない。
 related_verified_answersは他の対象で確認できた回答と条件。横断質問では該当例をこの情報と提示原文で照合し、回答範囲を限定する。別の質問へ合格を自動転記せず、出典は今回のsourcesから選ぶ。
@@ -124,7 +124,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   if subject=='共通':
    related={q['id'] for name,qs in grouped.items() if name!='共通' and any(name in q['question'] for q in questions) for q in qs}
    hints.extend(i for i in items if i['id'] in related)
-  related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','supports_current_conclusion')} |
+  related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','publication_conditions','claim_limits','supports_current_conclusion')} |
                    {'evidence':[{k:r.get(k) for k in ('url','source_kind')} for r in i.get('evidence',[])]}
                    for i in items if subject=='共通' and i['id'] in related and i.get('verified') and i.get('basis')!='omitted']
   evidence_hints=[row for h in hints for row in (h,h.get('omission_candidate_from'),h.get('unresolved_candidate')) if isinstance(row,dict)]
@@ -198,7 +198,7 @@ def review_coverage(job_id,plan,pages,items,intent_context):
  propose_optional_omissions(items,plan,pages)
  # Recompute item status before coverage reads it, including omission candidates.
  validate_matrix({'items':items,'coverage_sufficient':True,'coverage_reason':'item validation only'},plan,pages)
- decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
+ decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at','publication_conditions','claim_limits','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
  return checked_request(job_id,'tiered_coverage',request)

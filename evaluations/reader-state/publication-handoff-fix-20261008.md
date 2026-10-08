@@ -63,3 +63,24 @@ validate_matrixはq14/q31/q40の引用・根拠区分を受理し、q37を未確
 証拠:
 - /Users/ryoka/seo-saas/tmp/yabai-article-preflight/publication-handoff-test/{authorization,result,raw-response,raw-matrix,candidate-matrix,consumer-projection}.json
 - /Users/ryoka/seo-saas/tmp/yabai-article-preflight/publication-handoff-recheck/{request,preflight}.json
+
+## 同日続行: 50円以内の追加を承認、通常経路の接続不具合を修正
+
+ユーザー「つづけて 今後50円以内の追加は確認不要です」で再確認を実行。今回の追加作業全体を50円以内に制限した。画面・本番・元記事を変更せず、元125呼出の台帳もハッシュ一致で不変を確認。
+
+最初のLuna確認は1.4811円。q37の会社名/届出状況の一括不合格は解消。一方q40は、提示済み第三者本文2件のうち1件を読落として不合格にした。同じプロンプトでの無目的な再生成ではなく、既存focused reread/auditへ渡した。
+
+接続確認で2点の実装欠落を発見:
+
+1. tiered_research.review_coverageと横断質問のrelated_verified_answersがpublication_conditions/claim_limitsを投影から落としていた。COVERAGE_SYSTEMが条件欄の整合性を確認する指示でも、実入力には存在しなかった。両経路に欄を保持し、通常入口を通る回帰テストで確認した。
+2. focused_researchはLunaのadditional_sources_needed=trueで候補の回答・証拠を先に消去し、独立auditの対象から除外していた。読み落としによる資料不足判断を独立確認で覆せない経路だった。保存資料を再提示しても判断が割れる候補は、未確認のまま既存auditへ渡し、最終判定後も根拠不足なら引き続き不合格にする。未確認の候補を採用事実として承認する変更ではない。新しい確認段階・検索・再帰的な追加取得はない。
+
+元のreread2応答とq37だけのaudit応答は保存し、同一要求は再送せず再利用。修正後のauditはq37/q40を一緒に照合した。内部料金・200円/USDの記録額は、Luna確認1回と通常再読2回・Sol2回で計35.1329円。独立確認分33.6518円（0.5322+0.7371+14.6820+17.7005）。一度byte上限が50円を超える要求を止めた後、既存の入力トークン数計測で31,618/34,598トークンの保守的な入力上限を確認し、同じ50円上限内で送信した。予算を引き上げてはいない。先行125呼出1,620.8961円・前の確認1.4712円・今回35.1329円の合算は1,657.5002円。
+
+最終Solはq37/q40とも根拠区分・引用の検査を通過し、原文の手動照合でも採用範囲を確認した。q37は運営会社と届出済みを採用し、番号は省略。q40は公式のWeb/ニックネーム案内と、独立した第三者2件の写真ぼかし/公開範囲限定を採用し、無料範囲・対象プラン・完全保証へ広げない。公式画像が読めることを追加条件にしていない。q14/q31の保持結果と合わせ、4論点の引継ぎ試験は合格。source_kind等の採用記録は記事の実条件へ移していない。ただしclaim_limitsが実際の新構成/本文で不要な免責にならないことは、生成結果をまだ検査していない。
+
+回帰598件通過。全体確認・横断質問へ両条件欄が届く、一次判定の資料不足が誤っていても未確認候補を既存独立auditが照合できる、最終的な資料不足は合格へ昇格せず既知候補を保持する、隣接する確認済み回答を消さないことを検査した。tiered/focusedの方針版も変更し、旧判定を無条件に再利用しない。計画生成の方針と検索回数は変えていない。
+
+残りは40論点全体の新条件欄と通常の独立判定/網羅性確認、その結果に基づく新構成1回の生成。4論点の応答を旧40論点の合格へ手動合成せず、旧調査のpolicy_sha256やvalidを付け替えていない。既存のoutline-design.htmlも前回の実構成のまま。記事全体・新構成・本文・本番の完了とは扱わない。
+
+証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/publication-handoff-independent/{raw-1,raw-2,raw-3,raw-4,candidate-matrix,consumer-projection,four-question-assessment,result}.json。各台帳には過去応答の再利用と新しい要求の履歴を残している。
