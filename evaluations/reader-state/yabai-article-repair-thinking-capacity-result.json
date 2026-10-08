@@ -1,0 +1,23 @@
+{
+  "status": "stopped",
+  "error_type": "ContentQualityError",
+  "error": "品質検査の応答が完了していません。",
+  "this_run_jpy": 57.030400000000014,
+  "total_jpy": 1440.6953199999996,
+  "new_calls": 1,
+  "quality_jpy": 823.5618900000002,
+  "production_writes": false,
+  "paid_reaudit": false,
+  "stage": "article_repair_retry_exhausted_output",
+  "repair_applied": false,
+  "article_completion": false,
+  "cause": "Replacement-text estimate had only2000 tokens of thinking allowance. 7444 total tokens exhausted; visible JSON stopped at the27th of44 target IDs.",
+  "provider_stop_reason": "max_tokens",
+  "fix": "Share the existing Opus8000-token thinking allowance between the generic adapter and large article repair sizing; keep small-edit6000 baseline. Monetary and attempt caps unchanged by code.",
+  "next_output_limit": 13444,
+  "next_maximum_reservation_jpy": 120.2896,
+  "free_tests_passed": 576,
+  "additional_paid_calls_after_fix": 0,
+  "current_preview": "http://127.0.0.1:8873/article.html",
+  "current_preview_is": "Unmodified generated draft; failed partial edits not applied."
+}

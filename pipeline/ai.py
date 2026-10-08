@@ -3,6 +3,8 @@ import os
 import time
 import anthropic
 
+OPUS_THINKING_ALLOWANCE = 8000
+
 # Centralized model config per step
 STEP_CONFIG: dict[str, dict] = {
     "search_intent": {"model": "claude-opus-5-5",   "max_tokens": 6000},
@@ -101,7 +103,7 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
         kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
         # Existing budgets were for visible text only; reserve room for thinking.
         if kwargs["model"] == "claude-opus-5-5" and not output_budget_includes_thinking:
-            kwargs["max_tokens"] = min(128000, kwargs["max_tokens"] + 8000)
+            kwargs["max_tokens"] = min(128000, kwargs["max_tokens"] + OPUS_THINKING_ALLOWANCE)
     if client is None:
         client = anthropic.Anthropic(max_retries=0)
     if tiered_review_enabled():

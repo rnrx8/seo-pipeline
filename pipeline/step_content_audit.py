@@ -6,7 +6,7 @@ from .step_cta_inject import cta_placement_issues
 
 import anthropic
 
-from .ai import create_with_retry, get_step_config, astra_review_enabled, hybrid_writing_enabled
+from .ai import create_with_retry, get_step_config, astra_review_enabled, hybrid_writing_enabled, OPUS_THINKING_ALLOWANCE
 from .article_quality import validate_delivery
 from .readability import readability_issues, READABILITY_POLICY
 from .section_identity import bind_sections, carry_sections
@@ -34,7 +34,10 @@ def repair_output_limit(data, minimum, counter):
     count=counter(sample)
     if type(count) is not int or count<=0:
         raise ContentQualityError('修正出力の必要量を確認できません。修正APIは送信しません。')
-    limit=max(minimum,math.ceil(count*1.25)+2000)
+    # Large patches need the same 8k thinking allowance used by the shared
+    # Opus adapter, in addition to replacement text. 2k was not sufficient:
+    # real 44-block repairs exhausted 7444 tokens before finishing visible JSON.
+    limit=max(minimum,math.ceil(count*1.25)+OPUS_THINKING_ALLOWANCE)
     if limit>128000:raise ContentQualityError('局所修正の出力量が大きすぎます。対象範囲の確認が必要です。')
     return limit
 

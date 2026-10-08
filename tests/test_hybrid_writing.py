@@ -14,8 +14,11 @@ class HybridWritingTests(unittest.TestCase):
         self.assertEqual(repair_output_limit(data,6000,count),6000)
         count.assert_not_called()
         data['article_blocks'][0]['text']='修正対象'*1000
-        self.assertEqual(repair_output_limit(data,6000,count),8250)
+        self.assertEqual(repair_output_limit(data,6000,count),14250)
         self.assertEqual([e['id'] for e in json.loads(count.call_args.args[0])['edits']],['a'])
+        # Observed failed run: 4355-token replacement sample was assigned 7444
+        # total tokens, exhausted by thinking plus an unfinished JSON patch.
+        self.assertEqual(repair_output_limit(data,6000,lambda _:4355),13444)
         from pipeline.content_quality import ContentQualityError
         with self.assertRaises(ContentQualityError):repair_output_limit(data,6000,lambda _:None)
 
