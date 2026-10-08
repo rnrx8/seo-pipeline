@@ -146,7 +146,7 @@ H4タイトルも箇条書きにしてはならない。H4が不要な場合は�
 向き不向き・注意点・差別化などは固定テンプレとして毎回追加せず、検索意図と論点に必要な場合のみ採用する。
 
 ### FAQ（任意）
-- H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する
+- H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する。採用時も上記の共通形式でH2と質問ごとのH3を設計し、対応論点・回答要素・根拠・分量を同じ章構造で引き継ぐ
 - ①本文の見出しで扱っていない内容であること
 - ②ファクトシートの[confirmed]タグのある内容で回答できること
 - ③以下のいずれかに該当すること：
@@ -249,7 +249,9 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
     target = _target_chars(word_count_setting)
     sections = outline_sections(outline_text)
     children = [sum(s['level'] == 3 and s['parent'] == title for s in sections) for title in h2s]
-    floors = [150 + count * 200 for count in children]
+    # The H3 floor protects thin answers. It does not require a further
+    # 150 characters of parent prose (e.g. a FAQ may answer directly).
+    floors = [max(150, count * 200) for count in children]
     if (len(existing_titles) == len(h2s) and all(title in existing_titles for title in h2s)
             and (reference_only or .9 * target <= sum(existing_chars) <= 1.1 * target)
             and all(existing_chars[existing_titles.index(title)] >= floor
@@ -556,7 +558,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
                         content_text=outline_text, meta={"issues": design_issues, "audited": False})
         raise ContentQualityError("構成の論点割当て・回答設計が不足しています: " + json.dumps(design_issues, ensure_ascii=False))
     if volume_repaired:
-        print("[outline] Rebuilt incomplete section volume design")
+        print("[outline] Normalized outline headings or section volume design")
 
     artifact = upsert_artifact(
         job_id=job_id,

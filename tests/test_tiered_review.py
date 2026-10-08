@@ -67,6 +67,36 @@ class TieredReviewTests(unittest.TestCase):
                 self.assertEqual(create_with_retry(None,**self.request(model)),'ok')
                 self.assertEqual(call.call_args.kwargs['model'],model)
 
+    def test_uncached_outline_fits_same_remaining_cap_without_cutting_output(self):
+        payload={'model':'claude-opus-5-5','max_tokens':24000,
+                 'messages':[{'role':'user','content':'資料'*40000}]}
+        with patch.dict(os.environ,{'QUALITY_TOTAL_LIMIT_USD':'1.5'}),budget.scope('test-job','outline'):
+            with budget.ledger() as value:
+                value['calls'].append({'reserved_usd':.570061,'cost_usd':.570061,
+                    'status':'accounted','category':'quality'})
+            index=budget.reserve_claude(payload,input_counter=Mock(return_value=51650))
+            row=self.ledger()['calls'][index]
+            self.assertEqual(row['input_rate_basis'],'uncached_input')
+            self.assertAlmostEqual(row['reserved_usd'],(60912*4+24000*20)/1e6)
+            self.assertEqual(self.ledger()['total_limit_usd'],1.5)
+            budget.settle(index,{'input_tokens':51650,'output_tokens':24000})
+            self.assertLess(self.ledger()['calls'][index]['cost_usd'],row['reserved_usd'])
+            with self.assertRaises(ContentQualityError):budget.reserve_claude(payload,input_counter=Mock(return_value=51650))
+
+    def test_cache_control_at_any_request_level_keeps_write_ceiling(self):
+        from anthropic.types import TextBlock
+        for extra in ({'cache_control':{'type':'ephemeral'}},
+                      {'system':[{'type':'text','text':'指示','cache_control':{'type':'ephemeral','ttl':'1h'}}]},
+                      {'messages':[{'role':'user','content':[TextBlock(type='text',text='資料',cache_control={'type':'ephemeral'})]}]},
+                      {'tools':[{'type':'web_search_20250305'}]},
+                      {'mcp_servers':[{'type':'url','url':'https://test.invalid'}]}):
+            with self.subTest(extra=extra):
+                self.assertEqual(budget.claude_input_ceiling({'model':'claude-opus-5-5',**extra}),
+                                 (8.,'cache_or_server_ceiling'))
+        self.assertEqual(budget.claude_input_ceiling({'model':'claude-opus-5-5',
+            'messages':[{'role':'user','content':'本文中のcache_controlは設定ではない'}],
+            'tools':[{'name':'fetch','input_schema':{'type':'object'}}]}),(4.,'uncached_input'))
+
     def test_client_tool_requests_are_counted_with_tools_and_keep_total_cap(self):
         tools=[{'name':'fetch_current_page','description':'公開本文の取得',
                 'input_schema':{'type':'object','properties':{'url':{'type':'string'}}}}]

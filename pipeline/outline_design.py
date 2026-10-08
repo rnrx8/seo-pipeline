@@ -15,7 +15,15 @@ def topic_assignments(text):
     result = []
     for section in outline_sections(text):
         body = text[section['start']:section['end']]
-        ids = list(dict.fromkeys(re.findall(r'\bq\d+\b', _design_field(body, '対応論点'))))
+        ids = []
+        for match in re.finditer(r'\bq(\d+)(?:\s*[〜～–—-]\s*q(\d+))?\b', _design_field(body, '対応論点')):
+            first, last = match[1], match[2]
+            if last and 0 <= int(last) - int(first) <= 1000:
+                width = max(len(first), len(last))
+                ids.extend('q' + str(n).zfill(width) for n in range(int(first), int(last) + 1))
+            else:
+                ids.extend('q' + n for n in (first, last) if n)
+        ids = list(dict.fromkeys(ids))
         result.append({'title': section['title'], 'level': section['level'], 'ids': ids})
     return result
 

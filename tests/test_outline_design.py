@@ -66,6 +66,13 @@ class OutlineDesignTests(unittest.TestCase):
         text = BRIEF.replace('- 対応論点：q01', '- 対応論点：\n- 回答要素：q01を説明')
         self.assertIn('unassigned_required_topic', [i['key'] for i in assignment_issues(text, PLAN)])
 
+    def test_compact_topic_range_keeps_interior_required_ids(self):
+        plan={'items':[{'id':f'q{n:02d}','priority':'essential'} for n in range(19,27)]}
+        for separator in ('〜','～','-','–','—'):
+            text=BRIEF.replace('q01',f'q19{separator}q26')
+            self.assertEqual(assignment_issues(text,plan),[])
+            self.assertEqual(topic_assignments(text)[0]['ids'],[q['id'] for q in plan['items']])
+
     def test_qa_and_video_do_not_change_article_length_reference(self):
         pages = [{'url':'https://example.com/article', 'fetch_status':'success', 'word_count':4000}]
         reference = step_outline._calc_target_word_count(json.dumps({'competitor_headings': pages}))

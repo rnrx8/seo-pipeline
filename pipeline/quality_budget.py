@@ -293,6 +293,22 @@ def settle(index,usage=None):
   else:call['status']='unknown_cost_reserved'
 
 
+def claude_input_ceiling(payload):
+ """Uncached requests cannot incur the one-hour cache creation premium.
+
+ Keep the existing worst-case rate for cache-enabled and server-managed
+ requests. Do not assume a cache hit when reserving a cached request.
+ """
+ data=json.loads(json.dumps(payload,default=lambda v:v.model_dump(mode='json')))
+ def caches(value):
+  if isinstance(value,dict):return 'cache_control' in value or any(caches(v) for v in value.values())
+  if isinstance(value,list):return any(caches(v) for v in value)
+  return False
+ managed=bool(data.get('mcp_servers')) or any(t.get('type','custom')!='custom' for t in data.get('tools',[]))
+ if caches(data) or managed:return CLAUDE_RATES[payload['model']][0],'cache_or_server_ceiling'
+ return CLAUDE_USAGE_RATES[payload['model']][0],'uncached_input'
+
+
 def reserve_claude(payload, input_counter=None):
  """Record generation separately; charge corrective research to quality too."""
  from .content_quality import ContentQualityError
@@ -307,7 +323,8 @@ def reserve_claude(payload, input_counter=None):
  # Server-side search may expand the input up to the model context. Do not
  # promise a hard cap based only on the small outbound request in that case.
  if searches:size=max(size,(searches+1)*1000000)
- ir,orr=CLAUDE_RATES[model]
+ ir,rate_basis=claude_input_ceiling(payload)
+ orr=CLAUDE_RATES[model][1]
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
   guard_review(value,0)
@@ -338,7 +355,8 @@ def reserve_claude(payload, input_counter=None):
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),
-    'reserved_usd':amount,'status':'pending','started_at':time.time(),**review_metadata()})
+    'reserved_usd':amount,'status':'pending','started_at':time.time(),
+    'input_rate_ceiling':ir,'input_rate_basis':rate_basis,**review_metadata()})
  return index
 
 
