@@ -249,6 +249,25 @@ class ScopedReviewTests(unittest.TestCase):
             evidence.evidence_audit('research',revised,ROLES['evidence'],self.text)
             self.assertEqual(send.call_count,2)
 
+    def test_outline_coverage_can_check_named_sources_without_losing_failure(self):
+        from pipeline.content_quality import audit, CHECKS
+        check={**self.check,'key':'coverage','reason':'推奨プランの必要料金が不明'}
+        value={'checks':[check if k=='coverage' else {'key':k,'status':'pass','reason':'fixture',
+            'affected_blocks':[],'requires_source_check':False,'source_urls':[],'research_ids':[]} for k in CHECKS]}
+        seen=[]
+        def source_check(stage,payload,keys,text):
+            self.assertEqual(stage,'research');self.assertIn('coverage',keys)
+            packet=scope.scoped_packet(payload,[check]);seen.append(packet)
+            return [check],NS(input_tokens=0,output_tokens=0),[{'review':{'needed':True}}]
+        with patch.object(research,'checked_request',return_value=(value,NS(input_tokens=0,output_tokens=0))), \
+             patch.object(evidence,'evidence_audit',side_effect=source_check), \
+             patch('pipeline.db.get_optional_artifact',return_value=None):
+            report=audit(None,stage='research',text=self.text,outline=self.text,facts='',requirements=self.req,sources=json.dumps(self.pages),contract={})
+        self.assertEqual(seen[0]['source_documents'],self.pages[:1])
+        self.assertFalse(report['valid']);self.assertTrue(report['evidence_pending'])
+        self.assertEqual(next(c for c in report['checks'] if c['key']=='coverage')['status'],'fail')
+        self.assertNotIn('coverage',ROLES['evidence'])  # Article roles stay separate.
+
     def test_unresolved_comparison_cannot_become_pass_when_evidence_support_was_not_requested(self):
         from pipeline.content_quality import audit, CHECKS
         check={**self.check,'key':'comparison_conditions'}

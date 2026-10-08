@@ -421,7 +421,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
     if compact:
         from .focused_quality import ROLES
-        evidence_keys=ROLES['evidence']
+        # Outline coverage can depend on a missing decision condition (e.g.
+        # the price of the recommended plan). Route that named dependency
+        # through the same bounded source check, without widening article roles.
+        evidence_keys=(*ROLES['evidence'], 'coverage')
         from .quality_context import review_facts, review_conditions
         payload['confirmed_facts']=review_facts(facts,requirements)
         payload['conditional_facts']=review_conditions(facts,requirements)

@@ -1,0 +1,34 @@
+{
+  "status": "stopped",
+  "completed_stages": [
+    "research_completeness",
+    "reference_structure",
+    "content_contract",
+    "outline",
+    "structure_guard"
+  ],
+  "reused_stages": [
+    "serp",
+    "search_intent",
+    "research_plan",
+    "fact_sheet"
+  ],
+  "production_writes": false,
+  "stage": "research_validation",
+  "cost_plus_reserved_jpy": 1015.1098949999998,
+  "this_resume_jpy": 243.6540749999998,
+  "quality_cost_plus_reserved_jpy": 577.0674650000001,
+  "new_calls": 17,
+  "error_type": "ContentQualityError",
+  "error": "確認・修正の対象段落と根拠の指定が不足または不正です。全資料へは拡大しません。",
+  "offline_cause": "Outline coverage requested bounded source verification but validator allowed only evidence-role keys. Named blocks, research ids and URLs were valid.",
+  "offline_fix": "Permit outline coverage to use existing bounded source verification; retain source/block validation and fail verdicts. Article roles unchanged.",
+  "saved_response_route_replay": "passed",
+  "article_generated": false,
+  "paid_retry_after_stop": false,
+  "remaining": [
+    "Resolve saved outline findings via existing bounded source check and local repair",
+    "Recheck corrected outline",
+    "Generate article and run normal final checks"
+  ]
+}
