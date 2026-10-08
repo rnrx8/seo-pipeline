@@ -38,6 +38,39 @@ class GenerationContextTests(unittest.TestCase):
         self.assertEqual(data['sources']['ref1']['quote'],pages[1]['text'])
         self.assertEqual(matrix,original)
 
+    def test_planning_relevance_reaches_outline_only_without_becoming_a_fact(self):
+        plan, _, matrix = self.data()
+        plan['items'][0]['priority_reason'] = '利用者の判断を補足する背景。競合1記事で扱う。'
+        matrix['items'][0]['reason'] = '採用経緯は本文へ渡さない'
+        original = copy.deepcopy((plan, matrix))
+        def bundle(planning):
+            text = decision_bundle(plan, matrix, quotes=False, planning=planning)
+            return text, json.loads(text[text.index('{'):])
+        text, outline = bundle(True)
+        self.assertEqual(outline['editorial_planning']['topics'][0]['priority_reason'], plan['items'][0]['priority_reason'])
+        self.assertNotIn('priority_reason', outline['decisions'][0])
+        self.assertNotIn(matrix['items'][0]['reason'], text)
+        text, article = bundle(False)
+        self.assertNotIn('editorial_planning', article)
+        self.assertNotIn(plan['items'][0]['priority_reason'], text)
+        self.assertEqual((plan, matrix), original)
+
+    def test_outline_repair_retains_relevance_and_article_repair_removes_it(self):
+        from pipeline.generation_context import repair_requirements
+        plan, _, matrix = self.data()
+        plan['items'][0]['priority_reason'] = '補足として使う理由'
+        packet = {'research_plan': plan, 'research_decisions': matrix}
+        original = copy.deepcopy(packet)
+        outline = repair_requirements(packet, planning=True)
+        article = repair_requirements(packet)
+        self.assertEqual(outline['research_plan']['items'][0]['priority_reason'], '補足として使う理由')
+        self.assertNotIn('priority_reason', article['research_plan']['items'][0])
+        self.assertNotIn('source_requirement', outline['research_plan']['items'][0])
+        self.assertEqual(packet, original)
+        plan_only = {'research_plan': plan}
+        self.assertNotIn('priority_reason', repair_requirements(plan_only)['research_plan']['items'][0])
+        self.assertIn('priority_reason', repair_requirements(plan_only, planning=True)['research_plan']['items'][0])
+
     def test_acceptance_metadata_is_not_article_content(self):
         plan,pages,matrix=self.data()
         matrix['items'][0]['reason']='ACCEPTANCE_REASON_ONLY'
@@ -104,6 +137,7 @@ class GenerationContextTests(unittest.TestCase):
         from test_article_quality import OUTLINE,CONTRACT
         plan,pages,matrix=self.data()
         pages.append({'url':'https://unrelated.example','status':'success','text':'UNRELATED_BODY_SENTINEL'})
+        plan['items'][0]['priority_reason']='EDITORIAL_RELEVANCE_SENTINEL'
         matrix['runtime_debug_marker']='MATRIX_BOOKKEEPING_SENTINEL'
         matrix['items'][0]['applicable_at']='SOURCE_KIND_AND_DATE_SENTINEL 第三者掲載情報。確認日は適用開始日ではない。'
         matrix['items'][0]['omission_reason']='OMISSION_ADOPTION_SENTINEL 公式本文の取得に失敗。'
@@ -149,6 +183,7 @@ class GenerationContextTests(unittest.TestCase):
             self.assertNotIn('MATRIX_BOOKKEEPING_SENTINEL',captured[0])
             self.assertNotIn('SOURCE_KIND_AND_DATE_SENTINEL',captured[0])
             self.assertNotIn('OMISSION_ADOPTION_SENTINEL',captured[0])
+            self.assertEqual('EDITORIAL_RELEVANCE_SENTINEL' in captured[0], module == step_outline)
             self.assertIn('税込',captured[0])
             self.assertIn('2025年1月',captured[0])
             self.assertIn('https://media-one.example/a',captured[0])

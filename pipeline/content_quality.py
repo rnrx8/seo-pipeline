@@ -60,7 +60,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .quality_context import compact_enabled, CONTEXT_POLICY
     from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
     from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
-    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
+    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -420,7 +421,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     evidence_trace=[]
     keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
     from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
-    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは必須・重要論点の割当て、各章の具体的な回答要素、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性を検査する。文字数合計が揃うことは合格理由ではない。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
+    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは論点がどこかに存在するだけでなく、主検索意図への回答が結論からどの子節・後続章へ具体化されるか、各子節が親見出しの疑問へ答えるか、前提でない補足が詳細を中断しないかを記事全体で照合する。必須・重要論点の割当て、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性も確認する。情報の存在・調査優先度・文字数合計だけを構成の合格理由にしない。順序の好みだけで不合格にせず、主回答を妨げる箇所と親子の疑問の食い違いを具体的に示す。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
     if compact:
         from .focused_quality import ROLES
         # Outline coverage can depend on a missing decision condition (e.g.

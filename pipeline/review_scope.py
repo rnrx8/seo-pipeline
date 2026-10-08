@@ -211,7 +211,7 @@ def save_resolution(stage, packet, checks, original, trace):
                     content_text=old['content_text'], meta=meta)
 
 
-def repair_packet(text, requirements, sources, report):
+def repair_packet(text, requirements, sources, report, *, planning=False):
     from .content_edits import content_blocks
     failed = [copy.deepcopy(c) for c in report['checks'] if c['status']=='fail']
     from .readability import readability_issues
@@ -224,7 +224,7 @@ def repair_packet(text, requirements, sources, report):
     packet = scoped_packet({'article_blocks':content_blocks(text),'requirements':requirements,
                             'source_documents':sources},failed+issues)
     from .generation_context import repair_requirements
-    packet['requirements']=repair_requirements(packet.get('requirements',{}))
+    packet['requirements']=repair_requirements(packet.get('requirements',{}),planning=planning)
     packet['structural_issues']=issues
     packet['failed_checks']=failed
     from .repair_evidence import compact_repair_sources

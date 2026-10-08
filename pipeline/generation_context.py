@@ -23,7 +23,14 @@ def publication_scope(item):
     return result
 
 
-def decision_bundle(plan, matrix, *, quotes):
+def outline_planning_context(plan):
+    """Editorial relevance is separate from accepted facts and source bookkeeping."""
+    return {'topics': [{k: copy.deepcopy(q[k]) for k in
+                       ('id', 'priority_reason') if k in q}
+                       for q in plan.get('items', [])]}
+
+
+def decision_bundle(plan, matrix, *, quotes, planning=False):
     """Project current-policy answers; callers also validate source/plan snapshots."""
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
@@ -59,22 +66,31 @@ def decision_bundle(plan, matrix, *, quotes):
                     name='ref'+str(len(ref_ids)+1);ref_ids[key]=name;sources[name]=ref
                 row['source_ids'].append(ref_ids[key])
         rows.append(row)
-    return POLICY+'\n'+json.dumps({'version':POLICY_VERSION,'scope':{k:v for k,v in plan.items() if k in ('candidate_services',)},
-                                  'decisions':rows,'sources':sources},ensure_ascii=False)
+    bundle={'version':POLICY_VERSION,'scope':{k:v for k,v in plan.items() if k in ('candidate_services',)},
+            'decisions':rows,'sources':sources}
+    if planning:
+        bundle['editorial_planning']=outline_planning_context(plan)
+    return POLICY+'\n'+json.dumps(bundle,ensure_ascii=False)
 
 
-def generation_evidence(job_id, facts, sources, *, quotes=True):
+def generation_evidence(job_id, facts, sources, *, quotes=True, planning=False):
     from .research_requirements import require_matrix,load_plan
     # Every writing route uses the same validated evidence boundary.
     current=require_matrix(job_id)
-    return decision_bundle(load_plan(job_id),current,quotes=quotes)
+    return decision_bundle(load_plan(job_id),current,quotes=quotes,planning=planning)
 
 
-def repair_requirements(requirements):
+def repair_requirements(requirements, *, planning=False):
     """Project an already source-scoped repair packet; do not change audit inputs."""
     result=copy.deepcopy(requirements)
     # Legacy prose constraints are audit records even without a decision bundle.
     result.pop('usage_constraints',None)
+    plan=result.get('research_plan',{})
+    plan.pop('scope_reason',None)
+    for question in plan.get('items',[]):
+        if not planning:
+            question.pop('priority_reason',None)
+        question.pop('source_requirement',None)
     decisions=result.get('research_decisions')
     if not isinstance(decisions,dict):return result
     for item in decisions.get('items',[]):
@@ -89,8 +105,4 @@ def repair_requirements(requirements):
             for key in ('source_kind','independence_group','expert_scope_reason'):ref.pop(key,None)
     decisions.pop('coverage_reason',None)
     result['evidence_usage_policy']=POLICY
-    plan=result.get('research_plan',{})
-    plan.pop('scope_reason',None)
-    for question in plan.get('items',[]):
-        question.pop('priority_reason',None);question.pop('source_requirement',None)
     return result

@@ -29,13 +29,13 @@ def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict
         raise ContentQualityError('修正対象の指摘がありません。')
     from .quality_context import compact_enabled
     evidence = '' if compact_enabled() else generation_evidence(job_id, get_artifact(job_id, 'fact_sheet')['content_text'],
-                                   source_evidence(get_artifact(job_id, 'fresh_sources')), quotes=True)
+                                   source_evidence(get_artifact(job_id, 'fresh_sources')), quotes=True, planning=True)
     from .quality_context import review_requirements
     packet=None
     if compact_enabled():
         from .review_scope import repair_packet
         packet=repair_packet(text,review_requirements(intent_review_requirements(get_job(job_id),keyword),'research'),
-                             source_evidence(get_artifact(job_id,'fresh_sources')),report)
+                             source_evidence(get_artifact(job_id,'fresh_sources')),report,planning=True)
     if packet is not None:
         packet['outline_blocks']=packet.pop('article_blocks')
         repair_data=packet

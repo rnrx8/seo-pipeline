@@ -60,6 +60,19 @@ class ScopedReviewTests(unittest.TestCase):
             return NS(stop_reason="end_turn",content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=100,output_tokens=20))
         return send
 
+    def test_outline_repair_scope_preserves_relevance_without_source_bookkeeping(self):
+        self.req['research_plan']['items'][0]['priority_reason'] = '主回答の判断を補足する'
+        self.req['research_plan']['items'][1]['priority_reason'] = '無関係の論点'
+        original = copy.deepcopy(self.req)
+        check = {**self.check, 'key': 'coverage', 'requires_source_check': False}
+        outline = scope.repair_packet(self.text, self.req, self.pages,
+                                     {'checks': [check]}, planning=True)
+        article = scope.repair_packet(self.text, self.req, self.pages, {'checks': [check]})
+        self.assertEqual(outline['requirements']['research_plan']['items'],
+                         [{'id': 'a', 'subject': 'A', 'priority_reason': '主回答の判断を補足する'}])
+        self.assertNotIn('priority_reason', article['requirements']['research_plan']['items'][0])
+        self.assertEqual(self.req, original)
+
     def test_scope_keeps_all_occurrences_but_excludes_other_services(self):
         packet=scope.scoped_packet(self.payload,[self.check])
         self.assertEqual(set(packet['target_block_ids']),{self.a,self.summary})

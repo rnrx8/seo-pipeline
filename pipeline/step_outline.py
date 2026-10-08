@@ -432,7 +432,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     fact = dict(get_artifact(job_id, "fact_sheet"))
     from .generation_context import generation_evidence
     from .quality_context import compact_enabled
-    fact = {**fact, 'content_text': generation_evidence(job_id,fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')),quotes=False)}
+    fact = {**fact, 'content_text': generation_evidence(job_id,fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')),quotes=False,planning=True)}
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""
