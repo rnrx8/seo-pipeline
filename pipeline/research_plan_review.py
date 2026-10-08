@@ -1,4 +1,5 @@
 """Review research obligations before paying for evidence collection."""
+import copy
 import json
 import anthropic
 from .ai import create_with_retry, get_step_config, is_openai_model
@@ -21,7 +22,8 @@ PLAN_REVIEW_SYSTEM = EVIDENCE_POLICY + '''
 7. 自社の確認済みの強みの訴求を、他社の情報不足を理由に禁止していないか。
 previous_plan/proposed_changesがある場合、削除・統合の理由を元の検索意図とユーザー要件に照合する。ユーザー明示の必須とAI生成の重要度を区別する。過去のrequired=trueだけで変更を禁止しない。AIの過剰な必須分類は元の検索意図とユーザー設定を根拠に対象IDを指摘して訂正できる。ユーザー指定を失う変更、主要な回答を失う統合、資料不足を隠す削除は不合格。重複や検索意図に不要なAI由来の細目は整理してよい。
 未調査なので「情報が取れなさそう」という予想で重要度を下げない。形式や好みだけで差し戻さない。
-JSON valid:boolean, issues:[{id:質問IDまたはoverall,reason:具体的な矛盾と修正条件}]。合格ならissuesは空。
+全質問をclaim_checksで個別確認する。answer_scopeには入力の検索意図に必要な最小限の回答範囲を一文で記録し、source_requirementとofficial_check_requiredを質問の話題ではなく、その回答が行う主張から独立に選ぶ。計画の分類を転記しない。分類が計画と異なる場合は修正が必要。必要範囲を超えた細目の抱き合わせはissuesへ記録する。
+JSON claim_checks:質問IDをキーとする個別確認, valid:boolean, issues:[{id:質問IDまたはoverall,reason:具体的な矛盾と修正条件}]。合格ならissuesは空。
 '''
 PLAN_REVIEW_SCHEMA={'format':{'type':'json_schema','schema':{'type':'object','properties':{
     'valid':{'type':'boolean'},'issues':{'type':'array','items':{'type':'object','properties':{
@@ -29,10 +31,43 @@ PLAN_REVIEW_SCHEMA={'format':{'type':'json_schema','schema':{'type':'object','pr
     'required':['valid','issues'],'additionalProperties':False}}}
 
 
+def review_schema(plan):
+    schema = copy.deepcopy(PLAN_REVIEW_SCHEMA)
+    root = schema['format']['schema']
+    check = {'type':'object', 'properties':{
+        'answer_scope':{'type':'string'},
+        'source_requirement':{'type':'string','enum':['standard','general_guidance','expert_allowed','primary_only']},
+        'official_check_required':{'type':'boolean'}},
+        'required':['answer_scope','source_requirement','official_check_required'], 'additionalProperties':False}
+    ids = [q['id'] for q in plan['items']]
+    root['properties']['claim_checks'] = {'type':'object', 'properties':{key:copy.deepcopy(check) for key in ids},
+                                          'required':ids, 'additionalProperties':False}
+    root['required'].append('claim_checks')
+    return schema
+
+
+def validate_claim_checks(value, plan):
+    checks = value.get('claim_checks')
+    if not isinstance(checks, dict) or set(checks) != {q['id'] for q in plan['items']}:
+        raise ContentQualityError('調査計画の質問別確認が不足しています。')
+    for q in plan['items']:
+        check = checks[q['id']]
+        if (not isinstance(check, dict) or not isinstance(check.get('answer_scope'), str)
+            or not check['answer_scope'].strip()
+            or check.get('source_requirement') not in ('standard','general_guidance','expert_allowed','primary_only')
+            or type(check.get('official_check_required')) is not bool):
+            raise ContentQualityError('調査計画の質問別確認が不正です。')
+        if any(check[key] != q.get(key, True) for key in ('source_requirement','official_check_required')):
+            value['issues'].append({'id':q['id'], 'reason':
+                f"回答範囲「{check['answer_scope']}」に対する根拠区分が計画と不一致。"
+                f"source_requirement={check['source_requirement']}, official_check_required={check['official_check_required']}として再検討。"})
+            value['valid'] = False
+
+
 def review(job_id, plan, context, attempt, api_key=None):
     model,budget=get_step_config('content_audit')
     response=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
-        model=model,max_tokens=budget,system=PLAN_REVIEW_SYSTEM,output_config=PLAN_REVIEW_SCHEMA,
+        model=model,max_tokens=budget,system=PLAN_REVIEW_SYSTEM,output_config=review_schema(plan),
         messages=[{'role':'user','content':json.dumps({'plan':plan,'context':context},ensure_ascii=False)}])
     value=json.loads(response_text(response))
     ids={i['id'] for i in plan['items']}|{'overall'}
@@ -40,6 +75,7 @@ def review(job_id, plan, context, attempt, api_key=None):
         or value['valid'] != (len(value['issues'])==0)
         or any(i.get('id') not in ids or not isinstance(i.get('reason'),str) or not i['reason'].strip() for i in value['issues'])):
         raise ContentQualityError('調査計画の事前確認が不正です。')
+    validate_claim_checks(value, plan)
     upsert_artifact(job_id=job_id,step=f'research_plan_review_{attempt}',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
         meta={'model':model,'input_tokens':response.usage.input_tokens,'output_tokens':response.usage.output_tokens})
     return value,response.usage

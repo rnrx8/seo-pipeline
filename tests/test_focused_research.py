@@ -337,6 +337,39 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertEqual([[q['id'] for q in p['plan']['items']] for p in audits],[['q1','q2'],['q2']])
         self.assertEqual(len(self.calls),4)
 
+    def test_supported_partial_answer_expands_unreviewed_saved_sources_once(self):
+        extra = {'url':'https://additional.example/scams', 'status':'success',
+                 'text':'別の主要な手口についての保存済み資料。'}
+        self.pages.append(extra)
+        audits = []
+        def respond(request, payload):
+            if 'decisions' in payload:
+                return dict(coverage_sufficient=False, coverage_reason='主要回答が未完了',
+                            coverage_issues=[{'id':'q1','reason':'主要回答が未完了'}])
+            answer = copy.deepcopy(self.answer)
+            if 'candidate_answers' in payload:
+                audits.append(payload)
+            for item in answer['items']:
+                item['exploration_complete'] = False
+                item['additional_sources_needed'] = False
+            return answer
+        result, _ = self.run_flow(respond)
+        self.assertEqual(len(audits), 3)  # reread, bounded expansion, independent audit
+        self.assertNotIn(extra['url'], {p['url'] for p in audits[0]['sources']})
+        self.assertIn(extra['url'], {p['url'] for p in audits[1]['sources']})
+        self.assertTrue(audits[1]['sources_complete'])
+        self.assertIn(extra['url'], {p['url'] for p in audits[2]['sources']})
+        self.assertTrue(audits[2]['sources_complete'])
+        self.assertFalse(result['coverage_sufficient'])
+        self.assertTrue(validate_matrix(result, self.plan, self.pages))
+        self.assertTrue(all('tools' not in r for r, _ in self.calls))
+
+    def test_completeness_uses_saved_corpus_not_only_already_packed_subset(self):
+        self.assertFalse(focused.has_all_saved_bodies(self.pages[:1], self.pages))
+        self.assertTrue(focused.has_all_saved_bodies(self.pages, self.pages))
+        self.assertTrue(focused.needs_saved_expansion({
+            'additional_sources_needed':False, 'exploration_complete':False}))
+
     def test_missing_per_question_source_decision_is_rejected(self):
         with patch.object(tiered,'checked_request',return_value=(self.answer,NS(input_tokens=0,output_tokens=0))):
             with self.assertRaisesRegex(ContentQualityError,'質問別'):

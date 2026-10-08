@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v8-answer-evidence-scope'
+VERSION = 'focused-research-v9-saved-exploration'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -31,9 +31,24 @@ def related_pages(pages, candidates):
     from .fresh_sources import normalize_url
     urls = {normalize_url(u) for i in candidates for u in i.get('official_checked_urls', [])}
     urls.update(normalize_url(r['url']) for i in candidates for r in i.get('evidence', []))
+    urls.update(normalize_url(u) for i in candidates for u in i.get('reviewed_source_urls', []))
     selected = [p for p in pages if normalize_url(p['url']) in urls]
     # An unavailable official body is not a reason to hide saved secondary sources.
     return selected if any(p.get('text') and p.get('status', 'success') == 'success' for p in selected) else pages
+
+
+def needs_saved_expansion(item):
+    # Answer support and completion of the question's exploration are separate.
+    return (item.get('additional_sources_needed') is True
+            or item.get('exploration_complete') is False)
+
+
+def has_all_saved_bodies(visible, saved):
+    from .fresh_sources import normalize_url
+    def urls(pages):
+        return {normalize_url(p['url']) for p in pages
+                if p.get('status', 'success') == 'success' and p.get('text', '').strip()}
+    return urls(saved) <= urls(visible)
 
 
 def merge_visible_sources(original, reread):
@@ -116,7 +131,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         return result
 
     def expand_pending(result, model, step, policy):
-        pending=[i for i in result['items'] if i.get('additional_sources_needed')]
+        pending=[i for i in result['items'] if needs_saved_expansion(i)]
         pages=packed_sources(selected,pending,prioritize_referenced=True)
         expanded=ask(pending,pages,model,step,policy,True,True)
         # Validation downstream must include the precise view shown here.
@@ -137,7 +152,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         bodies = packed_sources(selected_bodies, unknown)
         complete = selected_bodies == selected
         result = ask(unknown, bodies, 'gpt-6-luna', 'reread', READ_POLICY+FOCUS_POLICY, True, complete)
-        if result['needs_more_sources'] and not complete:
+        if any(needs_saved_expansion(i) for i in result['items']) and not complete:
             bodies = packed_sources(selected, unknown)
             result = expand_pending(result, 'gpt-6-luna', 'reread_expanded', READ_POLICY+FOCUS_POLICY)
         replace(require_enough_sources(result))
@@ -157,9 +172,9 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         # Rereading may select one of conflicting sources. Independent review
         # must still see the original alternatives, not only the selected side.
         focused = related_pages(packed, pending + [i for i in initial_candidates if i['id'] in pending_ids])
-        complete = focused == packed
+        complete = has_all_saved_bodies(focused, selected)
         result = ask(pending, focused, 'gpt-6.1-sol', 'audit', FOCUS_POLICY, True, complete)
-        if result['needs_more_sources'] and not complete:
+        if any(needs_saved_expansion(i) for i in result['items']) and not complete:
             # At most one expansion. No search, recursive escalation, or new budget.
             result = expand_pending(result, 'gpt-6.1-sol', 'expanded', FOCUS_POLICY)
         replace(require_enough_sources(result))
