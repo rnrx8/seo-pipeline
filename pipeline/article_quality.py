@@ -152,6 +152,17 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
                         break
                     cursor += len(part)
                 issues.append({'key': 'empty_section', 'title': expected['title'], 'affected_blocks': locations})
+    for index, section in enumerate(actual):
+        if index in used:
+            continue
+        # Only the explicit local-repair H4 exception has a carried identity.
+        entry = section_map['entries'][index] if binding_ok else {}
+        if (section['level'] == 4 and entry.get('id', '').startswith('layout-')
+                and entry.get('outline_index') is None):
+            continue
+        issues.append({'key': 'unexpected_heading', 'level': section['level'],
+                       'title': section['title'],
+                       'reason': '構成にない見出しが追加されています。構成変更が必要なら本文の局所修正と分けて扱う'})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'
         r'(?:以下|次|上記|この|本)(?:の)?H[234](?:で|では|に)(?:各|紹介|説明|解説|扱)|'

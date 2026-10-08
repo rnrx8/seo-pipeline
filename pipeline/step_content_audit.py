@@ -74,6 +74,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, 'outline')['content_text']
     contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
     section_map = (artifact.get('meta') or {}).get('section_map') or bind_sections(text, outline, contract)
+    topology_issues = [v for v in validate_delivery(text, outline, contract=contract, section_map=section_map)
+                       if v['key'] in ('unexpected_heading', 'missing_heading', 'stale_section_identity')]
+    if topology_issues:
+        raise ContentQualityError('構成と本文の見出し対応を修正してから品質確認してください: '
+                                  + json.dumps(topology_issues, ensure_ascii=False))
     requirements = final_review_requirements(job, keyword)
     client = anthropic.Anthropic(api_key=api_key, max_retries=0) if hybrid_writing_enabled() else (None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key))
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))

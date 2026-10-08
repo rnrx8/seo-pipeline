@@ -687,7 +687,7 @@ class ScopedReviewTests(unittest.TestCase):
         from pipeline.article_quality import validate_delivery
         from pipeline.content_edits import apply_block_edits
         text='# 記事\n\n## 安全\n\n説明します。\n\n### 個人情報\n\n#### 書類\n\n書類は確認後に破棄します。'
-        outline='### H2：安全\n#### H3：個人情報'
+        outline='### H2：安全\n#### H3：個人情報\n##### H4：書類'
         issues=validate_delivery(text,outline)
         self.assertEqual([i['key'] for i in issues],['empty_section'])
         packet=scope.repair_packet(text,{},[],{'checks':[],'structural_issues':issues})
