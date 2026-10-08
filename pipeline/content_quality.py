@@ -419,6 +419,8 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     compact=compact_enabled()
     evidence_trace=[]
     keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
+    from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
+    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは必須・重要論点の割当て、各章の具体的な回答要素、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性を検査する。文字数合計が揃うことは合格理由ではない。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
     if compact:
         from .focused_quality import ROLES
         # Outline coverage can depend on a missing decision condition (e.g.

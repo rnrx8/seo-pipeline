@@ -464,8 +464,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     final_text = canonical
     if violations:
         final_text, added = repair_outline(final_text, contract, violations)
-    word_count_setting = get_job(job_id).get("word_count_setting")
-    final_text, volume_repaired = ensure_complete_volume_design(final_text, word_count_setting)
+    from .outline_length import planning_setting
+    word_count_setting = planning_setting(get_job(job_id), outline)
+    final_text, volume_repaired = ensure_complete_volume_design(final_text, word_count_setting,
+        reference_only=(outline.get("meta") or {}).get("length_origin") == "reference")
     volume_repaired = volume_repaired or canonical != outline["content_text"]
     if violations or volume_repaired:
         remaining = validate_structure(final_text, contract, outline=True)

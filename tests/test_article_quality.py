@@ -48,7 +48,7 @@ class ArticleQualityTests(unittest.TestCase):
         self.assertIsNone(parse_length_budget('競合平均の1.2倍'))
         self.assertIsNone(parse_length_budget(None))
 
-    def test_automatic_target_survives_entire_outline_run(self):
+    def test_automatic_reference_stays_separate_from_user_setting(self):
         database = {'word_count_setting': None}
         artifacts = {
             'serp': {'content_text': json.dumps({'competitor_headings': [
@@ -56,19 +56,20 @@ class ArticleQualityTests(unittest.TestCase):
             'search_intent': {'content_text': ''}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
             'content_contract': {'content_text': json.dumps(CONTRACT)},
         }
-        message = SimpleNamespace(content=[SimpleNamespace(text=OUTLINE)], stop_reason='end_turn',
+        designed, _ = step_outline.ensure_complete_volume_design(OUTLINE, '5,000字')
+        message = SimpleNamespace(content=[SimpleNamespace(text=designed)], stop_reason='end_turn',
                                   usage=SimpleNamespace(input_tokens=10, output_tokens=8000))
         with patch.object(step_outline, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_outline, 'get_job', side_effect=lambda _: dict(database)), \
-             patch.object(step_outline, 'update_job_word_count_setting',
-                          side_effect=lambda _, value: database.update(word_count_setting=value)), \
              patch.object(step_outline.anthropic, 'Anthropic'), \
              patch.object(step_outline, 'create_with_retry', return_value=message), \
              patch.object(step_outline, 'upsert_artifact', side_effect=lambda **kw: {'id': 'test', **kw}):
             result = step_outline.run('test', 'おすすめ比較')
         rows = step_article._parse_volume_design(result['content_text'])
-        self.assertEqual(sum(row[2] for row in rows), 14400)
-        self.assertEqual(database['word_count_setting'], '14,400字（上限15,600字）')
+        self.assertEqual(sum(row[2] for row in rows), 5000)
+        self.assertIsNone(database["word_count_setting"])
+        self.assertEqual(result["meta"]["length_reference"], "14,400字（上限15,600字）")
+        self.assertEqual(result["meta"]["length_origin"], "reference")
 
     def test_existing_complete_but_wrong_total_is_repaired(self):
         wrong, _ = step_outline.ensure_complete_volume_design(OUTLINE, '5,000字')

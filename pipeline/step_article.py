@@ -6,6 +6,7 @@ import json
 import re as _re
 import time
 from .article_quality import parse_length_budget, select_outline, validate_delivery
+from .outline_length import planning_setting
 from .step_outline import ensure_complete_volume_design
 import anthropic
 from .ai import create_with_retry, get_step_config, message_text
@@ -61,7 +62,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - 共通提示基準「検索語・結論・推奨理由」「節の分量」に従い、構成の各章の役割を本文へ実現する。
 - 構成で選んだ読者の望み・避けたい状況と根拠を引き継ぎ、例文を転記するのではなく章に対応した説明を書く。
 - 並列要素を表やリストへ整理する際は、要素2つ以下や1文で済む場合に形式を強制しない。表・リストには内容を示す短い導入を置く。
-- 構成案の各H3に記載された「セクション内容」「表現形式」「掲載項目」に沿って執筆する。
+- 構成案の各H3に記載された「回答要素」「表現形式」「掲載項目」に沿って執筆する。読者の疑問・回答要素・対応論点は執筆判断に使い、管理用の質問IDや設計欄を本文へ転記しない。
 - 構成案で表・リストが指定されている場合は、その目的と掲載項目を守る。ただし要素が不足している場合は、情報を捏造して埋めない。
 - 構成案にH4がある場合は、その区分とセクション内容を守ってH4見出しとして執筆する。
 
@@ -111,7 +112,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 ▼ その他
 - 読者の不安を和らげる補完文は、そのH2の検索意図に必要な場合だけ入れる
 - 向き不向き・注意点などは固定項目にせず、コンテンツ構造契約で必要とされた場合のみ扱う
-- 文字数は構成案の目標文字数に合わせる
+- 章別分量は回答要素を執筆する目安とする。ユーザーの文字数指定は守り、自動算出の参考値へ合わせるために反復や補足章を増やさない。
 """
 
 USER_TEMPLATE = """\
@@ -370,7 +371,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_input += ti
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
-        issues = validate_delivery(cleaned, required_outline, f'{target}字', contract=contract)
+        issues = validate_delivery(cleaned, required_outline, contract=contract)
         issues += scope_issues(cleaned, facts)
         issues += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(cleaned)]
         if job_id:
@@ -688,10 +689,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception as e:
         print(f"[article] Warning: could not load job settings: {e}")
 
-    word_count_setting = job.get("word_count_setting") if job else None
+    word_count_setting = planning_setting(job, outline)
 
     # Load volume design from outline and service_map if available
-    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
+    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting, reference_only=(outline.get('meta') or {}).get('length_origin') == 'reference')
     if outline_text != outline['content_text']:
         raise ContentQualityError('構成の見出し表記または文字数配分が未正規化です。執筆前検査から再開してください。')
     volume_sections = _parse_volume_design(outline_text)
@@ -838,7 +839,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             raise ContentQualityError("Structure repair introduced [hypothesis] content")
 
-    delivery_issues = validate_delivery(article_text, outline_text, word_count_setting, contract=contract)
+    delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         raise ContentQualityError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 

@@ -1,0 +1,319 @@
+{
+  "job_id": "92053d25-779e-4a05-a224-66df896ff56f",
+  "benchmark_after_qa_exclusion": "14,409字（上限15,610字）",
+  "original_first_part_chars": 4123,
+  "original_length_only_rejection": [
+    {
+      "key": "article_too_short",
+      "actual": 4123,
+      "minimum": 4640,
+      "reason": "構成の説明不足を補完する。水増しや未確認情報の追加は禁止"
+    }
+  ],
+  "old_length_based_issues": [
+    "unexpected_heading",
+    "unexpected_heading",
+    "article_too_short"
+  ],
+  "new_content_based_issues": [
+    "unexpected_heading",
+    "unexpected_heading"
+  ],
+  "preserve_existing_allocation_as_reference": true,
+  "legacy_outline_design_gaps": [
+    {
+      "key": "unassigned_required_topic",
+      "id": "q01",
+      "question": "既婚者マッチングアプリへの登録・利用自体と、利用後に配偶者以外と性的関係を持った場合の不貞行為・慰謝料請求の可能性はどう違うか"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q02",
+      "question": "既婚者同士がアプリで出会った場合、どのような関係になると不貞行為として配偶者から慰謝料を請求され得るか（肉体関係の有無による一般的な線引き）"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q07",
+      "question": "既婚者マッチングアプリが「やばい」と言われる主な理由（不倫リスク、美人局、業者・詐欺、身バレ、身体目的、目的の不一致など）は何か"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q08",
+      "question": "既婚者マッチングアプリの利用が家族・職場・知人に知られる主な経路（スマホ通知・画面、決済明細、デートの目撃、知人とのマッチング等）"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q10",
+      "question": "既婚者を狙う美人局・配偶者を装った示談金要求・投資や副業勧誘・LINE誘導など、業者や詐欺の典型的な手口"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q16",
+      "question": "比較的安全な既婚者マッチングアプリを選ぶ際の条件（運営会社の明示、公的身分証による本人・年齢確認、届出、課金制、監視・通報体制、身バレ防止機能）"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q19",
+      "question": "既婚者クラブの運営会社名の明示と、インターネット異性紹介事業の届出状況（所在地は確認できた範囲の補助情報）"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q20",
+      "question": "既婚者クラブの本人確認・年齢確認の方法と、利用開始までに必須か"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q21",
+      "question": "既婚者クラブの男性の代表的な有料プランの料金（契約期間・総額・月額）と、有料が必要になる機能（メッセージ送受信等）"
+    },
+    {
+      "key": "unassigned_required_topic",
+      "id": "q23",
+      "question": "既婚者クラブの身バレ防止に関する機能（写真ぼかし、ニックネーム制など）の内容"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリがやばいと言われる理由とは？",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリがやばいと言われる理由とは？",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリの利用は違法？慰謝料が問題になる線引き",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリの利用は違法？慰謝料が問題になる線引き",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "登録やメッセージのやり取りだけで直ちに違法にはならない",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "登録やメッセージのやり取りだけで直ちに違法にはならない",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "配偶者以外と性的関係を持つと不貞行為として慰謝料を請求され得る",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "配偶者以外と性的関係を持つと不貞行為として慰謝料を請求され得る",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "不貞行為の慰謝料はいくら？金額が変わる主な事情",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "不貞行為の慰謝料はいくら？金額が変わる主な事情",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリで身バレする主な経路と防ぎ方",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリで身バレする主な経路と防ぎ方",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "スマホの画面・履歴・カード明細・知人の目から知られる",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "スマホの画面・履歴・カード明細・知人の目から知られる",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "自分でできる身バレ対策（端末・お金・会う場所）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "自分でできる身バレ対策（端末・お金・会う場所）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者を狙う美人局・詐欺の手口と見分け方",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者を狙う美人局・詐欺の手口と見分け方",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "美人局・暴露をちらつかせた金銭要求などの手口",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "美人局・暴露をちらつかせた金銭要求などの手口",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "会う前に気づきたい危険な相手のサイン",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "会う前に気づきたい危険な相手のサイン",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "金銭を要求されたときの初動と相談先",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "金銭を要求されたときの初動と相談先",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリの選び方（安全性を見極める5つの確認点）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者マッチングアプリの選び方（安全性を見極める5つの確認点）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "運営会社とインターネット異性紹介事業の届出を確認する",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "運営会社とインターネット異性紹介事業の届出を確認する",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "メッセージ前に本人・年齢確認が必須かを確認する",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "メッセージ前に本人・年齢確認が必須かを確認する",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "監視・通報の仕組みと身バレ対策機能を確認する",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "監視・通報の仕組みと身バレ対策機能を確認する",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者におすすめのマッチングアプリ3選（身バレ対策で比較）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者におすすめのマッチングアプリ3選（身バレ対策で比較）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者クラブ（知人対策とWeb利用で家族に知られる不安を減らせる）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "既婚者クラブ（知人対策とWeb利用で家族に知られる不安を減らせる）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "知人に見つかる不安に備えられる身バレ対策",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "知人に見つかる不安に備えられる身バレ対策",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "不審な相手を遠ざけるための本人確認と監視体制",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "不審な相手を遠ざけるための本人確認と監視体制",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "無料で使える範囲と男性の料金",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "無料で使える範囲と男性の料金",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "Healmate（長期プランで月々の負担を抑えて続けられる）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "Healmate（長期プランで月々の負担を抑えて続けられる）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "Cuddle（自分から声をかけた相手だけにプロフィールを見せられる）",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "Cuddle（自分から声をかけた相手だけにプロフィールを見せられる）",
+      "field": "回答要素"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "まとめ：既婚者マッチングアプリのリスクを知って選ぶ",
+      "field": "読者の疑問"
+    },
+    {
+      "key": "missing_outline_answer_design",
+      "title": "まとめ：既婚者マッチングアプリのリスクを知って選ぶ",
+      "field": "回答要素"
+    }
+  ],
+  "paid_calls": 0,
+  "production_writes": false,
+  "article_changed": false,
+  "semantic_generation_validated": false
+}
