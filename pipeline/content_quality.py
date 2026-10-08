@@ -421,7 +421,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     evidence_trace=[]
     keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
     from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
-    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは論点がどこかに存在するだけでなく、主検索意図への回答が結論からどの子節・後続章へ具体化されるか、各子節が親見出しの疑問へ答えるか、前提でない補足が詳細を中断しないかを記事全体で照合する。必須・重要論点の割当て、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性も確認する。情報の存在・調査優先度・文字数合計だけを構成の合格理由にしない。順序の好みだけで不合格にせず、主回答を妨げる箇所と親子の疑問の食い違いを具体的に示す。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
+    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは論点がどこかに存在するだけでなく、主検索意図への回答が結論からどの子節・後続章へ具体化されるか、共通提示基準「章の設計と引継ぎ」に沿って見出しの問いに必要な説明の深さが設計されているか、各子節が親見出しの疑問へ答えるか、前提でない補足が詳細を中断しないかを記事全体で照合する。必須・重要論点の割当て、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性も確認する。情報の存在・調査優先度・文字数合計だけを構成の合格理由にしない。順序の好みだけで不合格にせず、主回答を妨げる箇所と親子の疑問の食い違いを具体的に示す。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
     if compact:
         from .focused_quality import ROLES
         # Outline coverage can depend on a missing decision condition (e.g.
