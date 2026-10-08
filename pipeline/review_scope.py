@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 POLICY_VERSION = 'scoped-review-v2-preserve-source-set'
 ROUTING_POLICY = '''
 【今回の判定段階：上記の原文照合指定より優先】
-原文照合の前に、採用済み回答と条件、source_resolutionsを用いて判定する。
+採用済み回答と条件、source_resolutions、source_excerptsを用いて現在の文書を判定する。
+source_excerptsは取得資料と一致を確認した原文抜粋。修正前の合否ではなく、現在の主張の対象・プラン・期間・金額を照合する資料として使う。抜粋で確認できない条件だけ追加の原文照合へ回す。
 採用済み回答と条件が一致する主張は、原文がここに無いだけで不合格にしない。
 各checkにaffected_blocks、research_ids、source_urls、requires_source_checkを返す。
 failは該当する全段落（同じ主張の表・冒頭・結論を含む）をaffected_blocksに列挙する。
@@ -142,8 +143,38 @@ def source_resolutions(stage, blocks, sources, requirements):
     return valid
 
 
+def source_excerpts(stage, sources):
+    """Carry source text across document edits, never carry the old verdict.
+
+    A review decision is bound to article blocks; a source excerpt is bound
+    to the fetched page. Keep these identities separate so a repaired claim
+    can be checked without requesting the same page again.
+    """
+    from .quality_budget import JOB
+    from .tiered_research import get_optional_artifact
+    from .content_quality import digest
+    if not JOB.get():return []
+    pages={canonical(p['url']):p for p in pages_from(sources)}
+    stages=('research','article') if stage=='article' else (stage,)
+    receipts=[]
+    for source_stage in stages:
+        artifact=get_optional_artifact(JOB.get(),f'tiered_{source_stage}_evidence_screen')
+        receipts.extend((artifact or {}).get('meta',{}).get('source_resolutions',[]))
+    excerpts={}
+    for receipt in receipts:
+        snapshots=receipt.get('source_snapshots',{})
+        for check in receipt['checks']:
+            for ref in check.get('correction_evidence',[]):
+                url=canonical(ref['url']);page=pages.get(url)
+                if (not page or snapshots.get(url)!=digest(json.dumps(page,ensure_ascii=False,sort_keys=True))
+                        or ref['quote'] not in page['text']):continue
+                excerpts[(url,ref['quote'])]={'url':page['url'],'quote':ref['quote']}
+    return list(excerpts.values())
+
+
 def save_resolution(stage, packet, checks, original, trace):
     from .quality_budget import JOB
+    from .content_quality import digest
     from .tiered_research import get_optional_artifact, upsert_artifact
     if not JOB.get() or trace[-1]['review']['needed']:
         return
@@ -170,7 +201,9 @@ def save_resolution(stage, packet, checks, original, trace):
                 {**c,'affected_blocks':locations,'status':'fail' if locations else 'pass'})
         additions.append({'binding':binding,'scope':scope,
             'reviewed_blocks':[b for b in view['article_blocks'] if b['id'] in relevant],
-            'checks':verdicts,'source_urls':[p['url'] for p in view['source_documents']]})
+            'checks':verdicts,'source_urls':[p['url'] for p in view['source_documents']],
+            'source_snapshots':{canonical(p['url']):digest(
+                json.dumps(p,ensure_ascii=False,sort_keys=True)) for p in view['source_documents']}})
     indexed={r['binding']:r for r in meta.get('source_resolutions',[])}
     indexed.update({r['binding']:r for r in additions})
     meta['source_resolutions']=list(indexed.values())

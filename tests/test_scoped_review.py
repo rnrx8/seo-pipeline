@@ -104,6 +104,47 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
 
+    def test_source_excerpt_survives_edit_but_old_verdict_does_not(self):
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        changed=copy.deepcopy(self.blocks);changed[2]['text']='女性・標準プランは無料。'
+        self.assertEqual(scope.source_resolutions('research',changed,self.pages,self.req),[])
+        refs=scope.source_excerpts('research',self.pages)
+        self.assertEqual(refs,[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+        self.assertNotIn('status',refs[0])
+        self.assertEqual(scope.source_excerpts('article',self.pages),refs)
+        changed_pages=copy.deepcopy(self.pages);changed_pages[0]['text']+='新条件が追加された。'
+        self.assertEqual(scope.source_excerpts('research',changed_pages),[])
+        changed_pages=copy.deepcopy(self.pages);changed_pages[0]['fetched_at']='new fetch'
+        self.assertEqual(scope.source_excerpts('research',changed_pages),[])
+
+    def test_legacy_source_receipt_is_not_promoted_to_current_excerpt(self):
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        artifact=self.saved['tiered_research_evidence_screen']
+        for r in artifact['meta']['source_resolutions']:r.pop('source_snapshots')
+        self.assertEqual(scope.source_excerpts('research',self.pages),[])
+
+    def test_outline_and_article_rechecks_receive_source_not_old_verdict(self):
+        from pipeline.content_quality import audit
+        from pipeline.focused_quality import audit_article
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        requests={}
+        def send(j,step,request):
+            requests[step]=json.loads(request['messages'][0]['content'])
+            fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
+            return {'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[],
+                'requires_source_check':False,'research_ids':[],'source_urls':[]} for k in fields['key']['enum']]},NS(input_tokens=0,output_tokens=0)
+        text=self.text.replace('Aの女性は標準プランでメッセージ無料。','女性・標準プランは無料。')
+        args=dict(text=text,facts='',outline=text,contract={},requirements=self.req,sources=json.dumps(self.pages))
+        with patch.object(research,'checked_request',side_effect=send):
+            audit(None,stage='research',**args)
+            audit_article(None,**args)
+        for step in ('tiered_audit_research','tiered_article_evidence_scope'):
+            self.assertEqual(requests[step]['requirements']['source_resolutions'],[])
+            self.assertEqual(requests[step]['source_excerpts'],[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+
     def test_unrouted_role_cannot_add_a_failure_to_source_handoff(self):
         def reply(j,s,request):
             value=self.message(request,True)

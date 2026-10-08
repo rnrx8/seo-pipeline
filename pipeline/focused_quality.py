@@ -94,7 +94,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         phase_model=model
         if role=='evidence' and compact_enabled():
             from .tiered_evidence import evidence_audit
-            from .review_scope import ROUTING_POLICY, validate_routes, pages_from, source_resolutions
+            from .review_scope import ROUTING_POLICY, validate_routes, pages_from, source_resolutions, source_excerpts
             from .tiered_research import checked_request
             from .quality_budget import JOB
             from types import SimpleNamespace
@@ -103,6 +103,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             brief={k:v for k,v in payload.items() if k not in ('source_documents','outline')}
             brief['source_revision']=digest(sources)
             brief['requirements']['source_resolutions']=source_resolutions('article',content_blocks(text),sources,brief['requirements'])
+            brief['source_excerpts']=source_excerpts('article',sources)
             request.update(model='gpt-6-luna',system=system+ROUTING_POLICY,
                 output_config=audit_output_config(keys,locations=True,source_routing=True),
                 messages=[{'role':'user','content':json.dumps(brief,ensure_ascii=False)}])

@@ -430,10 +430,11 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         payload['conditional_facts']=review_conditions(facts,requirements)
         payload.pop('source_documents')
         payload['source_revision']=digest(sources)
-        from .review_scope import source_resolutions, ROUTING_POLICY
+        from .review_scope import source_resolutions, source_excerpts, ROUTING_POLICY
         payload['article_blocks']=content_blocks(text)
         payload.pop('document')
         payload['requirements']['source_resolutions']=source_resolutions(stage,content_blocks(text),sources,payload['requirements'])
+        payload['source_excerpts']=source_excerpts(stage,sources)
         system+=ROUTING_POLICY
         system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。各checkにrequires_source_checkを返す。提示された採用回答から誤りと修正内容が確定する場合はfail、requires_source_check=falseとして局所修正へ渡す。要約が短い等の理由で原文を見ないと主張の正誤が判断できない事実項目だけfail、requires_source_check=trueとし、reasonに主張と必要な資料を明示する。pass/not_applicableはfalse。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
     request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=audit_output_config(keys, source_routing=compact),
