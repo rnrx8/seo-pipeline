@@ -25,6 +25,38 @@ def fixture(priority='essential'):
 
 
 class EvidencePolicyTests(unittest.TestCase):
+    def test_correlated_main_claims_can_survive_an_omitted_identifier_conflict(self):
+        from pipeline.generation_context import decision_bundle
+        from pipeline.research_requirements import matrix_policy
+        plan,pages,value=fixture('important')
+        plan['items'][0]['question']='Aの運営者と届出状況'
+        pages[0]['status']='failed';pages[0]['text']=''
+        for page,number in zip(pages[1:],('受理001','受理002')):
+            page['text']=f'AはB社が運営。届出済み。受理番号：{number}。'
+        item=value['items'][0]
+        for ref,page in zip(item['evidence'],pages[1:]):ref['quote']=page['text']
+        item.update(answer='AはB社が運営し、届出済み。',
+                    publication_conditions=[],claim_limits=['受理番号を掲載しない'],
+                    applicable_at='取得時点の独立した第三者本文2件。',
+                    reason='運営者・届出状況が一致。番号だけが異なり番号は採用しない。',
+                    omission_reason='受理番号の不一致。番号を省いて運営者・届出状況を回答する。',
+                    supports_current_conclusion=True)
+        original_pages=copy.deepcopy(pages)
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        value.update(valid=True,policy_sha256=matrix_policy())
+        text=decision_bundle(plan,value,quotes=False)
+        published=json.loads(text[text.index('{'):])
+        row=published['decisions'][0]
+        self.assertEqual(row['answer'],item['answer'])
+        self.assertEqual(row['claim_limits'],['受理番号を掲載しない'])
+        self.assertEqual(row['publication_conditions'],[])
+        self.assertTrue(row['publishable'])
+        self.assertNotIn(item['omission_reason'],text)
+        self.assertEqual(pages,original_pages)
+        # Source independence remains required for the adopted main claim.
+        item['evidence'][1]['independence_group']=item['evidence'][0]['independence_group']
+        self.assertTrue(validate_matrix(value,plan,pages))
+
     def test_selected_secondary_prices_keep_dates_and_scope_through_writing(self):
         from pipeline.generation_context import decision_bundle
         plan,pages,value=fixture()
