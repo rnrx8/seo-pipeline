@@ -70,6 +70,13 @@ def checked_request(job_id,step,request,*,client=None):
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
   msg=create_with_retry(client,**request)
+ if getattr(msg,'stop_reason',None)!='end_turn':
+  # Preserve incomplete visible output for diagnosis, but never cache it as a
+  # successful response or apply its partial JSON to the article.
+  partial='\n'.join(b.text for b in msg.content if getattr(b,'type','text')=='text' and hasattr(b,'text'))
+  upsert_artifact(job_id=job_id,step=step+'_incomplete',content_type='text/plain',content_text=partial,
+      meta={'request_sha256':fingerprint,'model':request['model'],'stop_reason':getattr(msg,'stop_reason',None),
+            'max_tokens':request.get('max_tokens'),'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
  value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
  previous=get_optional_artifact(job_id,step)
  meta=copy.deepcopy((previous or {}).get('meta',{}))

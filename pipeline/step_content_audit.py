@@ -1,6 +1,7 @@
 """Mandatory semantic audit, bounded corrections, and re-audit of the final text."""
 import json
 import re
+import math
 from .step_cta_inject import cta_placement_issues
 
 import anthropic
@@ -18,6 +19,24 @@ from .content_quality import (ContentQualityError, audit, final_review_requireme
 from .db import get_artifact, get_job, upsert_artifact
 from .step_structure_guard import validate_structure
 from .evidence_policy import REVIEW_RESOLUTION_POLICY
+
+
+def repair_output_limit(data, minimum, counter):
+    """Size replacement JSON, not whole evidence, before reserving spend."""
+    targets=set(data.get('target_block_ids',[]))
+    if not targets:
+        targets={l['id'] for c in data.get('failed_checks',[])+data.get('structural_issues',[])
+                 for l in c.get('affected_blocks',[])}
+    sample=json.dumps({'edits':[{'id':b['id'],'new':b['text']} for b in data['article_blocks'] if b['id'] in targets]},ensure_ascii=False)
+    # A byte bound cheaply proves small patches fit. Count only larger patches;
+    # do not reserve output for unrelated neighbors or source documents.
+    if len(sample.encode())+2000<=minimum:return minimum
+    count=counter(sample)
+    if type(count) is not int or count<=0:
+        raise ContentQualityError('修正出力の必要量を確認できません。修正APIは送信しません。')
+    limit=max(minimum,math.ceil(count*1.25)+2000)
+    if limit>128000:raise ContentQualityError('局所修正の出力量が大きすぎます。対象範囲の確認が必要です。')
+    return limit
 
 
 def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
@@ -173,6 +192,10 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
                 'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
                 'structural_issues':issues,'article_blocks':content_blocks(text)}
         messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]
+        if hybrid_writing_enabled():
+            max_tokens=repair_output_limit(repair_data,max_tokens,lambda sample:
+                client.with_options(max_retries=0).messages.count_tokens(
+                    model=model,messages=[{'role':'user','content':sample}],timeout=30).input_tokens)
         # Invalid or mechanically incomplete patches never touch the article. Retry once,
         # against the same audited original, independently of semantic repairs.
         for encoding_attempt in range(2):

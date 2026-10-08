@@ -7,6 +7,34 @@ from pipeline.tiered_research import checked_request
 ENV={'ARTICLE_WRITING_FLOW':'sonnet_opus','ARTICLE_REVIEW_PROVIDER':'tiered','ARTICLE_GENERATION_MODEL':'claude-opus-5-5'}
 
 class HybridWritingTests(unittest.TestCase):
+    def test_repair_output_budget_counts_only_targets_and_keeps_small_patch_default(self):
+        from pipeline.step_content_audit import repair_output_limit
+        count=Mock(return_value=5000)
+        data={'target_block_ids':['a'],'article_blocks':[{'id':'a','text':'短文。'},{'id':'b','text':'隣接'*10000}]}
+        self.assertEqual(repair_output_limit(data,6000,count),6000)
+        count.assert_not_called()
+        data['article_blocks'][0]['text']='修正対象'*1000
+        self.assertEqual(repair_output_limit(data,6000,count),8250)
+        self.assertEqual([e['id'] for e in json.loads(count.call_args.args[0])['edits']],['a'])
+        from pipeline.content_quality import ContentQualityError
+        with self.assertRaises(ContentQualityError):repair_output_limit(data,6000,lambda _:None)
+
+    def test_incomplete_response_is_saved_but_not_cached_or_applied(self):
+        from contextlib import nullcontext
+        from pipeline.content_quality import ContentQualityError
+        msg=self.response();msg.stop_reason='max_tokens'
+        msg.content.append(NS(type='thinking',text='private reasoning'))
+        with patch('pipeline.tiered_research.cached_result',return_value=None), \
+             patch('pipeline.quality_budget.request_scope',return_value=nullcontext()), \
+             patch('pipeline.tiered_research.create_with_retry',return_value=msg), \
+             patch('pipeline.tiered_research.upsert_artifact') as save:
+            with self.assertRaises(ContentQualityError):checked_request('job','repair',{'model':'claude-opus-5-5','max_tokens':6000})
+        self.assertEqual(save.call_count,1)
+        saved=save.call_args.kwargs
+        self.assertEqual(saved['step'],'repair_incomplete')
+        self.assertEqual(saved['meta']['stop_reason'],'max_tokens')
+        self.assertNotIn('private reasoning',saved['content_text'])
+
     def test_routes_only_draft_and_repair_and_rejects_unsupported_mode(self):
         with patch.dict(os.environ,ENV):
             self.assertEqual(ai.get_step_config('article'),('claude-sonnet-5-5',16000))

@@ -114,7 +114,7 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
         try:
             with client.with_options(max_retries=0).messages.stream(**kwargs) as stream:
                 result=stream.get_final_message()
-            settle(reservation,result.usage.model_dump());accounted=True
+            settle(reservation,{**result.usage.model_dump(),'stop_reason':getattr(result,'stop_reason',None)});accounted=True
             return result
         finally:
             if not accounted:settle(reservation)
