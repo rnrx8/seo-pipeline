@@ -133,7 +133,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
            'previous_findings':[i for i in previous_issues if i.get('id') in ids],
            'previous_candidates':[{k:i.get(k) for k in ('id','answer','reason','omission_candidate_from','unresolved_candidate')} for i in previous_candidates],
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
-  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions]),
+  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions],questions=questions),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
   print('[tiered] Screen '+subject,flush=True)
   value,usage=checked_request(job_id,f'tiered_screen_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
@@ -147,7 +147,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    payload['article_plan']={**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in pending_ids]}
    payload['candidate_answers']=pending
    request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。回答対象はplan.itemsのみ。')
-   request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
+   request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']],questions=payload['plan']['items'])
    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
@@ -167,7 +167,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
      request['max_tokens']=min(10000,2000+len(pending)*900)
      request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
     if pending:
-     request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
+     request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']],questions=payload['plan']['items'])
      print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
      second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
      second=expand_references(second,source_index)
@@ -191,7 +191,7 @@ def review_coverage(job_id,plan,pages,items,intent_context):
  propose_optional_omissions(items,plan,pages)
  # Recompute item status before coverage reads it, including omission candidates.
  validate_matrix({'items':items,'coverage_sufficient':True,'coverage_reason':'item validation only'},plan,pages)
- decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
+ decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
  return checked_request(job_id,'tiered_coverage',request)

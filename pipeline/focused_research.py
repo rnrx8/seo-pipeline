@@ -73,7 +73,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         nonlocal inputs, outputs
         ids = {i['id'] for i in candidates}
         sources, source_index = indexed_sources(pages)
-        schema = span_schema(MATRIX_SCHEMA, [q['id'] for q in questions if q['id'] in ids])
+        schema = span_schema(MATRIX_SCHEMA, [q['id'] for q in questions if q['id'] in ids],
+                             questions=[q for q in questions if q['id'] in ids])
         if expandable:
             root = schema['format']['schema']
             for row in root['properties']['items']['properties'].values():

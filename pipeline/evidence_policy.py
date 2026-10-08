@@ -1,4 +1,18 @@
 """One editorial evidence contract for research, writing and review."""
+# Source routes are shared by model response schemas and deterministic checks.
+# historical still requires a permitted underlying source and a stated time.
+SOURCE_BASES = {
+    'standard': ('primary', 'corroborated', 'historical', 'omitted', 'unresolved'),
+    'general_guidance': ('primary', 'guidance', 'historical', 'omitted', 'unresolved'),
+    'expert_allowed': ('primary', 'expert', 'historical', 'omitted', 'unresolved'),
+    'primary_only': ('primary', 'historical', 'omitted', 'unresolved'),
+}
+
+
+def allowed_source_bases(requirement):
+    return SOURCE_BASES[requirement]
+
+
 EVIDENCE_POLICY_VERSION = 'intent-evidence-v6-claim-scoped-sources'
 # Editorial disposition is separate from research acceptance: changing how a
 # known defect is repaired must not invalidate an unchanged source collection.
