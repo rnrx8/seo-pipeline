@@ -554,12 +554,12 @@ def _build_extra_instructions(job: dict) -> str:
     purpose = job.get("article_purpose")
     if purpose:
         lines.append(f"\n【記事目的】{purpose}")
-        lines.append("上記の目的に合わせてCTA・誘導文・CV導線を本文中に自然に組み込むこと。")
+        lines.append("上記の目的は、構成で決めた各章の役割・回答要素・説明順序に沿って本文で実現すること。CTAの配置は専用工程の設定に従う。")
 
     word_count = job.get("word_count_setting")
     if word_count:
         lines.append(f"\n【文字数指定】目標文字数は「{word_count}」とすること。")
-        lines.append("調整が必要な場合は、まとめ・FAQ・CV導線を除き、潜在ニーズ対応セクションから優先的に増減すること。")
+        lines.append("調整が必要な場合は、構成の必須回答と読者の判断に必要な説明を保持し、重複と低優先度の補足から調整すること。")
 
     target = job.get("target_audience")
     if target:
