@@ -141,7 +141,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                          'reason':'\n'.join(c['reason'] for c in failed or results),
                          'affected_blocks':merge_block_findings(failed),
                          'research_ids':sorted({i for c in failed for i in c.get('research_ids',[])}),
-                         'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])})})
+                         'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])}),
+                         **({'correction_evidence':[r for c in failed for r in c.get('correction_evidence',[])]}
+                            if any('correction_evidence' in c for c in failed) else {})})
     from .price_comparison import comparison_evidence
     from .claim_scope import scope_issues
     from .content_quality import explicit_risk_guarantees

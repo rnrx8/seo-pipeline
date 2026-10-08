@@ -46,7 +46,8 @@ class ScopedReviewTests(unittest.TestCase):
         fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
         return {'checks':[{'key':k,'status':'fail' if fail and k=='evidence_support' else 'pass',
             'reason':'女性の標準プランが無料。メッセージを含む。',
-            'affected_blocks':[{'id':self.a,'reason':'条件欠落'}] if fail and k=='evidence_support' else []}
+            'affected_blocks':[{'id':self.a,'reason':'条件欠落'}] if fail and k=='evidence_support' else [],
+            'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail and k=='evidence_support' else []}
             for k in fields['key']['enum']],
             'review':{'needed':False,'block_ids':[],'source_urls':[self.pages[0]['url']],'reason':'原文で対応確認済み'}}
 
@@ -180,7 +181,7 @@ class ScopedReviewTests(unittest.TestCase):
             report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
         self.assertFalse(report['valid'])
         packet=scope.repair_packet(self.text,self.req,self.pages,report)
-        self.assertEqual(packet['source_documents'],self.pages[:1])
+        self.assertEqual(packet['source_documents'],[])
         self.assertEqual(set(packet['target_block_ids']),{self.a,self.summary})
 
     def test_normal_outline_repair_recheck_and_restart_use_same_durable_flow(self):
@@ -198,7 +199,8 @@ class ScopedReviewTests(unittest.TestCase):
             n=budget.reserve({'model':request['model'],'max_output_tokens':100,'input':'offline fixture'})
             budget.settle(n,{'input_tokens':100,'output_tokens':20})
             if 'edits' in request['output_config']['format']['schema']['properties']:
-                self.assertEqual([p['url'] for p in data['source_documents']],[self.pages[0]['url']])
+                self.assertEqual(data['source_documents'],[])
+                self.assertTrue(data['requirements']['research_decisions']['items'])
                 self.assertEqual(set(data['target_block_ids']),{self.a,self.summary})
                 value={'edits':[{'id':b['id'],'new':b['text']+'（女性の標準プラン）'} for b in self.blocks if b['id'] in (self.a,self.summary)]}
             else:
@@ -248,6 +250,26 @@ class ScopedReviewTests(unittest.TestCase):
             revised['candidate_checks'][0]['reason']='同じ料金ページだが、返金条件という別の疑問'
             evidence.evidence_audit('research',revised,ROLES['evidence'],self.text)
             self.assertEqual(send.call_count,2)
+
+    def test_article_source_correction_survives_phase_merge_into_small_repair(self):
+        from pipeline.focused_quality import audit_article
+        def send(job,step,request):
+            value=self.message(request,fail=step=='tiered_article_evidence_screen')
+            fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
+            if 'requires_source_check' in fields:
+                for c in value['checks']:
+                    c.update(requires_source_check=False,source_urls=[],research_ids=[])
+                    if step=='tiered_article_evidence_scope' and c['key']=='evidence_support':
+                        c.update(**{k:v for k,v in self.check.items() if k!='key'})
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
+        check=next(c for c in report['checks'] if c['key']=='evidence_support')
+        self.assertEqual(check['correction_evidence'][0]['quote'],self.pages[0]['text'])
+        packet=scope.repair_packet(self.text,self.req,self.pages,report)
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(packet['correction_sources']['correction-1']['quote'],self.pages[0]['text'])
+        self.assertFalse(report['valid'])
 
     def test_outline_coverage_can_check_named_sources_without_losing_failure(self):
         from pipeline.content_quality import audit, CHECKS

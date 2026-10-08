@@ -39,6 +39,9 @@ class CompactQualityFlowTests(unittest.TestCase):
         if 'requires_source_check' in fields:
             for c in result['checks']:
                 c.update(requires_source_check=False,source_urls=[self.pages[0]['url']],research_ids=['q1'])
+        if 'correction_evidence' in fields:
+            for c in result['checks']:
+                c['correction_evidence']=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail else []
         if 'review' in root['properties']:
             result['review']={'needed':review,'block_ids':[self.blocks[2]['id']] if review else [],
                               'source_urls':[self.pages[0]['url']],'reason':'契約条件を確認'}
@@ -287,7 +290,8 @@ class CompactQualityFlowTests(unittest.TestCase):
         check={'key':'comparison_conditions','status':'fail','research_ids':['q1'],
                'affected_blocks':[{'id':self.blocks[2]['id'],'reason':'期間'}]}
         packet=repair_packet(self.text,review_requirements(self.requirements,'evidence'),self.sources,{'checks':[check]})
-        self.assertEqual(packet['source_documents'],self.pages[:1])
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(packet['requirements']['research_decisions']['items'][0]['answer'],self.requirements['research_decisions']['items'][0]['answer'])
         with self.assertRaises(cq.ContentQualityError):
             repair_packet(self.text,self.requirements,self.sources,{'checks':[{**check,'affected_blocks':[]}]})
 

@@ -129,6 +129,10 @@ def source_resolutions(stage, blocks, sources, requirements):
     receipts = (artifact or {}).get('meta', {}).get('source_resolutions', [])
     valid = []
     for r in receipts:
+        # Legacy failed receipts describe a defect but omit the exact correction
+        # evidence. Reuse passing receipts; refresh only incomplete failed ones.
+        if any(c['status']=='fail' and not c.get('correction_evidence') for c in r['checks']):
+            continue
         if not {l['id'] for c in r['scope'] for l in c.get('affected_blocks',[])} <= {b['id'] for b in blocks}:
             continue
         packet = scoped_packet({'article_blocks':blocks,'source_documents':sources,'requirements':requirements}, r['scope'])
@@ -176,7 +180,7 @@ def save_resolution(stage, packet, checks, original, trace):
 
 def repair_packet(text, requirements, sources, report):
     from .content_edits import content_blocks
-    failed = [c for c in report['checks'] if c['status']=='fail']
+    failed = [copy.deepcopy(c) for c in report['checks'] if c['status']=='fail']
     from .readability import readability_issues
     # Derive whole prose runs from the exact edit input, including standalone
     # focused-review reports. Do not trust cached paragraph addresses.
@@ -190,6 +194,8 @@ def repair_packet(text, requirements, sources, report):
     packet['requirements']=repair_requirements(packet.get('requirements',{}))
     packet['structural_issues']=issues
     packet['failed_checks']=failed
+    from .repair_evidence import compact_repair_sources
+    compact_repair_sources(packet, report)
     return packet
 
 
