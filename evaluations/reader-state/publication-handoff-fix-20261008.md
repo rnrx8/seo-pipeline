@@ -265,3 +265,25 @@ Opus局所修正は、保存済みの手動指摘を対象とする15ブロッ�
 次の実行前の無料計数も実施。残4箇所＋表の導入という関係対象5ブロックの通常Opus修正の予約上限45.3888円、現本文に対する5役割の出力最大上限120.7023円、合計166.0911円（修正後の未知本文や条件付き追加原文照合を含まない）。未使用枠105円と追加確認不要50円を足しても最大要求を賄えないため、承認なしに次の有料修正へ入らない。追加100円なら合計400円枠、残約205円でこの1修正＋1全文確認を限定できる見積もりだが、未実行かつ合格保証ではない。
 
 証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/chapter-quality-test/{result,ledger,exception}.json、chapter-quality-test-recovery/{authorization,result,ledger,request-1..12,response-1..12,patch-revalidation,remaining-findings,free-checks,pre-revalidation,pre-source-parser-fix,article.md,preview-status.png}（失敗初回はresponse本文未保存、usage/応答IDは台帳に保存）、chapter-quality-next-preflight/{preflight,repair-request}.json。実記事プレビューhttp://127.0.0.1:8873/chapter-quality.html、元の初稿chapter-body-original.htmlを保持。最新構成からのゼロ開始・本番完了状態の証明ではない。
+
+## 2026-10-09: 追加100円承認後の1局所修正・全文再確認と、残件の由来
+
+直前の追加100円提案に対する「続けて」を承認として、品質確認の通算硬上限を300円から400円へ拡張。旧authorization・全成果物・台帳をpre-authorized-extension-400へ保存し、authorization-extension-400.jsonと台帳のauthorization_extensionsに直接の承認を記録。費用・既存12call・修正回数を消去せず、同一job/caseで追加Opus修正1回と全5役割の確認1回だけを実施した。生成や追加調査、本番変更、手編集、prose finishの追加はなし。
+
+Opus局所修正は21.4128円で、前回の4指摘と表導入という関係箇所の計5ブロックだけを変更。前回4指摘は今回の全文確認では解消した。見出しは8H2/17H3を維持し、H4追加なし。本文10,347字、delivery/structure/readabilityの全文機械検査はすべて空。300字超の通常文章連続と200字未満独立H3はない。これだけで意味的合格とは扱っていない。
+
+途中、試験ラッパーが既存の条件付きevidence_adjudicateを許容リストに入れていなかったため、送信前に止まった。これは私の試験制限の漏れ。既存の限定原文照合・独立確認の範囲として許可し、台帳/回数を維持したまま再開。scope/screenの取得応答は正常キャッシュで再利用し、追加の再送費は0円。
+
+さらに製品側の原文照合引継ぎ不整合を特定。一次照合は8件中6件をpass、2件をfailと判定。独立確認にcandidate_checksとして残2件のaffected_blocksだけでなく、前段の全8件のclaim_verdictsと同じ8段落を渡していた。モデルは提示された8件の個別結果を返したが、validatorがaffected_blocksの2件との完全一致だけを要求して拒否した。指摘欠落ではなく、現在の判定対象と引継ぎ済みpassの扱いの不一致だった。
+
+tiered_evidence.validate_claim_verdictsを、未解決IDの判定は引き続き全件必須とし、明示的に引き継がれた旧passの返答は任意に受け付ける形へ整理した。未知ID・重複・未解決IDの欠落・旧passの新たなfailへの転用・個別failと集約passの不一致は拒否する。引継ぎpassはモデルが復唱しても前段の検証済みの理由へ戻し、復唱がなくても保持する。指摘内容を合格へ変える処理ではない。新しいプロンプト禁止事項・商材分岐・モデル工程は追加していない。回帰616件通過。保存された独立確認応答も通常キャッシュのまま再利用し、追加再送なしで残り4役割を実施できた。
+
+結果は未合格。coverage/unfinished_content/comparison_conditions/metric_scope/unsupported_guarantees/redundancyはpass。evidence_support/conclusion_consistency/prose_qualityはfail、対象は10ブロック。全10ブロックの本文は追加修正前の同IDと完全一致しており、この修正で新たに作られた不具合ではない。2回の以前の確認では拾われず、今回の再確認で新たに指摘されたもの。確認の安定性と過剰検出の切り分けを含む未解決課題として記録する。
+
+明確に既存要件と照合して直せるのは、不要な保証否定3段落（block-0096/0146/0168）と「料金は各社の紹介で扱います」という案内の掲載範囲不一致（0174、実際の料金掲載は3社）。残りは指摘の妥当性確認が必要: 親H2の全文には「調査と体験談」もあるのに「どのくらい？」部分のみで体験談を範囲外と扱う指摘（0072/0080）、警戒理由と本人確認の一般的な仕組み説明を原文に同一の説明がないとしてfailにした2件（0122/0160）、意味が伝わる言い回しの改善とまとめリストの導入追加（0202/0224）。この記録はモデル判定を手動で合格へ上書きするものではなく、次の修正対象の妥当性整理用。盲目的に10箇所全部を構成移動/追加ルールへ変換しない。
+
+今回は8callで120.7547円: Opus21.4128、Luna scope1.2631/screen1.3603、Sol原文独立確認27.3350、coverage29.7965/language12.1075/consistency12.5465/organization14.9330。品質確認累計316.1081円（先行の試験記録失敗1.2353を含む）、400円枠残83.8919円。内部USDJPY200換算。本文生成141.3008円、構成236.4349円とは別。追加修正要求は試験回数ガードで送信前に止め、3回目Opusは0。現metadata.content_audited=false、final_validate未実行、本番未反映。通常本番の予算上限は変えていない。
+
+プレビューはローカルサーバ停止から復旧し、同じchapter-quality.htmlをブラウザの新しいタブで表示確認。「前回4箇所は解消／全文確認は未合格」と316.11/400円の表示、本文を確認。旧画像を上書きせずpreview-extension-status.pngへ保存。今回の確認が旧保存構成を使った本文試験であり、最新構成からのゼロ開始や本番完了状態の証明ではないことを表示する。
+
+証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/chapter-quality-test-recovery/{authorization-extension-400,result,ledger,request-13..20,response-13..20,pre-authorized-extension-400,free-checks,remaining-findings,finding-provenance,article.md,preview-extension-status.png}、/tmp/dig-chapter-followup-tests.log。次は追加の有料全文試験を先行させず、明確な生成漏れと、過剰検出・初回確認漏れ・旧構成と現行基準の差を切り分けて修正対象を確定する。全文再生成・予算自動拡張で収束させるとはしていない。

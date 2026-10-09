@@ -28,19 +28,32 @@ def validate_claim_verdicts(checks, candidates):
     from .content_quality import ContentQualityError
     expected = {c['key']: {l['id'] for l in c.get('affected_blocks', [])}
                 for c in candidates if c['status'] == 'fail'}
+    # A follow-up carries the first review's resolved decisions as context.
+    # Those are retained passes, not new mandatory decisions. Providers may
+    # echo them, but may not turn them into fresh failures or invent targets.
+    retained = {c['key']: {r['id']: r for r in c.get('claim_verdicts', [])
+                         if r['status'] == 'pass' and r['id'] not in expected.get(c['key'], set())}
+                for c in candidates}
     for check in checks:
         rows = check.get('claim_verdicts')
+        required = expected.get(check['key'], set())
+        previous = retained.get(check['key'], {})
         if (not isinstance(rows, list)
                 or any(not isinstance(r, dict) or r.get('status') not in ('pass', 'fail')
                        or not isinstance(r.get('reason'), str) or not r['reason'].strip()
                        or not isinstance(r.get('id'), str) for r in rows)
                 or len(rows) != len({r['id'] for r in rows})
-                or {r['id'] for r in rows} != expected.get(check['key'], set())):
+                or not required <= {r['id'] for r in rows}
+                or not {r['id'] for r in rows} <= required | previous.keys()
+                or any(r['status'] != 'pass' for r in rows if r['id'] in previous)):
             raise ContentQualityError('原文照合で指摘ごとの判定が欠落・重複しています。check全体の合格へ置き換えません。')
         failures = {r['id'] for r in rows if r['status'] == 'fail'}
         if (check['status'] != ('fail' if failures else 'pass')
                 or {l['id'] for l in check['affected_blocks']} != failures):
             raise ContentQualityError('原文照合の個別判定と集約判定が一致しません。未解決の指摘を合格へ置き換えません。')
+        # Use the validated earlier receipt for retained decisions, whether
+        # the provider echoes it or returns only this round's pending claims.
+        check['claim_verdicts'] = [r for r in rows if r['id'] in required] + list(previous.values())
 
 
 def restore_requested_bodies(pages, requested_urls, job_id):

@@ -148,6 +148,34 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(calls.call_count,1)
         self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
 
+    def test_followup_retains_resolved_claim_without_requiring_provider_echo(self):
+        prior={'key':'evidence_support','status':'fail',
+               'affected_blocks':[{'id':self.a,'reason':'remaining condition'}],
+               'claim_verdicts':[{'id':self.a,'status':'fail','reason':'remaining condition'},
+                                 {'id':self.summary,'status':'pass','reason':'already verified'}]}
+        for echo in (False,True):
+            current={'key':'evidence_support','status':'fail',
+                     'affected_blocks':[{'id':self.a,'reason':'still unsupported'}],
+                     'claim_verdicts':[{'id':self.a,'status':'fail','reason':'still unsupported'}]}
+            if echo:
+                current['claim_verdicts'].append({'id':self.summary,'status':'pass','reason':'echoed context'})
+            evidence.validate_claim_verdicts([current],[prior])
+            self.assertEqual(current['claim_verdicts'][-1],prior['claim_verdicts'][-1])
+            self.assertEqual(current['status'],'fail')
+
+    def test_followup_cannot_drop_pending_claim_or_reopen_retained_pass(self):
+        prior={'key':'evidence_support','status':'fail',
+               'affected_blocks':[{'id':self.a,'reason':'remaining'}],
+               'claim_verdicts':[{'id':self.summary,'status':'pass','reason':'verified'}]}
+        for rows in ([{'id':self.summary,'status':'pass','reason':'verified'}],
+                     [{'id':self.a,'status':'pass','reason':'matched'},
+                      {'id':self.summary,'status':'fail','reason':'new finding'}],
+                     [{'id':self.a,'status':'pass','reason':'matched'},
+                      {'id':'block-9999','status':'pass','reason':'unknown'}]):
+            with self.assertRaisesRegex(ContentQualityError,'指摘ごとの判定'):
+                evidence.validate_claim_verdicts([{'key':'evidence_support','status':'pass',
+                    'affected_blocks':[],'claim_verdicts':rows}],[prior])
+
     def test_source_check_cannot_pass_when_one_named_finding_still_fails(self):
         def send(job,step,request):
             value=self.message(request)
