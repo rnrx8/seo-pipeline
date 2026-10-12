@@ -33,6 +33,14 @@ class ReaderPresentationTests(unittest.TestCase):
         for prompt in (content_quality.AUDIT_SYSTEM, content_quality.EDITORIAL_SYSTEM):
             self.assertIn(READER_PRESENTATION_POLICY, prompt)
 
+    def test_writer_does_not_override_shared_contextual_table_intro_policy(self):
+        # Actual composed writer prompt must defer to the same conditional rule
+        # as review; an unconditional stage instruction would recreate filler.
+        self.assertIn('既存の結論・見出しで役割が伝わる場合は、定型の案内文を重ねない', step_article.SYSTEM_PROMPT)
+        self.assertIn('表・リストの導入は共通提示基準に従う', step_article.SYSTEM_PROMPT)
+        self.assertNotIn('導入文を1文添える', step_article.SYSTEM_PROMPT)
+        self.assertNotIn('表・リストには内容を示す短い導入を置く', step_article.SYSTEM_PROMPT)
+
     def test_cv_value_requirement_is_conditional_on_article_purpose(self):
         for purpose in ('cv', 'awareness'):
             contract = build_content_contract(keyword='スマホケース おすすめ',

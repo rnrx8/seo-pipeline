@@ -329,3 +329,19 @@ Anthropic/OpenAIの入力トークン計数だけを使用。有料の出力生�
 次の候補は、既存の要求・適用検査・全文検査を使った保存済み本文の隔離試験であり、最新構成からのゼロ開始/本番完了を証明するものではない。古い全文監査の合格を新基準へ転用せず、記録された指摘からの修正候補は未確認のまま保存し、実際の全文確認と最終検査で判定する。元の全成果物・台帳のSHA256不変を再確認した。
 
 証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/batched-repair-preflight-20261013/{preflight,clear_four-request,clear_four-findings,six_if_source_restricted-request,six_if_source_restricted-findings}.json、/tmp/dig-repair-preflight-refactor-tests.log。今回の生成課金は0円。ブラウザ実操作・Claude委譲は不要で行っていない。
+
+### 2026-10-13: user narrowed execution to repairing existing problem passages
+
+User: 「じゃあ問題箇所の修正だけでいいので、それで進めて」. Executed one normal prepared clear-four Opus repair, with the existing remaining quality allowance of 47.1873 JPY; no new budget increase, full audit, research, or production write. One call cost 19.5736 JPY; cumulative quality expense 372.3863 / 400 JPY. The exact pre-counted request was used unchanged.
+
+Only block-0096, block-0146, block-0168, block-0174 changed. Deleted blanket disclaimers, retained concrete self-protection advice, and aligned the pricing introduction to the three services whose sections contain prices. Normal repair application gates passed; headings and the two policy-pending source passages remained unchanged. This is a saved repair candidate, not a full-quality pass or production replacement.
+
+Evidence: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/clear-four-repair-20261013/{result.json,request.json,response.json,changes.json,free-verification.json,article.md}. Candidate SHA256 ebf8c9df2ec13486a198bae0735a61bb6737560ac47f60af75690946bbe5b85d. Original historical case artifacts remain unchanged. No paid retries.
+
+### 2026-10-13: preparation for normal writing/review recurrence check
+
+User requested next step after common repair vs individual article repair was clarified. Found and removed two remaining unconditional table/list-introduction requirements in step_article.SYSTEM_PROMPT; writer now defers to existing shared contextual introduction rule. No new prohibition or model stage. Added composed-prompt regression; 621 tests passed (/tmp/dig-recurrence-preparation-tests-20261013.log).
+
+Actual isolated normal service_map entry rejected the historical outline due to stale editorial_policy. No accepted status/hash was synthesized. A separate count-only scenario mocked guards ONLY during request capture, never during generation or artifact acceptance; no downstream pass was saved. Existing data remained immutable. Initial current outline audit upper 38.7925 JPY; mapping/body conditional ceiling projection 215.8806 JPY; previous current-body full-review ceiling reference 121.7946 JPY; combined 376.4677 JPY excluding conditional source calls and unknown new body size. Generation fee this preparation: 0. Proposal pending: +400 JPY, aggregate cap800; current spent372.3863. No automated repair/retry authorized; if outline fails, stop before generation.
+
+Plan and counts: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/{recurrence-preflight-20261013/plan.json,recurrence-cost-scenario-20261013/preflight.json,recurrence-outline-preflight-20261013/preflight.json}. This proves guard behavior and prompt consistency, not generated output quality, current source freshness, or production behavior.
