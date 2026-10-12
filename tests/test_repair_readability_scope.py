@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import patch, Mock
 from pipeline.content_edits import content_blocks,apply_block_edits
 from pipeline.readability import readability_issues
 from pipeline.review_scope import repair_packet,validate_edits
@@ -84,3 +85,32 @@ class RepairReadabilityScopeTests(unittest.TestCase):
             [{'affected_blocks':[{'id':blocks[-1]['id'],'reason':'照合'}]}])
         self.assertIn(blocks[1],packet['heading_context'])
         self.assertNotIn(blocks[3],packet['heading_context'])
+
+    def test_normal_repair_preparation_does_not_send_or_save_audit(self):
+        from pipeline import step_content_audit as audit
+        report={'checks':[{'key':'prose_quality','status':'fail',
+            'affected_blocks':[{'id':self.blocks[-1]['id'],'reason':'修飾関係を整える'}]}]}
+        client=Mock()
+        with patch('pipeline.quality_context.compact_enabled',return_value=True), \
+             patch.object(audit,'hybrid_writing_enabled',return_value=True), \
+             patch.object(audit,'get_step_config',return_value=('claude-opus-5-5',6000)), \
+             patch.object(audit,'create_with_retry') as send,patch.object(audit,'upsert_artifact') as save:
+            request,packet=audit.prepare_content_repair(client,job_id='cost-only',
+                text=self.text,report=report,requirements={},sources=[],facts='',contract={},issues=[])
+        send.assert_not_called();save.assert_not_called();client.assert_not_called()
+        client.with_options.assert_not_called()
+        self.assertEqual(request['max_tokens'],6000)
+        self.assertTrue(request['output_budget_includes_thinking'])
+        self.assertIn(self.blocks[-1]['id'],packet['target_block_ids'])
+        self.assertNotIn('snapshot',report)
+
+    def test_repair_preparation_rejects_unknown_finding_before_side_effects(self):
+        from pipeline import step_content_audit as audit
+        report={'checks':[{'key':'prose_quality','status':'fail',
+            'affected_blocks':[{'id':'block-9999','reason':'指摘'}]}]}
+        with patch('pipeline.quality_context.compact_enabled',return_value=True), \
+             patch.object(audit,'create_with_retry') as send,patch.object(audit,'upsert_artifact') as save:
+            with self.assertRaises(ContentQualityError):
+                audit.prepare_content_repair(Mock(),job_id='cost-only',text=self.text,
+                    report=report,requirements={},sources=[],facts='',contract={},issues=[])
+        send.assert_not_called();save.assert_not_called()

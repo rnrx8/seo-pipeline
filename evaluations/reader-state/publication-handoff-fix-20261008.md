@@ -311,3 +311,21 @@ tiered_evidence.validate_claim_verdictsを、未解決IDの判定は引き続き
 実費5call、36.7046円/50円: Sol organization13.5015、Luna source1.2887、Sol language11.9470、Sol organization8.6330、Luna source1.3343。品質確認の合算352.8127円/承認400円、残47.1873円。旧成果物全JSONのSHA256不変を各実行終了時に確認。研究採用、記事完成状態、広告CTA、フロント表示、本番の接続移行は未変更。ARTICLE_LOCAL_PROSE_FINISH=0、生成/修正モデルを今回変更していない。
 
 証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/review-alignment-probe-20261013/{authorization,preflight,second-preflight,result,ledger,request-1..5,response-1..5,organization-review,language-review,source-review,second-calibration/*,deletion-impact}.json。前半のaudit_articleを評価用に単一roleへ絞った戻り値には未実行keyの合成pass欄があるため、評価結果はphases[role].checksまたはsourceの個別checksだけを読む。全記事合格へ変換しない。原応答と検証範囲を保持する。UIの実操作は今回不要であり、新しいユーザーAGENTSに従ってブラウザ操作や起動権限の変更はしていない。
+
+## 2026-10-13: 一括修正の要求構築・計数（生成せず、方針と追加費用の回答待ち）
+
+ユーザーの追加「続けて」で独立作業を進めた。危険場面の推測をどこまで載せるかの2択にはまだ選択がないため、該当2箇所の掲載方針は推測で確定しない。確実な免責3段落と料金案内の計4箇所、および原文担当がfailとして残した2箇所を含む計6箇所の両案を無料で準備した。
+
+step_content_auditの既存の修正要求構築をprepare_content_repairへ抽出。通常runも同じ関数を呼び、これまでと同じ指示・モデル・上限・修正パケット・再提出のメッセージ履歴・適用検査を使う。工程やモデル呼び出しは追加していない。これにより前回の全文判定へ新しいsnapshotや合格項目を付け足すことなく、実在する失敗指摘だけから通常の修正要求を計数できる。preflightのreportはrepair_findings_onlyであり、全記事監査結果・チェックポイントではない。未実行checkの合成passを作らず、保存済み記事のcontent_auditedや本番の完了状態は変更しない。
+
+抽出時のインデント不具合は無料試験で検出し、送信前に修正。元の複数行プロンプト文字列の内容を保持して抽出し直した。要求準備で送信/監査保存が行われないこと、未知の対象IDを副作用前に拒否することの2回帰を追加。全620件通過。
+
+Anthropic/OpenAIの入力トークン計数だけを使用。有料の出力生成0、修正API送信0、記事変更0。4箇所の実指摘からの通常Opus要求はinput21262/output6000（thinking込み）、送信前の予約上限45.9880円。6箇所案は26469/6000、50.5696円。パケットには既存指摘が参照した文・表・対象表の案内の関連IDも含むため、編集可能IDは前者7、後者10だが、変更必須の指摘は4/6箇所であり全文修正ではない。
+
+現在の未変更本文に対する正常な5役割要求の計数上限はLuna scope1.8101、Sol coverage42.4970/language25.7270/consistency25.5910/organization26.1695円。合計121.7946円。修正1回+全文確認1回の予約上側は4箇所167.7826円、6箇所172.3642円。これは修正後の未知本文への保証ではなく、条件付き原文照合/独立再確認を含まない。前回の同種実費120.7547円を参考として示し、上限と実費を混同していない。
+
+品質確認の通算352.8127円/承認400円、残47.1873円は不変。現残額で有料一括修正+全文確認を始めない。推論表現の回答後、追加200円まで（通算600円）で修正1回→全文確認1回を実施してよいかをユーザーへ提示。追加修正を自動反復しない。今回の準備でその承認を受けた扱いにはしていない。
+
+次の候補は、既存の要求・適用検査・全文検査を使った保存済み本文の隔離試験であり、最新構成からのゼロ開始/本番完了を証明するものではない。古い全文監査の合格を新基準へ転用せず、記録された指摘からの修正候補は未確認のまま保存し、実際の全文確認と最終検査で判定する。元の全成果物・台帳のSHA256不変を再確認した。
+
+証拠: /Users/ryoka/seo-saas/tmp/yabai-article-preflight/batched-repair-preflight-20261013/{preflight,clear_four-request,clear_four-findings,six_if_source_restricted-request,six_if_source_restricted-findings}.json、/tmp/dig-repair-preflight-refactor-tests.log。今回の生成課金は0円。ブラウザ実操作・Claude委譲は不要で行っていない。
