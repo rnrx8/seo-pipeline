@@ -64,3 +64,23 @@ class RepairReadabilityScopeTests(unittest.TestCase):
         self.assertEqual(packet['target_block_ids'],[blocks[1]['id']])
         with self.assertRaisesRegex(ContentQualityError,'指摘対象外'):
             validate_edits(json.dumps({'edits':[{'id':blocks[0]['id'],'new':'## 別の章'}]}),packet)
+
+    def test_heading_without_blank_line_carries_actual_parent_without_new_ids(self):
+        from pipeline.review_scope import scoped_packet
+        text='# 記事\n\n## 過去の章\n\n前の章の説明。\n## 利用実態：調査と体験談\n\n### 利用者の体験\n\n導入。\n\n| 体験 | 意味 |\n|---|---|\n| A | B |'
+        blocks=content_blocks(text)
+        packet=scoped_packet({'article_blocks':blocks,'source_documents':[]},
+            [{'affected_blocks':[{'id':blocks[-1]['id'],'reason':'体験の照合'}]}])
+        self.assertIn(blocks[2],packet['heading_context'])
+        self.assertNotIn(blocks[1],packet['heading_context'])
+        self.assertEqual(packet['target_block_ids'],[blocks[-1]['id']])
+        self.assertEqual(content_blocks(text),blocks)
+
+    def test_fenced_heading_example_does_not_replace_parent(self):
+        from pipeline.review_scope import scoped_packet
+        text='# 記事\n\n## 実際の章\n\n```markdown\n例文\n\n## コード内の見出し\n```\n\n説明。\n\n対象。'
+        blocks=content_blocks(text)
+        packet=scoped_packet({'article_blocks':blocks,'source_documents':[]},
+            [{'affected_blocks':[{'id':blocks[-1]['id'],'reason':'照合'}]}])
+        self.assertIn(blocks[1],packet['heading_context'])
+        self.assertNotIn(blocks[3],packet['heading_context'])

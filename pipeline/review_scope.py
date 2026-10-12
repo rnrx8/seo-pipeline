@@ -98,10 +98,18 @@ def scoped_packet(payload, checks):
     heading_ids=set()
     stack={}
     import re
+    fenced=False
     for i,b in enumerate(blocks):
-        match=re.match(r'^(#{1,6})\s',b['text'].lstrip())
-        if match:
-            depth=len(match[1]);stack={k:v for k,v in stack.items() if k<depth};stack[depth]=b['id']
+        # Markdown headings need not have an empty line before them. Keep
+        # paragraph addresses unchanged while reading every heading line.
+        for line in b['text'].splitlines():
+            if line.lstrip().startswith(('```','~~~')):
+                fenced=not fenced
+                continue
+            match=re.match(r'^[ \t]{0,3}(#{1,6})[ \t]+',line) if not fenced else None
+            if match:
+                depth=len(match[1]);stack={k:v for k,v in stack.items() if k<depth};stack[depth]=b['id']
+            if i in nearby:heading_ids.update(stack.values())
         if i in nearby:heading_ids.update(stack.values())
     result.update(article_blocks=[b for i,b in enumerate(blocks) if i in nearby],
                   target_block_ids=sorted(targets), requirements=req, source_documents=pages,
