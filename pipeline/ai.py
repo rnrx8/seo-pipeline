@@ -9,7 +9,7 @@ STEP_CONFIG: dict[str, dict] = {
     "query_attrs":   {"model": "claude-haiku-4-5-20251001", "max_tokens": 800},
     "intent_chains": {"model": "claude-haiku-4-5-20251001", "max_tokens": 3000},
     "outline":       {"model": "claude-opus-5-5",   "max_tokens": 16000},
-    "fact_sheet":    {"model": "claude-sonnet-4-6", "max_tokens": 30000},
+    "fact_sheet":    {"model": "claude-sonnet-5-5", "max_tokens": 39000},
     "article":       {"model": "claude-opus-5-5",   "max_tokens": 16000},
     "review":        {"model": "claude-sonnet-4-6", "max_tokens": 50000},
     "fact_review":   {"model": "claude-sonnet-4-6", "max_tokens": 28000},
@@ -83,6 +83,9 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, **kwarg
     if is_openai_model(kwargs.get("model")):
         from .openai_review import create_review_response
         return create_review_response(**kwargs)
+    if kwargs.get("model") == "claude-sonnet-5-5":
+        # Keep the compared research effort instead of the provider high default.
+        kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
     if kwargs.get("model") == "claude-opus-5-5":
         kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
         # Existing budgets were for visible text only; reserve room for thinking.

@@ -96,6 +96,9 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
     tool=SEARCH_TOOL if bounded_search else {**search_tool,'max_uses':3}
     rounds=4 if bounded_search else 3
     tokens=6000 if bounded_search else 9000
+    if model == 'claude-sonnet-5-5':
+        # Tokenizer and thinking allowance; same output cost ceiling as 4.6.
+        tokens=9000 if bounded_search else 13500
     plan_hash = digest(json.dumps(plan, ensure_ascii=False, sort_keys=True))
     gap_rows = json.loads(gaps) if gaps else []
     known_ids = {i['id'] for i in plan['items']}
