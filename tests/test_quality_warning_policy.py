@@ -28,6 +28,15 @@ class WarningPolicyTest(unittest.TestCase):
             scoped(fail, 'research_completeness')('job')
             self.assertIn('確認未完了', warning.call_args.args[0])
 
+    def test_pending_research_without_items_does_not_crash_or_invent_answers(self):
+        from pipeline.generation_context import decision_bundle
+        with patch('pipeline.quality_warnings.warn') as warning:
+            result = scoped(lambda *args: decision_bundle(
+                {'items': [{'id': 'q01', 'question': 'Question'}]},
+                {'valid': False, 'status': 'running'}, quotes=False), 'outline')('job')
+        self.assertIn('"decisions": []', result)
+        self.assertTrue(warning.called)
+
     def test_non_quality_exception_is_not_hidden(self):
         def fail(*args, **kwargs): raise ConnectionError('network')
         with self.assertRaises(ConnectionError): scoped(fail, 'content_audit')('job')
