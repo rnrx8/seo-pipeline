@@ -521,7 +521,7 @@ def verify(job_id, keyword, api_key=None):
         # verdict. Always run the complete current-source audit after retrieval.
         print('[research] Resume pending retrieval; do not repeat the completed audit',flush=True)
         supplement_once(job_id,keyword,plan_value,pending_gaps,api_key,matrix=json.loads(previous['content_text']))
-    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({'valid':False,'status':'running'}),meta={'valid':False})
+    upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({**(json.loads(previous['content_text']) if previous else {}), 'valid':False,'status':'running'}),meta={'valid':False})
     for attempt in range(first_attempt,2):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
@@ -573,4 +573,10 @@ def require_matrix(job_id):
         if not enabled(): raise
         warn(str(exc))
         # Never fabricate a passed matrix or change the original audit.
-        return json.loads(get_artifact(job_id, 'research_matrix')['content_text'])
+        matrix = json.loads(get_artifact(job_id, 'research_matrix')['content_text'])
+        if (matrix.get('plan_sha256') != digest(json.dumps(load_plan(job_id),ensure_ascii=False,sort_keys=True))
+                or matrix.get('sources_sha256') != digest(source_evidence(get_artifact(job_id,'fresh_sources')))
+                or matrix.get('facts_sha256') != digest(get_artifact(job_id,'fact_sheet')['content_text'])):
+            # Stale verdicts are diagnostics, never current publishable evidence.
+            matrix = {**matrix, 'items': [{**item, 'verified': False} for item in matrix.get('items', [])]}
+        return matrix

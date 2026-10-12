@@ -65,8 +65,14 @@ async def _requeue_bug_fixing_jobs() -> None:
         for job in jobs:
             job_id = job["id"]
             keyword = job.get("main_keyword", "")
-            update_job_status(job_id, "queued")
-            loop.run_in_executor(None, _run_pipeline, job_id, keyword)
+            from pipeline.db import get_optional_artifact
+            failure = get_optional_artifact(job_id, 'pipeline_failure')
+            stage = json.loads(failure['content_text']).get('step') if failure else None
+            if stage not in [key for key, _ in build_step_plan(job)]:
+                print(f'[startup] No safe resume stage for {job_id}; preserving stopped job')
+                continue
+            update_job_status(job_id, "running")
+            loop.run_in_executor(None, _run_pipeline, job_id, keyword, stage)
             print(f"[startup] Re-queued: {job_id} ({keyword!r})")
     except Exception as exc:
         print(f"[startup] Failed to requeue bug_fixing jobs: {exc}")

@@ -16,19 +16,23 @@ def decision_bundle(plan, matrix, *, quotes):
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
     from .quality_warnings import enabled, warn
-    if matrix.get('policy_sha256') != matrix_policy():
+    policy_matches = matrix.get('policy_sha256') == matrix_policy()
+    if not policy_matches:
         if not enabled(): raise ContentQualityError('旧方針の調査回答は執筆資料に使えません。採用経緯と回答を分離して再確認してください。')
         warn('調査回答の方針が一致していません。未確認の回答は使用しません。')
     if matrix.get('valid') is not True:
         if not enabled(): raise ContentQualityError('未合格の調査を執筆用資料へ変換できません。')
         warn('調査に不足があります。確認済みの回答だけを使用します。')
     questions={q['id']:q for q in plan['items']}
-    if len(matrix['items'])!=len(questions) or {i['id'] for i in matrix['items']}!=set(questions):
+    items = matrix.get('items', [])
+    if not isinstance(items, list):
+        raise ContentQualityError('調査回答の形式が不正です。')
+    if len(items)!=len(questions) or {i['id'] for i in items}!=set(questions):
         if not enabled(): raise ContentQualityError('執筆資料の質問と回答が一致しません。')
         warn('質問と回答に不一致があります。不明な回答は使用しません。')
     rows=[];sources={};ref_ids={};constraints={}
-    for item in matrix['items']:
-        if not item.get('verified') or item['id'] not in questions:
+    for item in items:
+        if not policy_matches or not item.get('verified') or item['id'] not in questions:
             if not enabled(): raise ContentQualityError('未確認の回答を執筆用資料へ渡せません。')
             continue
         row={k:copy.deepcopy(v) for k,v in questions[item['id']].items()
