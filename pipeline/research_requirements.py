@@ -554,7 +554,7 @@ def verify(job_id, keyword, api_key=None):
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
 
 
-def require_matrix(job_id):
+def _require_matrix_strict(job_id):
     plan_value=load_plan(job_id)
     matrix=json.loads(get_artifact(job_id,'research_matrix')['content_text'])
     sources=source_evidence(get_artifact(job_id,'fresh_sources'))
@@ -563,3 +563,14 @@ def require_matrix(job_id):
     if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
     return matrix
+
+
+def require_matrix(job_id):
+    from .quality_warnings import enabled, warn
+    try:
+        return _require_matrix_strict(job_id)
+    except ContentQualityError as exc:
+        if not enabled(): raise
+        warn(str(exc))
+        # Never fabricate a passed matrix or change the original audit.
+        return json.loads(get_artifact(job_id, 'research_matrix')['content_text'])

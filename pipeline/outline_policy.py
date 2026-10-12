@@ -12,7 +12,17 @@ def current_policy():
     return hashlib.sha256(contract.encode()).hexdigest()
 
 
-def require_current_outline(artifact):
+def _require_current_outline_strict(artifact):
     from .content_quality import ContentQualityError
     if (artifact.get('meta') or {}).get('editorial_policy') != current_policy():
         raise ContentQualityError('構成が現在の編集方針に対応していません。旧本文・調査記録は保持し、構成を更新して再検証してから再開してください。自動再生成はしません。')
+
+
+def require_current_outline(*args, **kwargs):
+    from .quality_warnings import enabled, warn
+    from .content_quality import ContentQualityError
+    try:
+        return _require_current_outline_strict(*args, **kwargs)
+    except ContentQualityError as exc:
+        if not enabled(): raise
+        warn(str(exc))

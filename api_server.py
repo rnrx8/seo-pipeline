@@ -125,7 +125,7 @@ def _resolve_api_key(job: dict) -> str | None:
     return None
 
 
-def _run_pipeline(job_id: str, keyword: str) -> None:
+def _run_pipeline(job_id: str, keyword: str, resume_from: str | None = None) -> None:
     """Run pipeline steps for an existing job, respecting delivery_type."""
     try:
         job = get_job(job_id)
@@ -135,6 +135,11 @@ def _run_pipeline(job_id: str, keyword: str) -> None:
     api_key = _resolve_api_key(job)
 
     steps = build_step_plan(job)
+    if resume_from:
+        keys = [key for key, _ in steps]
+        if resume_from not in keys:
+            raise ValueError('Unknown resume stage')
+        steps = steps[keys.index(resume_from):]
 
     print(f"[pipeline] delivery_type={delivery_type}, steps={len(steps)}")
     failed_step = None
@@ -229,6 +234,52 @@ async def generate(req: GenerateRequest, background_tasks: BackgroundTasks, auth
 
     background_tasks.add_task(_run_pipeline, job_id, req.keyword)
     return GenerateResponse(job_id=job_id, status="started")
+
+
+class ResumeRequest(BaseModel):
+    job_id: str
+
+
+@app.post('/resume', response_model=GenerateResponse)
+async def resume(req: ResumeRequest, background_tasks: BackgroundTasks,
+                 authorization: str | None = Header(default=None)):
+    import hmac
+    from pipeline.browser_serp import authenticate_owner, BrowserAuthorizationError
+    from pipeline.db import get_optional_artifact, _headers, _base
+    job = get_job(req.job_id)
+    expected = 'Bearer ' + os.environ['SUPABASE_KEY']
+    if not authorization or not hmac.compare_digest(authorization, expected):
+        try:
+            authenticate_owner(authorization, job.get('tenant_id'))
+        except BrowserAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+    if job.get('status') in ('running', 'done'):
+        return GenerateResponse(job_id=job['id'], status=job['status'])
+    if job.get('status') not in ('failed', 'bug_fixing'):
+        raise HTTPException(status_code=409, detail='停止した記事だけ再開できます。')
+    failure = get_optional_artifact(job['id'], 'pipeline_failure')
+    stage = json.loads(failure['content_text']).get('step') if failure else None
+    keys = [key for key, _ in build_step_plan(job)]
+    if stage not in keys:
+        stage = ('content_audit' if get_optional_artifact(job['id'], 'article') else
+                 'research_validation' if get_optional_artifact(job['id'], 'outline') else
+                 'research_completeness' if get_optional_artifact(job['id'], 'fact_sheet') else None)
+    if stage not in keys:
+        raise HTTPException(status_code=409, detail='再開できる途中成果がありません。')
+    claimed = req_http_patch_claim(job['id'], _base, _headers)
+    if not claimed:
+        return GenerateResponse(job_id=job['id'], status=get_job(job['id'])['status'])
+    background_tasks.add_task(_run_pipeline, job['id'], job['main_keyword'], stage)
+    return GenerateResponse(job_id=job['id'], status='started')
+
+
+def req_http_patch_claim(job_id, base, headers):
+    response = req.patch(base() + '/jobs', params={'id': 'eq.' + job_id,
+                         'status': 'in.(failed,bug_fixing)'},
+                         json={'status': 'running', 'error_message': ''},
+                         headers=headers({'Prefer': 'return=representation'}), timeout=30)
+    response.raise_for_status()
+    return response.json()
 
 
 @app.post("/extract-pdf")

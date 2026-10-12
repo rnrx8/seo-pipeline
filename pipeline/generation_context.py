@@ -15,17 +15,22 @@ def decision_bundle(plan, matrix, *, quotes):
     """Project current-policy answers; callers also validate source/plan snapshots."""
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
+    from .quality_warnings import enabled, warn
     if matrix.get('policy_sha256') != matrix_policy():
-        raise ContentQualityError('旧方針の調査回答は執筆資料に使えません。採用経緯と回答を分離して再確認してください。')
+        if not enabled(): raise ContentQualityError('旧方針の調査回答は執筆資料に使えません。採用経緯と回答を分離して再確認してください。')
+        warn('調査回答の方針が一致していません。未確認の回答は使用しません。')
     if matrix.get('valid') is not True:
-        raise ContentQualityError('未合格の調査を執筆用資料へ変換できません。')
+        if not enabled(): raise ContentQualityError('未合格の調査を執筆用資料へ変換できません。')
+        warn('調査に不足があります。確認済みの回答だけを使用します。')
     questions={q['id']:q for q in plan['items']}
     if len(matrix['items'])!=len(questions) or {i['id'] for i in matrix['items']}!=set(questions):
-        raise ContentQualityError('執筆資料の質問と回答が一致しません。')
+        if not enabled(): raise ContentQualityError('執筆資料の質問と回答が一致しません。')
+        warn('質問と回答に不一致があります。不明な回答は使用しません。')
     rows=[];sources={};ref_ids={};constraints={}
     for item in matrix['items']:
-        if not item.get('verified'):
-            raise ContentQualityError('未確認の回答を執筆用資料へ渡せません。')
+        if not item.get('verified') or item['id'] not in questions:
+            if not enabled(): raise ContentQualityError('未確認の回答を執筆用資料へ渡せません。')
+            continue
         row={k:copy.deepcopy(v) for k,v in questions[item['id']].items()
              if k not in {'priority_reason','source_requirement'}}
         # Preserve unknown future answer/condition fields; drop only review bookkeeping.

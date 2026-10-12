@@ -489,7 +489,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     return report
 
 
-def require_audit(report: dict, expected: str, *, stage: str | None = None) -> None:
+def _require_audit_strict(report: dict, expected: str, *, stage: str | None = None) -> None:
     checked = parse_audit(json.dumps(report, ensure_ascii=False))
     if stage and report.get('stage') != stage:
         raise ContentQualityError('監査工程が現在の本文に対応していません。')
@@ -510,3 +510,13 @@ def require_audit(report: dict, expected: str, *, stage: str | None = None) -> N
     if not checked['valid'] or report.get('valid') is not True or report.get('snapshot') != expected \
             or report.get('policy_version') != POLICY_VERSION:
         raise ContentQualityError('内容監査が未合格、または監査後に本文・根拠が変更されています。')
+
+
+def require_audit(*args, **kwargs):
+    from .quality_warnings import enabled, warn
+    from .content_quality import ContentQualityError
+    try:
+        return _require_audit_strict(*args, **kwargs)
+    except ContentQualityError as exc:
+        if not enabled(): raise
+        warn(str(exc))

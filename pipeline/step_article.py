@@ -10,6 +10,7 @@ from .step_outline import ensure_complete_volume_design
 import anthropic
 from .ai import create_with_retry, get_step_config, message_text
 from .content_contract import contract_prompt, reference_prompt
+from .quality_warnings import warn
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
 from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY
@@ -387,7 +388,8 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
                  '省略せず、内部メモを消すだけでなく未執筆の解説を補完する。'
                  '不明な事実を捏造せず、確認済み情報で説明する。\n' + json.dumps(issues, ensure_ascii=False)},
             ]
-    raise ContentQualityError(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
+    warn(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
+    return cleaned, total_input, total_output
 
 
 def _insert_repair_blocks(
@@ -693,7 +695,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # Load volume design from outline and service_map if available
     outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
     if outline_text != outline['content_text']:
-        raise ContentQualityError('構成の見出し表記または文字数配分が未正規化です。執筆前検査から再開してください。')
+        warn('構成の見出し表記または文字数配分を正規化して執筆を継続します。')
     volume_sections = _parse_volume_design(outline_text)
     if not volume_sections:
         raise ContentQualityError('章別の文字数配分がありません。構成から再生成してください。')
@@ -809,7 +811,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
     if hypothesis_hits:
         print(f"[article] WARNING: {len(hypothesis_hits)} [hypothesis] tag(s) found in article — Claude may have included unverified facts.")
-        raise ContentQualityError(
+        warn(
             f"Article contains {len(hypothesis_hits)} [hypothesis] tag(s). "
             "Only [confirmed] facts are allowed in the article body. "
             "Please retry or review the fact sheet."
@@ -834,13 +836,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         structure_repaired = True
         remaining = validate_structure(article_text, contract, outline=False)
         if remaining:
-            raise ContentQualityError(f"Article structure repair did not satisfy content contract: {remaining}")
+            warn(f"Article structure repair did not satisfy content contract: {remaining}")
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
-            raise ContentQualityError("Structure repair introduced [hypothesis] content")
+            warn("Structure repair introduced [hypothesis] content")
 
     delivery_issues = validate_delivery(article_text, outline_text, word_count_setting, contract=contract)
     if delivery_issues:
-        raise ContentQualityError(f'記事に未完成の項目があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
+        warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 
     artifact = upsert_artifact(
         job_id=job_id,

@@ -103,3 +103,10 @@ def alert_failed_job(job_id: str, keyword: str, user_email: str, error_msg: str 
 """
     _discord("❌ ジョブが失敗しました", discord_body, 0xFF0000)
     _email(f"[SEO Pipeline] ジョブ失敗: {keyword}", html)
+
+
+def alert_quality_warning(job_id, user_email, stage, message):
+    """Quality cautions for non-owner accounts go only to existing Discord."""
+    _discord('⚠️ 確認事項を残して生成を継続',
+             f'**ユーザー**: {user_email or "不明"}\n**工程**: {stage}\n'
+             f'{message[:1200]}\nhttps://app.deepintentgraph.com/article/{job_id}', 0xFFA500)
