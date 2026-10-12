@@ -103,6 +103,10 @@ class RepairReadabilityScopeTests(unittest.TestCase):
         self.assertTrue(request['output_budget_includes_thinking'])
         self.assertIn(self.blocks[-1]['id'],packet['target_block_ids'])
         self.assertNotIn('snapshot',report)
+        from pipeline.evidence_policy import EVIDENCE_POLICY
+        from pipeline.fresh_sources import PUBLICATION_WRITING_POLICY
+        self.assertIn(PUBLICATION_WRITING_POLICY,request['system'])
+        self.assertNotIn(EVIDENCE_POLICY,request['system'])
 
     def test_repair_preparation_rejects_unknown_finding_before_side_effects(self):
         from pipeline import step_content_audit as audit

@@ -10,7 +10,7 @@ from .ai import create_with_retry, get_step_config, astra_review_enabled, hybrid
 from .article_quality import validate_delivery
 from .readability import readability_issues, READABILITY_POLICY
 from .section_identity import bind_sections, carry_sections
-from .fresh_sources import WRITING_POLICY
+from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .claim_scope import scope_issues
 from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, final_review_requirements,

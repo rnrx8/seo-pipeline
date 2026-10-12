@@ -1,6 +1,6 @@
 from .section_identity import bind_sections
 from .claim_scope import scope_issues
-from .fresh_sources import WRITING_POLICY
+from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .content_quality import ContentQualityError, confirmed_facts, require_audit, intent_review_requirements, snapshot, source_evidence, explicit_risk_guarantees
 import json
 import re as _re

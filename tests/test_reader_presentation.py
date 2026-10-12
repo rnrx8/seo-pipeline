@@ -41,6 +41,20 @@ class ReaderPresentationTests(unittest.TestCase):
         self.assertNotIn('導入文を1文添える', step_article.SYSTEM_PROMPT)
         self.assertNotIn('表・リストには内容を示す短い導入を置く', step_article.SYSTEM_PROMPT)
 
+    def test_body_writer_consumes_decisions_without_readopting_sources(self):
+        from pipeline.fresh_sources import WRITING_POLICY, PUBLICATION_WRITING_POLICY
+        from pipeline.evidence_policy import EVIDENCE_POLICY
+        from pipeline import step_review
+        # Actual authoring system retains scoped facts and reader criteria;
+        # independent adoption/QA still uses the entire unchanged contract.
+        self.assertIn(PUBLICATION_WRITING_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertNotIn(EVIDENCE_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertIn(READER_PRESENTATION_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertIn('監視や本人確認を実施している事実を、不正利用者の完全排除', step_article.SYSTEM_PROMPT)
+        self.assertIn('未確認の数値・条件を断定しない', step_article.SYSTEM_PROMPT)
+        for prompt in (WRITING_POLICY, step_outline.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT, content_quality.AUDIT_SYSTEM):
+            self.assertIn(EVIDENCE_POLICY, prompt)
+
     def test_cv_value_requirement_is_conditional_on_article_purpose(self):
         for purpose in ('cv', 'awareness'):
             contract = build_content_contract(keyword='スマホケース おすすめ',
