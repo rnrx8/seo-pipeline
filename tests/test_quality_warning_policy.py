@@ -14,13 +14,19 @@ class WarningPolicyTest(unittest.TestCase):
         self.assertFalse(enabled())
 
     def test_billing_and_generation_failures_still_fail(self):
-        for stage, message in [('research_completeness', 'OpenAI APIの利用残高がありません'),
+        for stage, message in [('outline', 'OpenAI APIの利用残高がありません'),
                                ('article', '本文生成が未完成です')]:
             def fail(*args, **kwargs): raise ContentQualityError(message)
             with self.assertRaises(ContentQualityError), patch('pipeline.quality_warnings.warn') as warning:
                 scoped(fail, stage)('job')
             warning.assert_not_called()
             self.assertFalse(enabled())
+
+    def test_unavailable_verification_records_unperformed_check(self):
+        def fail(*args, **kwargs): raise ContentQualityError('OpenAI APIの利用残高がありません')
+        with patch('pipeline.quality_warnings.warn') as warning:
+            scoped(fail, 'research_completeness')('job')
+            self.assertIn('確認未完了', warning.call_args.args[0])
 
     def test_non_quality_exception_is_not_hidden(self):
         def fail(*args, **kwargs): raise ConnectionError('network')

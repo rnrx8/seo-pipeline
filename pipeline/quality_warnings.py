@@ -43,13 +43,14 @@ def scoped(fn, stage):
             try:
                 result = fn(job_id, *args, **kwargs)
             except ContentQualityError as exc:
-                from .autofix import classify_error
-                # Provider billing/authentication errors must not be concealed.
-                if re.search(r'残高|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|timeout|timed out|connection|429|502|503', str(exc), re.I):
+                # These stages only verify existing work. Their unavailable API
+                # is an unperformed check, not a successful audit. Generation
+                # stages and non-quality exceptions remain hard failures.
+                if stage not in SOFT_STAGES:
                     raise
-                if stage not in SOFT_STAGES or classify_error(exc)['reason'] != '記事の根拠・比較内容が品質基準を満たしていません':
-                    raise
-                warn(str(exc))
+                provider_unavailable = bool(re.search(
+                    r'残高|利用枠|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|timeout|timed out|connection|429|502|503', str(exc), re.I))
+                warn(('品質確認を実行できません。確認未完了のまま継続します: ' if provider_unavailable else '') + str(exc))
                 result = None
             if stage == 'structure_guard':
                 from .db import get_optional_artifact

@@ -240,7 +240,10 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
         return outline_text, normalized
 
     if sum(floors) > target:
-        raise ContentQualityError('文字数目標に対して構成の子見出しが多すぎます。構成を絞って再生成してください。')
+        from .quality_warnings import warn
+        warn('文字数目標に対して構成の子見出しが多すぎます。各見出しの説明量が不足する可能性があります。')
+        # Keep the requested total without dropping headings or expanding cost.
+        floors = [int(floor * target / sum(floors)) for floor in floors]
     weights = [5 if any(term in title for term in ("比較", "おすすめ", "ランキング")) else 4 for title in h2s]
     # Reserve space for every H3 before distributing the rest by depth/importance.
     depth_weights = [weight * (count + 1) for weight, count in zip(weights, children)]
@@ -534,6 +537,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
         raise ContentQualityError('構成生成が正常終了していません。')
     outline_text = message_text(message)
+    upsert_artifact(job_id=job_id, step='outline_draft', content_type='text/markdown',
+                    content_text=outline_text, meta={'model': MODEL, 'audited': False})
     outline_text, volume_repaired = ensure_complete_volume_design(
         outline_text, job.get("word_count_setting")
     )
