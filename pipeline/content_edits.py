@@ -1,4 +1,5 @@
 """Immutable paragraph addresses for audit findings and local corrections."""
+import copy
 import json
 import re
 
@@ -7,6 +8,16 @@ REPAIR_OUTPUT_CONFIG = {'format': {'type':'json_schema', 'schema': {
         'type':'object','properties': {'id':{'type':'string'},'new':{'type':'string'}},
         'required':['id','new'],'additionalProperties':False}}},
     'required':['edits'],'additionalProperties':False}}}
+
+
+def scoped_repair_output_config(target_block_ids: list[str]) -> dict:
+    """Constrain generated edits to writable IDs, excluding read-only context."""
+    from .content_quality import ContentQualityError
+    if not target_block_ids or any(not isinstance(value, str) for value in target_block_ids):
+        raise ContentQualityError('局所修正の対象段落IDがありません。')
+    config = copy.deepcopy(REPAIR_OUTPUT_CONFIG)
+    config['format']['schema']['properties']['edits']['items']['properties']['id']['enum'] = list(dict.fromkeys(target_block_ids))
+    return config
 
 
 def content_blocks(text: str) -> list[dict]:
@@ -41,4 +52,3 @@ def apply_block_edits(text: str, raw: str) -> str:
         return result
     except (ValueError, TypeError, KeyError) as exc:
         raise ContentQualityError(f'内容修正の段落IDを確認できません: {exc}') from exc
-

@@ -14,12 +14,13 @@ _STEP_TO_FILE = {
 }
 
 _RULES = [
+    # Billing errors can be wrapped in ContentQualityError at the audit boundary.
+    (re.compile(r"OpenAI APIの利用残高がありません|credit balance|billing|insufficient_quota|exceeded.*quota", re.I),
+     False, "operational", "APIクレジット不足"),
     (re.compile(r"ContentQualityError"),
      False, "operational", "記事の根拠・比較内容が品質基準を満たしていません"),
     (re.compile(r"SerpQualityError|SerpConfigurationError"),
      False, "operational", "競合情報の取得・検証エラー"),
-    (re.compile(r"credit balance|billing|insufficient_quota|exceeded.*quota", re.I),
-     False, "operational", "APIクレジット不足"),
     (re.compile(r"rate.?limit|too many requests|429", re.I),
      True,  "transient",   "レートリミット"),
     (re.compile(r"timeout|timed out|connection.?reset|connection.?refused|503|502|network", re.I),

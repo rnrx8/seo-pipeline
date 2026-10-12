@@ -192,7 +192,8 @@ def repair_packet(text, requirements, sources, report):
 def validate_edits(raw, packet):
     try:
         edits=json.loads(raw)['edits']
-        if any(e['id'] not in packet['target_block_ids'] for e in edits):
-            fail('指摘対象外の段落を変更する修正は適用しません。')
+        outside = any(e['id'] not in packet['target_block_ids'] for e in edits)
     except (ValueError,KeyError,TypeError):
         fail('局所修正の形式が不正です。')
+    if outside:
+        fail('指摘対象外の段落を変更する修正は適用しません。')
