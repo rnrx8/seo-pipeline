@@ -43,7 +43,7 @@ class CompactQualityFlowTests(unittest.TestCase):
         if 'correction_evidence' in fields:
             for c in result['checks']:
                 c['correction_evidence']=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail else []
-        if 'claim_verdicts' in fields:
+        if 'claim_decisions' in request['output_config']['format']['schema']['properties']:
             data = json.loads(request['messages'][0]['content'])
             expected = {c['key']: c['affected_blocks'] for c in data['candidate_checks'] if c['status']=='fail'}
             for c in result['checks']:

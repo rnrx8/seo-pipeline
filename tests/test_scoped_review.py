@@ -50,7 +50,7 @@ class ScopedReviewTests(unittest.TestCase):
             'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail and k=='evidence_support' else []}
             for k in fields['key']['enum']],
             'review':{'needed':False,'block_ids':[],'source_urls':[self.pages[0]['url']],'reason':'原文で対応確認済み'}}
-        if 'claim_verdicts' in fields:
+        if 'claim_decisions' in request['output_config']['format']['schema']['properties']:
             data = json.loads(request['messages'][0]['content'])
             expected = {c['key']: c['affected_blocks'] for c in data['candidate_checks'] if c['status']=='fail'}
             for check in value['checks']:
