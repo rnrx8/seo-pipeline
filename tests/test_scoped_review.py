@@ -136,6 +136,48 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual([c['key'] for c in checks],['evidence_support'])
         self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
 
+    def test_missing_screener_correction_quote_uses_existing_adjudicator(self):
+        seen=[]
+        def send(job,step,request):
+            seen.append(step)
+            value=self.message(request,fail=step.endswith('screen'))
+            if step.endswith('screen'):
+                value['checks'][0]['correction_evidence']=[]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(seen,['tiered_article_evidence_screen','tiered_article_evidence_adjudicate'])
+        self.assertEqual(checks[0]['status'],'pass')
+        self.assertEqual(trace[0]['pending_correction_quote_ids'],[self.a])
+        self.assertFalse(trace[0]['recorded_review']['needed'])
+        self.assertTrue(trace[0]['review']['needed'])
+        self.assertEqual(trace[0]['visible_source_urls'],trace[1]['visible_source_urls'])
+        self.assertEqual(set(trace[1]['reviewed_block_ids']),{self.blocks[1]['id'],self.a,self.blocks[3]['id']})
+        self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
+
+    def test_missing_adjudicator_quote_still_stops_before_article_repair(self):
+        def send(job,step,request):
+            value=self.message(request,fail=True)
+            value['checks'][0]['correction_evidence']=[]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'訂正に必要な原文引用'):
+                evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,2)
+        self.assertFalse(scope.source_resolutions('article',self.blocks,self.pages,self.req))
+
+    def test_local_correction_quotes_do_not_drag_other_screened_facts(self):
+        check={**self.check,'research_ids':['a','b'],
+               'source_urls':[self.pages[0]['url'],self.pages[1]['url']],
+               'requires_source_check':False,
+               'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}]}
+        before=copy.deepcopy(check)
+        packet=scope.repair_packet(self.text,self.req,self.pages,{'checks':[check]})
+        self.assertEqual([r['id'] for r in packet['requirements']['research_decisions']['items']],['a'])
+        self.assertEqual(set(packet['target_block_ids']),{self.a,self.summary})
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(check,before)
+
     def test_source_pass_cannot_omit_one_of_two_named_findings(self):
         def send(job,step,request):
             value=self.message(request)

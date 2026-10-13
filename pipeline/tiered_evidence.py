@@ -101,6 +101,22 @@ def validate_claim_verdicts(checks, candidates):
         check['claim_verdicts'] = [r for r in rows if r['id'] in required] + list(previous.values())
 
 
+
+def pending_correction_scope(checks, scope, pages):
+    """A screener's unsupported repair receipt is pending, never a publishable failure."""
+    missing={loc['id'] for check in checks
+             if check['status']=='fail' and not check.get('correction_evidence')
+             for loc in check.get('affected_blocks',[])
+             if not (scope['needed'] and loc['id'] in scope['block_ids'])}
+    if not missing:
+        return scope, []
+    # Reuse the existing independent adjudication stage and already-visible
+    # source scope. No new fetch, fabricated quote, or article correction.
+    return {**scope,'needed':True,
+            'block_ids':sorted(set(scope['block_ids'])|missing),
+            'source_urls':sorted(set(scope['source_urls'])|{p['url'] for p in pages}),
+            'reason':scope['reason']+' / 一次照合の訂正根拠引用が未返却のため、独立再確認が必要'}, sorted(missing)
+
 def restore_requested_bodies(pages, requested_urls, job_id):
     """Expand only already-fetched requested pages; never perform another fetch."""
     from .db import get_optional_artifact
@@ -124,6 +140,24 @@ def restore_requested_bodies(pages, requested_urls, job_id):
         else:result.append(page)
     return result
 
+
+
+def matched_research_ids(blocks, targets, requirements):
+    """Retrieve existing answer records by text overlap; do not decide truth."""
+    rows=requirements.get('research_decisions',{}).get('items',[])
+    def grams(text):
+        return {text[i:i+3] for i in range(max(0,len(text)-2))}
+    selected=set()
+    for block in blocks:
+        if block['id'] not in targets:continue
+        query=grams(block['text']);ranked=[]
+        for row in rows:
+            candidate=grams(row.get('answer','')+' '.join(row.get('publication_conditions',[])))
+            common=len(query & candidate)
+            if common>=3:
+                ranked.append((2*common/max(1,len(query)+len(candidate)),row['id']))
+        if ranked:selected.add(max(ranked)[1])
+    return sorted(selected)
 
 def matching_fetched_pages(pages, requested_urls, blocks, target_ids):
     """Find one same-site body per claim by an exact phrase, never judge truth.
@@ -227,10 +261,15 @@ def evidence_audit(stage, payload, keys, text):
         visible={normalize_url(p['url']) for p in data['source_documents']}
         if not scope['needed'] and any(normalize_url(u) not in visible for u in scope['source_urls']):
             raise ContentQualityError('原文未提示の資料を確認済みとして扱えません。')
+        missing_quotes=[]
+        recorded_scope=copy.deepcopy(scope)
+        if name=='screen':
+            scope,missing_quotes=pending_correction_scope(checks,scope,data['source_documents'])
         for check in checks:
             unresolved = scope['needed'] and any(l['id'] in scope['block_ids'] for l in check['affected_blocks'])
             validate_corrections([check],data['source_documents'],unresolved=unresolved)
         usages.append(usage);trace.append({'repair_evidence_version':REPAIR_EVIDENCE_VERSION,'phase':name,'model':model,'review':scope,
+                                         'recorded_review':recorded_scope,'pending_correction_quote_ids':missing_quotes,
                                          'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens,
                                          'reviewed_block_ids':sorted(shown),
                                          'visible_source_urls':[p['url'] for p in data['source_documents']],
@@ -251,6 +290,25 @@ def evidence_audit(stage, payload, keys, text):
         selected=pages+[p for p in catalog_pages if canonical(p['url']) in required-visible]
         detail={**data,'source_documents':selected,'candidate_checks':checks,
                 'source_revision':revision}
+        if trace[-1].get('pending_correction_quote_ids'):
+            # Retrieve an existing researched answer for each pending
+            # paragraph. This is source selection, not a truth judgment. The
+            # existing catalog/expansion path handles an insufficient retrieval.
+            qids=matched_research_ids(original['article_blocks'],set(review['block_ids']),
+                                      original.get('requirements',{}))
+            if qids:
+                pending=[]
+                for check in checks:
+                    locs=[loc for loc in check['affected_blocks'] if loc['id'] in review['block_ids']]
+                    pending.append({**check,'status':'fail' if locs else 'pass',
+                                    'affected_blocks':locs,'research_ids':qids,
+                                    'source_urls':[],
+                                    'claim_verdicts':[r for r in check.get('claim_verdicts',[]) if r['id'] in {l['id'] for l in locs}]})
+                narrow=scoped_packet(original,pending)
+                if narrow['source_documents']:
+                    detail=narrow
+                    detail.update(source_catalog=data['source_catalog'],source_revision=revision)
+                    selected=detail['source_documents']
         second,more=ask('adjudicate','gpt-6.1-sol',detail)
         if more['needed'] and more['source_urls']:
             additional={canonical(u) for u in more['source_urls']}-{canonical(p['url']) for p in selected}
@@ -299,6 +357,12 @@ def evidence_audit(stage, payload, keys, text):
                    'affected_blocks':retained+[l for l in c['affected_blocks'] if l['id'] not in retained_ids],
                    'claim_verdicts':list(decisions.values()),
                    'correction_evidence':previous[c['key']].get('correction_evidence',[])+c.get('correction_evidence',[])}
+            # Preserve validated prior passes outside this independent review;
+            # do not ask the adjudicator to regenerate them or invent receipts.
+            decisions={r['id']:r for r in c.get('claim_verdicts',[])}
+            decisions.update({r['id']:r for r in previous.get(c['key'],{}).get('claim_verdicts',[])
+                              if r['status']=='pass' and r['id'] not in decisions})
+            c={**c,'claim_verdicts':list(decisions.values())}
             checks.append(c)
     # Carry source/decision identities into local repair. A source decision is
     # not a new canonical fact and never changes the original research matrix.

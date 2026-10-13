@@ -232,6 +232,21 @@ def save_resolution(stage, packet, checks, original, trace):
 def repair_packet(text, requirements, sources, report, *, planning=False):
     from .content_edits import content_blocks
     failed = [copy.deepcopy(c) for c in report['checks'] if c['status']=='fail']
+    # The independent source reviewer already identified exact correction
+    # quotes. Its earlier screening scope is not the local edit's fact scope.
+    # Keep adopted answers attached to those quotes, not every screened fact.
+    if not planning:
+        rows=requirements.get('research_decisions',{}).get('items',[])
+        for check in failed:
+            refs=check.get('correction_evidence',[])
+            if refs:
+                urls={canonical(ref['url']) for ref in refs}
+                related={row['id'] for row in rows
+                         if any(canonical(ref['url']) in urls
+                                for ref in row.get('evidence',row.get('evidence_sources',[])) if ref.get('url'))}
+                if related:
+                    check['research_ids']=sorted(related)
+                    check['source_urls']=sorted(urls)
     from .readability import readability_issues
     # Derive whole prose runs from the exact edit input, including standalone
     # focused-review reports. Do not trust cached paragraph addresses.
