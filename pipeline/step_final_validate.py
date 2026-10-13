@@ -36,8 +36,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if job.get('high_accuracy_mode'): source_artifacts.append(get_artifact(job_id, 'fresh_sources_review'))
         sources = source_evidence(*source_artifacts)
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
-        require_audit(audit_report, snapshot(article['content_text'], facts, outline, contract,
-                                             final_review_requirements(job, keyword), sources), stage="article")
+        context = dict(text=article['content_text'], facts=facts, outline=outline, contract=contract,
+                       requirements=final_review_requirements(job, keyword), sources=sources)
+        require_audit(audit_report, snapshot(**context), stage="article", context=context)
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {

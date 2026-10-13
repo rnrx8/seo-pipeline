@@ -1,0 +1,22 @@
+{
+  "status": "offline_reference_patch_only",
+  "paid_calls": 0,
+  "eligibility_shape_valid": true,
+  "historical_snapshot_not_promoted": true,
+  "target_ids": [
+    "block-0094",
+    "block-0142"
+  ],
+  "mechanical_issues": [],
+  "manual_candidate_exact_match": true,
+  "original_system_chars": 12149,
+  "local_system_chars": 307,
+  "local_packet_chars": 3124,
+  "review_packet_chars": 3309,
+  "model_semantics_verified": false,
+  "automatic_article_accepted": false,
+  "current_snapshot_matches_historical_audit": false,
+  "current_eligibility": false,
+  "historical_audit_explanation": "Earlier full-audit policy differs from current policy. Shape-only eligibility above is not permission to reuse it. No snapshot was rewritten; no full acceptance claimed.",
+  "offline_tests_passed": 529
+}

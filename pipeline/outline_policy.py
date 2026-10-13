@@ -7,7 +7,7 @@ from .readability import READABILITY_POLICY
 def current_policy():
     from .step_outline import SYSTEM_PROMPT, USER_TEMPLATE
     from .generation_context import POLICY_VERSION
-    contract = '\n'.join(('outline-editorial-v1', POLICY_VERSION, SYSTEM_PROMPT, USER_TEMPLATE,
+    contract = '\n'.join(('outline-editorial-v2-topic-design-reference-length', POLICY_VERSION, SYSTEM_PROMPT, USER_TEMPLATE,
                           READER_PRESENTATION_POLICY, READABILITY_POLICY))
     return hashlib.sha256(contract.encode()).hexdigest()
 

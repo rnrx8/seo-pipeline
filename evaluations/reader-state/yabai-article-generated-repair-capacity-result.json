@@ -1,0 +1,39 @@
+{
+  "stage": "article_generated_final_repair_incomplete",
+  "production_writes": false,
+  "article_generated": true,
+  "final_pass": false,
+  "draft_chars": 13100,
+  "cta_count": 2,
+  "current_turn_cost_jpy": 313.2543,
+  "total_trial_jpy": 1383.66492,
+  "quality_cost_jpy": 766.53149,
+  "remaining_jpy": {
+    "total": 116.33508,
+    "quality": 83.46851
+  },
+  "approved_source_recovery_cost_jpy": 0.461225,
+  "repair_failure": {
+    "target_blocks": 44,
+    "input_tokens": 34068,
+    "output_tokens": 6000,
+    "fixed_output_limit": 6000,
+    "cost_jpy": 51.2544,
+    "error": "response did not end_turn; original stop reason and partial output were not persisted. Usage exactly hit6000 limit.",
+    "applied": false
+  },
+  "fixes": [
+    "Size large Opus repair output from targeted replacement JSON using token count and headroom, retaining6000 minimum for small edits. Existing monetary and attempt caps unchanged.",
+    "Persist incomplete visible model output separately without applying or success-caching it. Record stop_reason in Anthropic usage ledger."
+  ],
+  "preflight": {
+    "generation_calls": 0,
+    "max_output_tokens": 7444,
+    "input_tokens": 34068,
+    "reservation_jpy": 96.2896
+  },
+  "free_tests_passed": 576,
+  "paid_retry_after_fix": false,
+  "preview": "http://127.0.0.1:8873/article.html",
+  "remaining_work": "Repair outstanding coverage/prose/organization findings, then complete final full review and structural validation. Budget decision needed before another model repair."
+}

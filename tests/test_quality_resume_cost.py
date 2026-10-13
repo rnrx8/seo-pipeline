@@ -44,6 +44,17 @@ class QualityResumeCostTests(unittest.TestCase):
             self.assertFalse(quality.audit(None,**guarded)['valid'])
             self.assertEqual(call.call_count,3)
 
+    def test_changed_outline_design_does_not_reuse_previous_semantic_pass(self):
+        from pipeline import outline_design
+        args = dict(stage='research', text='構成', facts='', outline='構成',
+                    contract={}, requirements={}, sources='原資料')
+        with scope('same-job'), patch.object(tiered, 'create_with_retry', return_value=self.message(report())) as call:
+            old = quality.audit(None, **args)
+            with patch.object(outline_design, 'POLICY', outline_design.POLICY + '\n変更された章設計'):
+                new = quality.audit(None, **args)
+            self.assertEqual(call.call_count, 2)
+            self.assertNotEqual(old['snapshot'], new['snapshot'])
+
     def test_repair_reply_survives_interruption_before_article_is_changed(self):
         artifacts={'article':{'content_text':'## 比較\n十分な説明。'},
                    'outline':{'content_text':'### H2：比較'},

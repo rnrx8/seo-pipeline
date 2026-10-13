@@ -1,0 +1,51 @@
+{
+  "model_calls": 0,
+  "production_writes": false,
+  "acceptance_criteria_relaxed": false,
+  "saved_plan_still_current": true,
+  "existing_paid_results_unmodified": true,
+  "cases": [
+    {
+      "id": "q07",
+      "verified": false,
+      "validation_issue": {
+        "code": "source_basis_mismatch",
+        "source_requirement": "standard",
+        "basis": "expert",
+        "allowed_bases": [
+          "primary",
+          "corroborated",
+          "historical",
+          "omitted",
+          "unresolved"
+        ]
+      },
+      "new_retrieval_calls": 0,
+      "schema_blocks_original_response": true,
+      "error": "根拠区分の判定が不整合です。資料不足として追加調査しません：q07"
+    },
+    {
+      "id": "q10",
+      "verified": false,
+      "validation_issue": {
+        "code": "source_basis_mismatch",
+        "source_requirement": "standard",
+        "basis": "expert",
+        "allowed_bases": [
+          "primary",
+          "corroborated",
+          "historical",
+          "omitted",
+          "unresolved"
+        ]
+      },
+      "new_retrieval_calls": 0,
+      "schema_blocks_original_response": true,
+      "error": "根拠区分の判定が不整合です。資料不足として追加調査しません：q10"
+    }
+  ],
+  "limits": "Demonstrates schema/validation consistency and routing only; no claim that a new model response or article passes or fits the budget.",
+  "free_tests_passed": 541,
+  "production_deployed": false,
+  "next_validation": "Paid model verification of corrected response schema still required; no automatic resumption or increased budget."
+}

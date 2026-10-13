@@ -1,0 +1,79 @@
+{
+  "status": "existing_article_trial_closed_next_article_prepared",
+  "new_paid_calls": 0,
+  "pricing_basis": "Recorded usage priced by existing pipeline rates at 200 JPY/USD; not a reconciled provider invoice.",
+  "cost_jpy": {
+    "reused_research_outline_readiness": 25.370524999999997,
+    "sonnet_draft": 112.8152,
+    "first_full_audit": 66.7398,
+    "opus_local_repair": 42.065599999999996,
+    "full_reaudit": 65.890575,
+    "language_diagnostic_probe": 11.6065
+  },
+  "recorded_total_jpy": 324.48819999999995,
+  "unknown_maximum_reserved_jpy": 101.62299999999999,
+  "total_including_unknown_ceiling_jpy": 426.11119999999994,
+  "new_research_and_outline_generation_included": false,
+  "historical_opus_draft_reference_jpy": 248.9544,
+  "historical_reference_is_matched_ab_test": false,
+  "findings": [
+    {
+      "source": "pipeline/step_content_audit.py",
+      "finding": "Two audit attempts with one repair; newly found defects in audit 2 have no automatic repair opportunity."
+    },
+    {
+      "source": "pipeline/focused_quality.py",
+      "finding": "Every changed article currently receives all five whole-article reviewer roles."
+    },
+    {
+      "source": "pending-prose-repair/request.json",
+      "finding": "The two-block prose request contains 12149 system-prompt characters versus 543 serialized article-block characters. Source-document selection is already empty; fixed repair instructions dominate this small request."
+    }
+  ],
+  "next_step": "Prepare separately approved bounded trial for 既婚者マッチングアプリ やばい with meetingtechnology. Existing article receives no further paid local fixes. Preserve actual acceptance criteria and distinguish wiring tests from semantic quality.",
+  "production_code_changed": false,
+  "implemented_design": {
+    "design": "Use the existing repair and audit machinery; route by actual edit scope rather than adding a new agent or always repeating five checks.",
+    "primary_change": "Select existing repair instructions needed for prose-only fixes; retain immutable facts/conditions, links, headings, CTA and user style constraints. Do not copy fact-acquisition instructions into purely grammatical repairs.",
+    "completion_rule": "At most one bounded final local correction when full re-audit has passed all non-prose criteria and remaining failures are locally addressable prose defects. Otherwise keep existing unresolved result.",
+    "local_validation": "Check the exact diff, neighboring text, attribution, negation, conditions, and meaning; then run whole-article deterministic structure, length and CTA checks. Existing repair schema and block-address enforcement remain in use.",
+    "eligibility": "Not inferred merely from key=prose_quality or unchanged numbers. Recommendation strength, benefit/guarantee scope, fact/condition changes, headings/tables, deletions, and unresolved research exclude this narrow route.",
+    "prior_pass_handling": "No copying a full-article pass across snapshots. Store prior audited snapshot plus exact patch and scoped validation as an explicit result lineage; update completion checks to understand that evidence before enabling this route.",
+    "budget": "Shared article budget and durable call counters; no increased default cap or automatic reattempt if local correction fails. Insufficient balance preserves readable output with confirmation incomplete.",
+    "expected_cost_effect": "Avoid another approximately 66 JPY five-role re-audit for a qualifying final prose correction. Replacement repair/check cost is unmeasured; no claimed net savings or <=300 JPY end-to-end guarantee.",
+    "free_validation_before_paid_test": [
+      "Regression fixtures for grammar and sentence splitting across different product categories.",
+      "Reject changed negation, attribution, pricing periods, fact qualifiers, unsupported benefit claims and out-of-scope block edits.",
+      "Keep empathy, relevant conditions, headings, tables and CTA stable.",
+      "Verify bounded attempts survive restart, use shared remaining budget, and failed scoped checks cannot promote completion."
+    ]
+  },
+  "implementation": {
+    "branch": "codex/writing-model-comparison",
+    "flag": "ARTICLE_LOCAL_PROSE_FINISH=1",
+    "default_enabled": false,
+    "offline_tests_passed": 529,
+    "live_model_quality_verified": false,
+    "production_deployed": false,
+    "new_paid_calls": 0,
+    "original_full_audit_snapshot_unchanged_by_flag": true,
+    "local_receipt_binds_prompts_models_and_exact_diff": true
+  },
+  "local_model_test": {
+    "result_file": "local-prose-finish-live-result.json",
+    "paid_calls": 2,
+    "usage_cost_jpy": 6.4662,
+    "cap_jpy": 80,
+    "local_passed": true,
+    "full_flow_passed": false
+  },
+  "workflow_decision": {
+    "change": "development workflow only",
+    "acceptance_criteria_changed": false,
+    "lightweight_findings_auto_accepted": false,
+    "existing_trial_complete_acceptance": false,
+    "next_paid_trial_authorized": false
+  },
+  "completion_wiring_result": "completion-wiring-offline.json",
+  "next_article_plan": "next-article-preparation.json"
+}

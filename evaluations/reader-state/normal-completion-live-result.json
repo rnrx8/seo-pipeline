@@ -1,0 +1,154 @@
+{
+  "status": "stopped",
+  "completed_stages": [],
+  "new_article_generation": false,
+  "production_reflected": false,
+  "research_reused": true,
+  "error_type": "ContentQualityError",
+  "error": "修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。",
+  "paid_calls": 7,
+  "cost_plus_reserved_jpy": 93.067775,
+  "unsettled": 0,
+  "calls": [
+    {
+      "model": "gpt-6-luna",
+      "role": "evidence_scope",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 1.061575
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "coverage",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 25.747999999999998
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "language",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 10.931000000000001
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "consistency",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 10.703999999999999
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "organization",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 14.127999999999998
+    },
+    {
+      "model": "claude-opus-5-5",
+      "role": "repair",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 29.399199999999997
+    },
+    {
+      "model": "gpt-6-luna",
+      "role": "evidence_scope",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 1.0959999999999999
+    }
+  ],
+  "authorization": {
+    "user_message": "大丈夫、つづけて",
+    "cap_jpy": 200,
+    "conversion_jpy_per_usd": 200,
+    "max_ordinary_repairs": 1,
+    "max_full_audits": 2,
+    "research_generation": false,
+    "production_writes": false
+  },
+  "repair": {
+    "edits": [
+      {
+        "id": "block-0130",
+        "new": "どちらのサービスも40代が約4割を占めると公表されているため、同世代の相手を探したい40代にとって検討しやすいサービスです。"
+      },
+      {
+        "id": "block-0142",
+        "new": "弁護士による解説では、アプリの利用自体は違法ではないとされています。そのうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると指摘されています。個別の事案の判断は、弁護士への相談が必要です。"
+      },
+      {
+        "id": "block-0182",
+        "new": "やめたいときは、各サービスのマイページから自分で退会手続きを行いましょう。既婚者クラブとヒールメイトの退会方法と退会後の扱いは、以下の通りです。\n\n- 既婚者クラブ：マイページの「通知・設定」下部にある退会メニューから、いつでも手続きできます。退会後は、サービス内であなたに関する情報が削除され、閲覧できなくなると案内されています。\n- ヒールメイト：マイページからいつでも退会できます。退会後はプロフィールがすぐに非表示・検索不可になり、個人情報は消去されると案内されています。\n\nヒールメイトの有料プランは、退会手続きをするまで自動更新されます。利用をやめると決めたら、更新前に手続きを済ませておきましょう。また、退会による削除はサービス内の扱いです。LINEなど外部で連絡先を交換した相手との関係までは消えません。"
+      }
+    ]
+  },
+  "second_evidence_scope": {
+    "checks": [
+      {
+        "key": "evidence_support",
+        "reason": "block-0162は「既婚者クラブには細かな通知設定があり、メッセージもサービス内で完結」と述べていますが、採用済みのq05ではWeb利用・写真ぼかし・ニックネーム・同性検索不可・ブロック・電話番号による閲覧制限を確認しており、通知設定とメッセージの完結は確認済み回答に含まれていません。block-0184はヒールメイトについて「退会後は…個人情報は消去」とし、block-0186は有料プランの自動更新を述べていますが、提示された採用済み回答にヒールメイトの退会後のデータ扱いや自動更新条件の確認記録がありません。これらの条件は出典資料で照合が必要です。またblock-0150の別居・婚姻期間・子どもの有無による慰謝料増額の説明は、採用済みq26の回答で裏付けられていません。該当する専門解説の原文確認が必要です。",
+        "status": "fail",
+        "affected_blocks": [
+          {
+            "id": "block-0162",
+            "reason": "通知設定の詳細とメッセージがサービス内で完結するという主張が、採用済み回答で確認されていない。"
+          },
+          {
+            "id": "block-0184",
+            "reason": "ヒールメイトの退会後のプロフィール非表示・個人情報消去の条件が、採用済み回答で確認されていない。"
+          },
+          {
+            "id": "block-0186",
+            "reason": "ヒールメイト有料プランの自動更新条件が、採用済み回答で確認されていない。"
+          },
+          {
+            "id": "block-0150",
+            "reason": "別居・婚姻期間・幼い子どもの有無が慰謝料増額に関係するという法的説明が、採用済み回答で確認されていない。"
+          }
+        ],
+        "requires_source_check": true,
+        "research_ids": [
+          "q26"
+        ],
+        "source_urls": [
+          "https://aglaw.jp/kikonsha-app"
+        ]
+      },
+      {
+        "key": "comparison_conditions",
+        "reason": "比較表block-0010は男性料金を「プラン／1か月／12か月の月額換算」として区別し、女性料金も別欄で示しています。既婚者クラブ・カドル・アネモネ・マリーゴーの価格は採用済み回答の料金条件と一致し、ヒールメイトも男性スタンダードの通常料金・月額換算と一致しています。ヒールメイトのキャンペーン追加期間を含まない条件はblock-0042に記載されています。比較は同一契約期間の料金を混同せず、本文で最安を条件なしに断定していません。",
+        "status": "pass",
+        "affected_blocks": [],
+        "requires_source_check": false,
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "metric_scope",
+        "reason": "累計会員数はblock-0022とblock-0090で「2026年10月現在の累計」と定義し、block-0036でも「現在活動中の人数ではありません」と区別しています。ヒールメイトの約42％、既婚者クラブの男女別割合は利用者構成として記載され、体験談block-0132は本人の自己申告として期間と人数を示し、block-0134で一般化を否定しています。カドルとアネモネの年齢層にはそれぞれ2025年12月、2025年7月の対象時点が残っています。",
+        "status": "pass",
+        "affected_blocks": [],
+        "requires_source_check": false,
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "unsupported_guarantees",
+        "reason": "身バレ対策や本人確認・監視の説明は「知られにくい」「判断材料」などの限定された表現で、利用が絶対に発覚しない、危険がない、必ず出会えるといった保証は見当たりません。block-0162の未確認機能の主張はevidence_supportで指摘しており、ここでは安全性の保証とは扱いません。",
+        "status": "pass",
+        "affected_blocks": [],
+        "requires_source_check": false,
+        "research_ids": [],
+        "source_urls": []
+      }
+    ]
+  },
+  "diagnosis": {
+    "full_flow_completed": false,
+    "reason": "First evidence pass did not call evidence_screen; second pass requests it for different claims. guard_review rejects first screen after repair because no prior screen URLs/questions exist.",
+    "existing_source_observations": [
+      "kikonclub.com contains notification settings and in-service messaging",
+      "hlmt.jp/lp01 contains profile hiding and personal data deletion",
+      "aglaw.jp/kikonsha-app contains marriage-duration/children/separation factors"
+    ],
+    "scope_issue": "Second scope output requests q26/aglaw only despite also flagging service features. Do not assume original documents are absent or launch new research.",
+    "next": "Resolve stable-source review routing and post-repair scope guard together; keep same 200 JPY budget and saved responses; no second repair or new-source search authorized."
+  },
+  "cost_basis": "API usage at configured rates, 200 JPY/USD, not invoice"
+}

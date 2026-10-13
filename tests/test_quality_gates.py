@@ -98,7 +98,7 @@ class QualityGateTests(unittest.TestCase):
         from pipeline import research_requirements as research
         plan={'items':[{'id':'q1','question':'返金条件','required':True}]}
         pages={'content_text':json.dumps([{'url':'https://official.test','status':'success','text':'返金不可'}])}
-        matrix={'valid':True,'policy_sha256':research.matrix_policy(),'items':[{'id':'q1','status':'confirmed','answer':'返金不可','evidence':[{'url':'https://official.test','quote':'返金不可'}]}],
+        matrix={'valid':True,'policy_sha256':research.matrix_policy(),'items':[{'id':'q1','status':'confirmed','answer':'返金不可','publication_conditions':[],'claim_limits':[], 'evidence':[{'url':'https://official.test','quote':'返金不可'}]}],
                 'plan_sha256':q.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
                 'sources_sha256':q.digest(q.source_evidence(pages)),'facts_sha256':q.digest('確認済み')}
         artifacts={'research_matrix':{'content_text':json.dumps(matrix)},'fresh_sources':pages,'fact_sheet':{'content_text':'確認済み'}}

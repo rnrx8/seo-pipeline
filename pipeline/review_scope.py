@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 POLICY_VERSION = 'scoped-review-v2-preserve-source-set'
 ROUTING_POLICY = '''
 【今回の判定段階：上記の原文照合指定より優先】
-原文照合の前に、採用済み回答と条件、source_resolutionsを用いて判定する。
+採用済み回答と条件、source_resolutions、source_excerptsを用いて現在の文書を判定する。
+source_excerptsは取得資料と一致を確認した原文抜粋。修正前の合否ではなく、現在の主張の対象・プラン・期間・金額を照合する資料として使う。抜粋で確認できない条件だけ追加の原文照合へ回す。
 採用済み回答と条件が一致する主張は、原文がここに無いだけで不合格にしない。
 各checkにaffected_blocks、research_ids、source_urls、requires_source_checkを返す。
 failは該当する全段落（同じ主張の表・冒頭・結論を含む）をaffected_blocksに列挙する。
@@ -97,10 +98,18 @@ def scoped_packet(payload, checks):
     heading_ids=set()
     stack={}
     import re
+    fenced=False
     for i,b in enumerate(blocks):
-        match=re.match(r'^(#{1,6})\s',b['text'].lstrip())
-        if match:
-            depth=len(match[1]);stack={k:v for k,v in stack.items() if k<depth};stack[depth]=b['id']
+        # Markdown headings need not have an empty line before them. Keep
+        # paragraph addresses unchanged while reading every heading line.
+        for line in b['text'].splitlines():
+            if line.lstrip().startswith(('```','~~~')):
+                fenced=not fenced
+                continue
+            match=re.match(r'^[ \t]{0,3}(#{1,6})[ \t]+',line) if not fenced else None
+            if match:
+                depth=len(match[1]);stack={k:v for k,v in stack.items() if k<depth};stack[depth]=b['id']
+            if i in nearby:heading_ids.update(stack.values())
         if i in nearby:heading_ids.update(stack.values())
     result.update(article_blocks=[b for i,b in enumerate(blocks) if i in nearby],
                   target_block_ids=sorted(targets), requirements=req, source_documents=pages,
@@ -129,17 +138,57 @@ def source_resolutions(stage, blocks, sources, requirements):
     receipts = (artifact or {}).get('meta', {}).get('source_resolutions', [])
     valid = []
     for r in receipts:
+        # Legacy failed receipts describe a defect but omit the exact correction
+        # evidence. Reuse passing receipts; refresh only incomplete failed ones.
+        if any(c['status']=='fail' and not c.get('correction_evidence') for c in r['checks']):
+            continue
         if not {l['id'] for c in r['scope'] for l in c.get('affected_blocks',[])} <= {b['id'] for b in blocks}:
             continue
         packet = scoped_packet({'article_blocks':blocks,'source_documents':sources,'requirements':requirements}, r['scope'])
         binding = receipt_binding(packet['article_blocks'] + packet['heading_context'], packet['source_documents'], packet['requirements'],r['scope'],stage)
         if binding == r.get('binding'):
+            from .tiered_evidence import validate_claim_verdicts
+            from .content_quality import ContentQualityError
+            try:
+                validate_claim_verdicts(r['checks'], r['scope'])
+            except ContentQualityError:
+                continue
             valid.append(r)
     return valid
 
 
+def source_excerpts(stage, sources):
+    """Carry source text across document edits, never carry the old verdict.
+
+    A review decision is bound to article blocks; a source excerpt is bound
+    to the fetched page. Keep these identities separate so a repaired claim
+    can be checked without requesting the same page again.
+    """
+    from .quality_budget import JOB
+    from .tiered_research import get_optional_artifact
+    from .content_quality import digest
+    if not JOB.get():return []
+    pages={canonical(p['url']):p for p in pages_from(sources)}
+    stages=('research','article') if stage=='article' else (stage,)
+    receipts=[]
+    for source_stage in stages:
+        artifact=get_optional_artifact(JOB.get(),f'tiered_{source_stage}_evidence_screen')
+        receipts.extend((artifact or {}).get('meta',{}).get('source_resolutions',[]))
+    excerpts={}
+    for receipt in receipts:
+        snapshots=receipt.get('source_snapshots',{})
+        for check in receipt['checks']:
+            for ref in check.get('correction_evidence',[]):
+                url=canonical(ref['url']);page=pages.get(url)
+                if (not page or snapshots.get(url)!=digest(json.dumps(page,ensure_ascii=False,sort_keys=True))
+                        or ref['quote'] not in page['text']):continue
+                excerpts[(url,ref['quote'])]={'url':page['url'],'quote':ref['quote']}
+    return list(excerpts.values())
+
+
 def save_resolution(stage, packet, checks, original, trace):
     from .quality_budget import JOB
+    from .content_quality import digest
     from .tiered_research import get_optional_artifact, upsert_artifact
     if not JOB.get() or trace[-1]['review']['needed']:
         return
@@ -152,7 +201,7 @@ def save_resolution(stage, packet, checks, original, trace):
     # Store independently addressable resolved groups as well as the complete
     # scope. A correction in another group must not discard this proof.
     scopes=[packet['candidate_checks']]
-    for target in packet['target_block_ids'] if all(c['status']=='pass' for c in checks) else []:
+    for target in packet['target_block_ids']:
         scopes.append([{**c,'affected_blocks':[l for l in c['affected_blocks'] if l['id']==target]}
                        for c in packet['candidate_checks'] if any(l['id']==target for l in c['affected_blocks'])])
     for scope in scopes:
@@ -162,11 +211,17 @@ def save_resolution(stage, packet, checks, original, trace):
         verdicts=[]
         for c in checks:
             locations=[l for l in c['affected_blocks'] if l['id'] in relevant]
+            decisions=[r for r in c.get('claim_verdicts',[]) if r['id'] in relevant]
             verdicts.append(c if scope==packet['candidate_checks'] else
-                {**c,'affected_blocks':locations,'status':'fail' if locations else 'pass'})
+                {**c,'affected_blocks':locations,'status':'fail' if locations else 'pass',
+                 'reason':' / '.join(r['reason'] for r in decisions) or '今回の対象に指摘なし',
+                 'claim_verdicts':decisions,
+                 'correction_evidence':c.get('correction_evidence',[]) if locations else []})
         additions.append({'binding':binding,'scope':scope,
             'reviewed_blocks':[b for b in view['article_blocks'] if b['id'] in relevant],
-            'checks':verdicts,'source_urls':[p['url'] for p in view['source_documents']]})
+            'checks':verdicts,'source_urls':[p['url'] for p in view['source_documents']],
+            'source_snapshots':{canonical(p['url']):digest(
+                json.dumps(p,ensure_ascii=False,sort_keys=True)) for p in view['source_documents']}})
     indexed={r['binding']:r for r in meta.get('source_resolutions',[])}
     indexed.update({r['binding']:r for r in additions})
     meta['source_resolutions']=list(indexed.values())
@@ -174,18 +229,65 @@ def save_resolution(stage, packet, checks, original, trace):
                     content_text=old['content_text'], meta=meta)
 
 
-def repair_packet(text, requirements, sources, report):
+def repair_packet(text, requirements, sources, report, *, planning=False):
     from .content_edits import content_blocks
-    failed = [c for c in report['checks'] if c['status']=='fail']
-    issues = report.get('structural_issues', [])
+    failed = [copy.deepcopy(c) for c in report['checks'] if c['status']=='fail']
+    # The independent source reviewer already identified exact correction
+    # quotes. Its earlier screening scope is not the local edit's fact scope.
+    # Keep adopted answers attached to those quotes, not every screened fact.
+    if not planning:
+        rows=requirements.get('research_decisions',{}).get('items',[])
+        for check in failed:
+            refs=check.get('correction_evidence',[])
+            if refs:
+                urls={canonical(ref['url']) for ref in refs}
+                related={row['id'] for row in rows
+                         if any(canonical(ref['url']) in urls
+                                for ref in row.get('evidence',row.get('evidence_sources',[])) if ref.get('url'))}
+                if related:
+                    check['research_ids']=sorted(related)
+                    check['source_urls']=sorted(urls)
+    from .readability import readability_issues
+    # Derive whole prose runs from the exact edit input, including standalone
+    # focused-review reports. Do not trust cached paragraph addresses.
+    issues = [i for i in report.get('structural_issues', []) if i.get('key') != 'continuous_prose']
+    issues += readability_issues(text)
     if any(not c.get('affected_blocks') for c in failed+issues):
         fail('修正箇所を特定できない指摘があります。全文修正を自動実行せず対象を確認してください。')
-    packet = scoped_packet({'article_blocks':content_blocks(text),'requirements':requirements,
-                            'source_documents':sources},failed+issues)
+    blocks = content_blocks(text)
+    by_id = {b['id']: b for b in blocks}
+    primary = {l['id'] for c in failed+issues for l in c.get('affected_blocks', [])}
+    # Reviewers may name a condition's destination in a finding without marking
+    # that destination as defective. Keep those explicit dependencies editable.
+    import re
+    related = {ref for c in failed+issues for loc in c.get('affected_blocks', [])
+               for ref in re.findall(r'(?<![A-Za-z0-9_-])block-\d+(?!\d)', loc['reason'])}
+    if not related <= by_id.keys():
+        fail('修正指示が参照する段落IDが現在の本文にありません。')
+    # Updating a table can require its immediately preceding prose introduction
+    # to change too. Neighboring context elsewhere remains read-only.
+    for i, block in enumerate(blocks):
+        if block['id'] not in primary|related or not i:
+            continue
+        if re.search(r'(?m)^\s*\|?\s*:?-{3,}:?\s*\|', block['text']):
+            previous = blocks[i-1]
+            if not re.match(r'^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\|)', previous['text'].lstrip()):
+                related.add(previous['id'])
+    dependencies = related-primary
+    scope_checks = failed+issues
+    if dependencies:
+        scope_checks = scope_checks + [{'affected_blocks':[
+            {'id':ref, 'reason':'既存指摘の参照先または表の導入を整合させるための関連段落'}
+            for ref in sorted(dependencies)]}]
+    packet = scoped_packet({'article_blocks':blocks,'requirements':requirements,
+                            'source_documents':sources},scope_checks)
+    packet['related_block_ids'] = sorted(dependencies)
     from .generation_context import repair_requirements
-    packet['requirements']=repair_requirements(packet.get('requirements',{}))
+    packet['requirements']=repair_requirements(packet.get('requirements',{}),planning=planning)
     packet['structural_issues']=issues
     packet['failed_checks']=failed
+    from .repair_evidence import compact_repair_sources
+    compact_repair_sources(packet, report)
     return packet
 
 

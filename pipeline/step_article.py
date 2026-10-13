@@ -1,11 +1,12 @@
 from .section_identity import bind_sections
 from .claim_scope import scope_issues
-from .fresh_sources import WRITING_POLICY
+from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .content_quality import ContentQualityError, confirmed_facts, require_audit, intent_review_requirements, snapshot, source_evidence, explicit_risk_guarantees
 import json
 import re as _re
 import time
 from .article_quality import parse_length_budget, select_outline, validate_delivery
+from .outline_length import planning_setting
 from .step_outline import ensure_complete_volume_design
 import anthropic
 from .ai import create_with_retry, get_step_config, message_text
@@ -55,21 +56,21 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
   ただし含まれる数値・サービスの事実・安全性や成果の主張は確認済み情報と一致させる。
   検索意図の仮説を実際の読者の発言や検証済みデータとして扱わない。
 
-▼ H2見出し
-- 疑問詞を積極的に使う（〜とは？いくら？なぜ？どうやって？どのくらい？何時間？何日？おすすめなのはどんな人？）
+▼ 見出し
+- 構成で確定したH2/H3/H4の表記・順序・階層・数を維持する。見出しの問い方や分割は構成段階で決め、本文生成では追加しない。
 
 ▼ 見出し直下と訴求の執筆
 - 共通提示基準「検索語・結論・推奨理由」「節の分量」に従い、構成の各章の役割を本文へ実現する。
 - 構成で選んだ読者の望み・避けたい状況と根拠を引き継ぎ、例文を転記するのではなく章に対応した説明を書く。
-- 並列要素を表やリストへ整理する際は、要素2つ以下や1文で済む場合に形式を強制しない。表・リストには内容を示す短い導入を置く。
-- 構成案の各H3に記載された「セクション内容」「表現形式」「掲載項目」に沿って執筆する。
+- 並列要素を表やリストへ整理する際は、要素2つ以下や1文で済む場合に形式を強制しない。表・リストの導入は共通提示基準に従う。
+- 構成案の各H3に記載された「回答要素」「表現形式」「掲載項目」に沿って執筆する。読者の疑問・回答要素・対応論点は執筆判断に使い、管理用の質問IDや設計欄を本文へ転記しない。
 - 構成案で表・リストが指定されている場合は、その目的と掲載項目を守る。ただし要素が不足している場合は、情報を捏造して埋めない。
 - 構成案にH4がある場合は、その区分とセクション内容を守ってH4見出しとして執筆する。
 
 ▼ セクション別の根拠URL
 - 構成案の各H2・H3・H4に割り当てられた根拠URLは、そのセクションの執筆根拠として照合する。URLを本文に表示するかは出典表示設定に従う。
-- 根拠URLと併記された「根拠となる内容」の範囲だけを裏付けとして扱い、URLが裏付けていない内容へ拡張しない。
-- URL・出典名はファクトシートの表記を維持し、推測・補完・改変しない。
+- 構成の対応論点ID・回答要素・根拠URLを、提供された確認済み回答と出典へ照合する。値・実条件は確認済み回答から引き継ぐ。構成に根拠の要旨がある場合も同じ回答に照合し、URLが裏付けていない内容へ拡張しない。
+- 表示するURL・出典名はファクトシートの表記を維持し、推測・補完・改変しない。表示要否は共通の読者向け提示基準と記事の出典表示設定に従う。
 - 「該当資料なし」のH3では、根拠が必要な数値・固有の事実を新たに作らない。一般的な説明に留めるか、提供された確認済み要約または直接取得本文に適切な根拠がある場合に使用する。
 - 構成案・要約・取得本文が矛盾する場合は、同じ対象・条件の公式取得本文を優先する。[hypothesis]の主張自体を根拠にしない。
 
@@ -80,7 +81,6 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
   対比リスト（または2列表）にする。手順・順序があるものは番号付きリストにする。
 - 視覚的・SEO的な分かりやすさを優先する。ただし要素が2つ以下、または1文で自然に収まる場合は
   無理にリスト化しない（リストの乱用で文章を痩せさせない）。
-- 必要なリスト・表の直前には、それが何を示すかの導入文を1文添える。この規則を理由に表の後へ注意点リストや前置きを新設しない。
 
 ▼ プレーンテキストの制限
 """ + READABILITY_POLICY + """
@@ -112,7 +112,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 ▼ その他
 - 読者の不安を和らげる補完文は、そのH2の検索意図に必要な場合だけ入れる
 - 向き不向き・注意点などは固定項目にせず、コンテンツ構造契約で必要とされた場合のみ扱う
-- 文字数は構成案の目標文字数に合わせる
+- 章別分量は回答要素を執筆する目安とする。ユーザーの文字数指定は守り、自動算出の参考値へ合わせるために反復や補足章を増やさない。
 """
 
 USER_TEMPLATE = """\
@@ -330,7 +330,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
     """Single API call. Returns (text, input_tokens, output_tokens)."""
     msg = create_with_retry(
         client,
-        model=MODEL,
+        model=get_step_config("article")[0],
         max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=messages,
@@ -371,7 +371,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_input += ti
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
-        issues = validate_delivery(cleaned, required_outline, f'{target}字', contract=contract)
+        issues = validate_delivery(cleaned, required_outline, contract=contract)
         issues += scope_issues(cleaned, facts)
         issues += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(cleaned)]
         if job_id:
@@ -555,12 +555,12 @@ def _build_extra_instructions(job: dict) -> str:
     purpose = job.get("article_purpose")
     if purpose:
         lines.append(f"\n【記事目的】{purpose}")
-        lines.append("上記の目的に合わせてCTA・誘導文・CV導線を本文中に自然に組み込むこと。")
+        lines.append("上記の目的は、構成で決めた各章の役割・回答要素・説明順序に沿って本文で実現すること。CTAの配置は専用工程の設定に従う。")
 
     word_count = job.get("word_count_setting")
     if word_count:
         lines.append(f"\n【文字数指定】目標文字数は「{word_count}」とすること。")
-        lines.append("調整が必要な場合は、まとめ・FAQ・CV導線を除き、潜在ニーズ対応セクションから優先的に増減すること。")
+        lines.append("調整が必要な場合は、構成の必須回答と読者の判断に必要な説明を保持し、重複と低優先度の補足から調整すること。")
 
     target = job.get("target_audience")
     if target:
@@ -690,10 +690,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception as e:
         print(f"[article] Warning: could not load job settings: {e}")
 
-    word_count_setting = job.get("word_count_setting") if job else None
+    word_count_setting = planning_setting(job, outline)
 
     # Load volume design from outline and service_map if available
-    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting)
+    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting, reference_only=(outline.get('meta') or {}).get('length_origin') == 'reference')
     if outline_text != outline['content_text']:
         warn('構成の見出し表記または文字数配分を正規化して執筆を継続します。')
     volume_sections = _parse_volume_design(outline_text)
@@ -804,7 +804,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         step="article_draft",
         content_type="text/markdown",
         content_text=article_text,
-        meta={"model": MODEL, "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
+        meta={"model": get_step_config("article")[0], "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
     )
 
     # --- A: [hypothesis] validation ---
@@ -840,7 +840,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             warn("Structure repair introduced [hypothesis] content")
 
-    delivery_issues = validate_delivery(article_text, outline_text, word_count_setting, contract=contract)
+    delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 
@@ -850,7 +850,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_type="text/markdown",
         content_text=article_text,
         meta={
-            "model": MODEL,
+            "model": get_step_config("article")[0],
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,

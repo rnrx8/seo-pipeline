@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls, normalize_url
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v4-keyed-question-responses'
+VERSION='tiered-research-v5-publication-scope'
 POLICY='''
 previous_findingsは前回の全体確認で指摘された具体的な不足。previous_candidates・omission_candidate_from・unresolved_candidateは未採用の参考情報であり、確認済み事実ではない。資料から再確認し、根拠のある部分と未確認部分を分ける。参考情報だけで合格にしない。
 related_verified_answersは他の対象で確認できた回答と条件。横断質問では該当例をこの情報と提示原文で照合し、回答範囲を限定する。別の質問へ合格を自動転記せず、出典は今回のsourcesから選ぶ。
@@ -61,7 +61,7 @@ def cached_result(job_id,step,request):
   return json.loads(saved['content_text'])
  return None
 
-def checked_request(job_id,step,request):
+def checked_request(job_id,step,request,*,client=None):
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  old=cached_result(job_id,step,request)
  if old is not None:
@@ -69,7 +69,14 @@ def checked_request(job_id,step,request):
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
-  msg=create_with_retry(None,**request)
+  msg=create_with_retry(client,**request)
+ if getattr(msg,'stop_reason',None)!='end_turn':
+  # Preserve incomplete visible output for diagnosis, but never cache it as a
+  # successful response or apply its partial JSON to the article.
+  partial='\n'.join(b.text for b in msg.content if getattr(b,'type','text')=='text' and hasattr(b,'text'))
+  upsert_artifact(job_id=job_id,step=step+'_incomplete',content_type='text/plain',content_text=partial,
+      meta={'request_sha256':fingerprint,'model':request['model'],'stop_reason':getattr(msg,'stop_reason',None),
+            'max_tokens':request.get('max_tokens'),'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
  value=json.loads(response_text(msg));text=json.dumps(value,ensure_ascii=False)
  previous=get_optional_artifact(job_id,step)
  meta=copy.deepcopy((previous or {}).get('meta',{}))
@@ -117,7 +124,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   if subject=='共通':
    related={q['id'] for name,qs in grouped.items() if name!='共通' and any(name in q['question'] for q in questions) for q in qs}
    hints.extend(i for i in items if i['id'] in related)
-  related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','supports_current_conclusion')} |
+  related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','publication_conditions','claim_limits','supports_current_conclusion')} |
                    {'evidence':[{k:r.get(k) for k in ('url','source_kind')} for r in i.get('evidence',[])]}
                    for i in items if subject=='共通' and i['id'] in related and i.get('verified') and i.get('basis')!='omitted']
   evidence_hints=[row for h in hints for row in (h,h.get('omission_candidate_from'),h.get('unresolved_candidate')) if isinstance(row,dict)]
@@ -133,7 +140,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
            'previous_findings':[i for i in previous_issues if i.get('id') in ids],
            'previous_candidates':[{k:i.get(k) for k in ('id','answer','reason','omission_candidate_from','unresolved_candidate')} for i in previous_candidates],
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
-  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions]),
+  request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions],questions=questions),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
   print('[tiered] Screen '+subject,flush=True)
   value,usage=checked_request(job_id,f'tiered_screen_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
@@ -147,7 +154,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    payload['article_plan']={**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in pending_ids]}
    payload['candidate_answers']=pending
    request.update(model='gpt-6.1-sol',max_tokens=min(10000,2000+len(pending)*900),system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n一次判定は参考資料。過剰な不合格も検査し、原文で独立に判定する。記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。回答対象はplan.itemsのみ。')
-   request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
+   request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']],questions=payload['plan']['items'])
    request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
@@ -167,7 +174,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
      request['max_tokens']=min(10000,2000+len(pending)*900)
      request['messages']=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
     if pending:
-     request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']])
+     request['output_config']=span_schema(MATRIX_SCHEMA,[q['id'] for q in payload['plan']['items']],questions=payload['plan']['items'])
      print('[tiered] Adjudicate '+subject+' '+str(len(pending)),flush=True)
      second,usage=checked_request(job_id,f'tiered_adjudication_{index}',request);inputs+=usage.input_tokens;outputs+=usage.output_tokens
      second=expand_references(second,source_index)
@@ -191,7 +198,7 @@ def review_coverage(job_id,plan,pages,items,intent_context):
  propose_optional_omissions(items,plan,pages)
  # Recompute item status before coverage reads it, including omission candidates.
  validate_matrix({'items':items,'coverage_sufficient':True,'coverage_reason':'item validation only'},plan,pages)
- decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','applicable_at','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
+ decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at','publication_conditions','claim_limits','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
  return checked_request(job_id,'tiered_coverage',request)

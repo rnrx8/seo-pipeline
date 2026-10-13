@@ -45,6 +45,7 @@ def heading_matches(a: str, b: str) -> bool:
 
 def normalize_outline_headings(text: str) -> str:
     """Canonicalize explicit H2/H3/H4 labels; never promote editorial labels."""
+    text = _normalize_faq_brief(text)
     pattern = re.compile(r'^[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*)?H([234])(?:[-−]?\d+)?[ \t]*[.．:：｜|][ \t]*(.+?)(?:\*\*)?[ \t]*$')
     lines = []
     fenced = False
@@ -58,6 +59,52 @@ def normalize_outline_headings(text: str) -> str:
             line = '#' * (level + 1) + f' H{level}：{match[2].strip()}' + ending
         lines.append(line)
     return ''.join(lines)
+
+
+def _normalize_faq_brief(text: str) -> str:
+    """Read the existing optional FAQ form as the same chapter/child brief.
+
+    Only a FAQ containing actual Q. headings with answer, topic and source
+    fields is a chapter. A template's FAQ label alone is editorial metadata.
+    No questions, answers, allocations or facts are invented here.
+    """
+    visible = []
+    fenced = False
+    for line in text.splitlines(keepends=True):
+        fence = line.lstrip().startswith(('```', '~~~'))
+        visible.append(re.sub(r'[^\r\n]', ' ', line) if fenced or fence else line)
+        if fence:
+            fenced = not fenced
+    visible = ''.join(visible)
+    marker = re.search(r'^(#{2,3})\s+FAQ\s*$', visible, re.M)
+    if not marker:
+        return text
+    boundary = re.search(r'^#{1,' + str(len(marker[1])) + r'}[ \t]+(?!Q[.．][ \t])', visible[marker.end():], re.M)
+    end = marker.end() + boundary.start() if boundary else len(text)
+    block = text[marker.end():end]
+    questions = list(re.finditer(r'^#{3,4}\s+Q[.．]\s*(.+)$', visible[marker.end():end], re.M))
+    if not questions:
+        return text
+    briefs = []
+    for i, question in enumerate(questions):
+        body = block[question.end():questions[i+1].start() if i+1 < len(questions) else len(block)]
+        plain = body.replace('**', '').replace('__', '')
+        if not all(re.search(r'^\s*[-*+]\s*' + field + r'\s*[：:]', plain, re.M)
+                   for field in ('回答要素', '対応論点', '使用する根拠')):
+            return text
+        briefs.append((question[1].strip(), body))
+    titles = [title for title, _ in briefs]
+    ids = list(dict.fromkeys(re.findall(r'\bq\d+\b', '\n'.join(
+        re.search(r'^\s*[-*+]\s*対応論点\s*[：:]([^\n]*)', body.replace('**', ''), re.M)[1]
+        for _, body in briefs))))
+    # Parent fields point to the existing child questions rather than copying
+    # their answer prose or making this optional block a new required topic.
+    canonical = ('\n\n- 読者の疑問：' + '／'.join(titles) + '\n'
+                 '- 対応論点：' + ', '.join(ids) + '\n'
+                 '- 回答要素：配下の質問に記載された回答要素を質問ごとに示す\n\n')
+    for title, body in briefs:
+        canonical += '#### H3：' + title + '\n\n- 読者の疑問：' + title + '\n' + body
+    return text[:marker.start()] + '### H2：FAQ' + canonical + text[end:]
 
 
 def outline_sections(text: str) -> list[dict]:
@@ -152,6 +199,17 @@ def validate_delivery(text: str, outline: str, setting: str | None = None, contr
                         break
                     cursor += len(part)
                 issues.append({'key': 'empty_section', 'title': expected['title'], 'affected_blocks': locations})
+    for index, section in enumerate(actual):
+        if index in used:
+            continue
+        # Only the explicit local-repair H4 exception has a carried identity.
+        entry = section_map['entries'][index] if binding_ok else {}
+        if (section['level'] == 4 and entry.get('id', '').startswith('layout-')
+                and entry.get('outline_index') is None):
+            continue
+        issues.append({'key': 'unexpected_heading', 'level': section['level'],
+                       'title': section['title'],
+                       'reason': '構成にない見出しが追加されています。構成変更が必要なら本文の局所修正と分けて扱う'})
     internal = re.search(
         r'【PART\d+_END】|\[hypothesis\]|'
         r'(?:以下|次|上記|この|本)(?:の)?H[234](?:で|では|に)(?:各|紹介|説明|解説|扱)|'

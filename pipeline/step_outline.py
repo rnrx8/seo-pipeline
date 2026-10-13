@@ -1,5 +1,7 @@
 from .fresh_sources import WRITING_POLICY
 from .outline_policy import current_policy
+from .outline_design import POLICY as OUTLINE_DESIGN_POLICY, assignment_issues, topic_assignments
+from urllib.parse import urlsplit
 from .content_quality import ContentQualityError, source_evidence
 import json
 import re
@@ -13,7 +15,6 @@ from .db import (
     get_job,
     get_service_by_id,
     get_cta_by_id,
-    update_job_word_count_setting,
     upsert_artifact,
 )
 
@@ -24,7 +25,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 検索意図・ファクトシート・競合データをもとに、上位表示を狙える記事構成を作成してください。
 """
 
-USER_TEMPLATE = """\
+USER_TEMPLATE = OUTLINE_DESIGN_POLICY + "\n" + """\
 キーワード: {keyword}
 
 ## 検索意図の分析
@@ -40,9 +41,9 @@ USER_TEMPLATE = """\
 
 以下の形式で記事構成案を作成してください。
 構成案は完成本文ではなく、執筆に必要な設計のみを簡潔に出力する。
-セクション内容・直下方針は各1文を基本とし、同じ説明を重複しない。共通提示基準に沿って、各章で答える読者の疑問、選ぶ理由として使う確認済みの強み、その章で加える説明を対応づける。資料の全項目を掲載項目へ転記する必要はない。
-表は列項目と比較対象を設計し、完成記事用の全行の料金表や本文をここで書かない。
-根拠は短い要旨とURLで対応を示し、引用全文や調査判断理由を再掲しない。
+回答要素は「何を説明し、どう区別・判断するか」を具体的に示す短い指示書にする。直下方針は問いへの結論と情報順序を各1文で指定する。確認済み回答の値・実条件は対応論点IDから執筆へ引き継がれるため、構成へ全文を再記載する必要はない。章の採否・比較軸・読者の判断に不可欠な違いは指示書に残す。共通提示基準に沿って、読者の疑問、選ぶ理由として使う確認済みの強み、その章で加える説明を対応づける。
+表は共通提示基準「個別商材の表」に沿って、判断に使う比較軸・掲載できる項目・比較対象を設計する。完成記事用の全行の料金表や本文をここで書かない。
+使用する根拠は論点IDと出典URLの対応を示す参照欄とする。根拠の事実・数値・実条件は確認済み回答を参照し、回答要素・掲載項目・根拠欄へ同じ内容を複製しない。
 出典表示は記事設定に従い、内部の採用理由・確認日と適用開始日の区別などを読者向け注釈として設計しない。料金・機能の利用判断に必要な条件は該当する列名・セル・商材説明に割り当てる。比較表の後に共通注意点リストを置くことを固定指定しない。
 目的別リストを設計する場合は読者が実現したい状態を軸にし、根拠のない年代限定や機能名だけの推薦を指示しない。年代データと推薦対象を分け、必要な利用条件は保持する。
 調査質問の数だけ見出しを作らず、同じ読者の疑問に答える項目をまとめる。
@@ -82,22 +83,26 @@ USER_TEMPLATE = """\
   - 悪い例：「【タイプ別診断】30代が"失敗しない"あなたに合う転職エージェントの選び方｜後悔しない」（先頭にvocab・装飾過多・vocab過多・長すぎ）
 - H2直下方針：共通提示基準「検索語・結論・推奨理由」を、その章で扱う問い・結論・根拠・配置へ具体化する。完成本文の例文を各章に複製せず、執筆で引き継ぐ判断内容を指定する。
 - H2直下方針の直後に、そのH2全体について以下を必ず記載すること：
-  - セクション内容：H2全体で扱う範囲と、共通提示基準に沿って選んだ「主要な読者の望み→根拠のある強み→選ぶ価値」を簡潔に対応づける。H2直下へ要約する内容と、各H3で具体化する内容をここで振り分ける
+  - 読者の疑問：この章で解消する具体的な疑問
+  - 対応論点：調査計画の質問ID
+  - 回答要素：章の結論と子節の役割。子節で説明する事実を章の欄にも詳述せず、章全体の判断・比較軸を示す。推薦する章では「読者の望み→確認済みの強み→選ぶ価値」も対応づける
   - 表現形式：H2直下で使う文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は何を解説するためかも記載する
   - 掲載項目：H2直下の表なら列項目、リストなら列挙する観点を具体的に記載する。文章のみの場合は「なし」とする
-  - 使用する根拠：提供された[confirmed]要約と直接取得本文から、対象・条件を照合してH2直下で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する。根拠がない場合は「該当資料なし」とする
+  - 使用する根拠：H2直下で使う確認済み回答の論点IDとURLを「q01：URL」の形式で対応づける。根拠がない場合は「該当資料なし」とする
 - 配下の各H3について、以下を必ず記載すること：
   - H3タイトル
-  - セクション内容：H2で割り当てた価値について、この商材の利用場面・使い方・必要条件から何を具体的に説明するかを1〜3文で記載する。H2の選定理由を別の語尾で再指定せず、表の前の概要と表の後の掘り下げを分ける
+  - 読者の疑問：この子節で解消する具体的な疑問
+  - 対応論点：調査計画の質問ID
+  - 回答要素：この子節で説明する事項・区別・判断条件と参照論点ID。商材紹介では利用場面・使い方・必要条件の説明設計を具体化する。具体的な価格・全機能の一覧は確認済み回答を参照し、完成本文や完成表として再出力しない
   - 表現形式：文章／箇条書き／番号付きリスト／比較表／データ表のうち最適なもの。表・リストを使う場合は、何を解説するために使うかも記載する
   - 掲載項目：表なら列項目、リストなら列挙する観点や手順を具体的に記載する。文章のみの場合は「なし」とする
-  - 使用する根拠：ファクトシート内の[confirmed]情報から、このH3で実際に使用する事実と出典URLを「根拠となる内容：URL」の形式で列挙する
+  - 使用する根拠：このH3で使う確認済み回答の論点IDとURLを「q01：URL」の形式で対応づける
 
 【H3の根拠URLルール（必守）】
 - ファクトシートに実在するURLを原文のまま使い、推測・補完・改変しない
 - 確認済み要約または今回直接取得した原文のURLを割り当てる。[hypothesis]の主張自体は根拠に使わない
-- URLだけを記載せず、そのURLが何の根拠になるかを併記する
-- 表を使う場合は、どの列・比較項目をどのURLで裏付けるか分かるようにする
+- URLと対応論点IDを組にし、その質問のどの回答を使うかを回答要素で指定する
+- 表を使う場合は、列項目と参照論点IDを対応づける。セルの具体的な値・期間・条件は確認済み回答を参照する
 - 同じURLは、実際に複数セクションの根拠になる場合のみ重複してよい
 - 使用できる[confirmed]情報がないH3ではURLを創作せず「該当資料なし」と明記する
 - ファクトシートにある情報を全H3へ機械的に割り振らず、各セクションの主張と直接対応するものだけを選ぶ
@@ -107,26 +112,32 @@ USER_TEMPLATE = """\
 
 **H2直下方針**：〜
 
-- セクション内容：〜
+- 読者の疑問：〜
+- 対応論点：q01
+- 回答要素：〜
 - 表現形式：〜（〜を解説するため）
 - 掲載項目：〜
 - 使用する根拠：
-  - 根拠となる内容：https://example.com/source
+  - q01：https://example.com/source
 
 #### H3：見出しタイトル
 
-- セクション内容：〜
+- 読者の疑問：〜
+- 対応論点：q01
+- 回答要素：〜
 - 表現形式：〜（〜を解説するため）
 - 掲載項目：〜
 - 使用する根拠：
-  - 根拠となる内容：https://example.com/source
+  - q01：https://example.com/source
 
 ※根拠がない場合は「- 使用する根拠：該当資料なし」と1行で書く。空の「-」や、内容のない入れ子リストを絶対に出力しない
 
 H3をさらに分割する必要がある場合のみH4を使用し、次の形式でH3と視覚的に区別すること：
 ##### H4：見出しタイトル
 
-- セクション内容：〜
+- 読者の疑問：〜
+- 対応論点：q01
+- 回答要素：〜
 - 使用する根拠：該当資料なし
 
 H4タイトルも箇条書きにしてはならない。H4が不要な場合は無理に追加しない
@@ -135,7 +146,7 @@ H4タイトルも箇条書きにしてはならない。H4が不要な場合は�
 向き不向き・注意点・差別化などは固定テンプレとして毎回追加せず、検索意図と論点に必要な場合のみ採用する。
 
 ### FAQ（任意）
-- H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する
+- H1〜H3の構成を確定させてから、以下の条件をすべて満たす場合のみ追加する。採用時も上記の共通形式でH2と質問ごとのH3を設計し、対応論点・回答要素・根拠・分量を同じ章構造で引き継ぐ
 - ①本文の見出しで扱っていない内容であること
 - ②ファクトシートの[confirmed]タグのある内容で回答できること
 - ③以下のいずれかに該当すること：
@@ -151,13 +162,13 @@ H1〜H3構成（FAQを含む全セクション）を確定した後、各H2セ�
 |-----------|------------|-----------|-----------|
 
 重要度の基準：
-- 5：コンテンツ構造契約の保護対象・CV直結・Primary検索意図の核心
-- 4：検索意図に直結・潜在ニーズの中心的対応
+- 5：Primary検索意図への直接回答・ユーザーが明示した必須の論点
+- 4：主要な理解・比較・判断に必要な論点（CV対象も検索意図に対する役割で判断）
 - 3：基礎説明・文脈形成・補足
 - 2：検索意図との関連が弱い補助的な章
 - 1：FAQ・まとめ（短くまとめる）
 
-全H2の推奨文字数合計が「目標文字数」セクションで設定した値と一致するよう調整すること。
+各H2の回答要素・子節・根拠に必要な分量を見積もる。自動算出の参考文字数へ合計を一致させない。ユーザー指定がある場合は、必須回答を残し重複・補足から調整する。
 H2タイトル列は上記H1/H2/H3構成で書いたタイトルをそのままコピーすること（「H2-1：」のような番号付けは禁止）。
 ※推奨文字数列は必ず「3,500字」のように半角数字＋「字」で書くこと。
 """
@@ -181,6 +192,10 @@ def _calc_target_word_count(serp_text: str) -> tuple[str, int] | None:
     counts = []
     for h in headings:
         if not h or h.get("fetch_status") != "success":
+            continue
+        host = (urlsplit(h.get("url", "")).hostname or "").lower()
+        excluded = ("detail.chiebukuro.yahoo.co.jp", "oshiete.goo.ne.jp", "okwave.jp", "quora.com", "reddit.com", "youtube.com", "youtu.be")
+        if any(host == domain or host.endswith("." + domain) for domain in excluded):
             continue
         wc = h.get("word_count") or 0
         # 0/欠損/極端値（本文以外混入の保険）を除外
@@ -207,7 +222,7 @@ def _target_chars(setting: str | None) -> int:
     return budget.target if budget else 5000
 
 
-def ensure_complete_volume_design(outline_text: str, word_count_setting: str | None) -> tuple[str, bool]:
+def ensure_complete_volume_design(outline_text: str, word_count_setting: str | None, *, reference_only: bool = False) -> tuple[str, bool]:
     """Rebuild a truncated/incomplete volume table from the actual H2 list."""
     original = outline_text
     outline_text = normalize_outline_headings(outline_text)
@@ -223,28 +238,35 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
     marker = re.search(r"^#{2,3}\s+セクション別ボリューム設計\s*$", outline_text, re.MULTILINE)
     existing_titles: list[str] = []
     existing_chars: list[int] = []
+    existing_weights: dict[str, int] = {}
     if marker:
         for line in outline_text[marker.end():].splitlines():
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
             if len(cells) >= 4 and re.fullmatch(r"[1-5]", cells[1]) and re.fullmatch(r"[\d,]+字", cells[2]):
+                existing_weights[cells[0]] = int(cells[1])
                 existing_titles.append(cells[0])
                 existing_chars.append(int(cells[2][:-1].replace(',', '')))
     target = _target_chars(word_count_setting)
     sections = outline_sections(outline_text)
     children = [sum(s['level'] == 3 and s['parent'] == title for s in sections) for title in h2s]
-    floors = [150 + count * 200 for count in children]
+    # The H3 floor protects thin answers. It does not require a further
+    # 150 characters of parent prose (e.g. a FAQ may answer directly).
+    floors = [max(150, count * 200) for count in children]
     if (len(existing_titles) == len(h2s) and all(title in existing_titles for title in h2s)
-            and .9 * target <= sum(existing_chars) <= 1.1 * target
+            and (reference_only or .9 * target <= sum(existing_chars) <= 1.1 * target)
             and all(existing_chars[existing_titles.index(title)] >= floor
                     for title, floor in zip(h2s, floors))):
         return outline_text, normalized
+
+    if reference_only:
+        raise ContentQualityError('構成の内容に基づく章別分量の設計が不足しています。競合参考値から機械的に配分を補いません。')
 
     if sum(floors) > target:
         from .quality_warnings import warn
         warn('文字数目標に対して構成の子見出しが多すぎます。各見出しの説明量が不足する可能性があります。')
         # Keep the requested total without dropping headings or expanding cost.
         floors = [int(floor * target / sum(floors)) for floor in floors]
-    weights = [5 if any(term in title for term in ("比較", "おすすめ", "ランキング")) else 4 for title in h2s]
+    weights = [existing_weights.get(title, 3) for title in h2s]
     # Reserve space for every H3 before distributing the rest by depth/importance.
     depth_weights = [weight * (count + 1) for weight, count in zip(weights, children)]
     remaining = target - sum(floors)
@@ -380,7 +402,7 @@ def _build_extra_instructions(job: dict) -> str:
     purpose = job.get("article_purpose")
     if purpose:
         lines.append(f"\n【記事目的】{purpose}")
-        lines.append("上記の目的に合わせてCTA・誘導文・CV導線の設計を行うこと。")
+        lines.append("上記の目的を、共通の構成設計基準に従って論点の採否・章の役割・説明の強弱・順序へ反映すること。CTAや申込みへの誘導は目的に合う場合に設計する。")
 
     target = job.get("target_audience")
     if target:
@@ -413,7 +435,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     fact = dict(get_artifact(job_id, "fact_sheet"))
     from .generation_context import generation_evidence
     from .quality_context import compact_enabled
-    fact = {**fact, 'content_text': generation_evidence(job_id,fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')),quotes=False)}
+    fact = {**fact, 'content_text': generation_evidence(job_id,fact['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')),quotes=False,planning=True)}
 
     # 検索意図chains（見出し語彙の受け口）。無くてもパイプラインは継続。
     chains_prompt = ""
@@ -452,7 +474,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     extra_instructions = ""
     job = get_job(job_id)
     computed_target = None
-    word_count_instruction = "- SERP上位10件の本文文字数を推定し、その平均値±10%を目標文字数として明示する\n- （推定できない場合は「4,000〜6,000字」とする）"
+    word_count_instruction = "- ユーザーの文字数指定はありません。各章の回答要素から必要な分量を見積もる。競合の取得文字数が不明なら文字数を推測して必須目標にしない。"
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
@@ -479,11 +501,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             computed = _calc_target_word_count(serp["content_text"])
             if computed:
                 computed_str, hard_cap = computed
-                job['word_count_setting'] = computed_str
                 computed_target = computed_str
                 word_count_instruction = (
-                    f"- 目標文字数は「{computed_str}」とする（競合本文の異常値除外平均×1.2。これは推定ではなく確定値）\n"
-                    f"- 全H2の推奨文字数合計がこの目標（上限{hard_cap:,}字）に収まるよう設計すること"
+                    f"- 競合取得ページの文字数による参考規模は「{computed_str}」。本文抽出の誤差を含む参考値で、ユーザー指定や必須下限ではない。\n"
+                    "- 章の内容から分量を見積もり、参考値へ合計を合わせるために説明や章を追加しない。"
                 )
         extra_instructions = _build_extra_instructions(job)
         service_id = job.get("service_id")
@@ -500,12 +521,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
                 print(f"[outline] Loaded CTA: {cta.get('name')}")
     except Exception as e:
         print(f"[outline] Warning: could not load job settings: {e}")
-
-    # Persistence is mandatory: later stages read this same budget from the job.
-    # Do not swallow a DB failure and let them silently fall back to 5,000 chars.
-    if computed_target is not None:
-        update_job_word_count_setting(job_id, computed_target)
-        print(f'[outline] computed word_count_setting={computed_target!r} (persisted)')
 
     client = anthropic.Anthropic(api_key=api_key)
     message = create_with_retry(
@@ -540,10 +555,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     upsert_artifact(job_id=job_id, step='outline_draft', content_type='text/markdown',
                     content_text=outline_text, meta={'model': MODEL, 'audited': False})
     outline_text, volume_repaired = ensure_complete_volume_design(
-        outline_text, job.get("word_count_setting")
+        outline_text, job.get("word_count_setting") or computed_target, reference_only=not bool(job.get("word_count_setting"))
     )
+    design_issues = assignment_issues(outline_text, load_plan(job_id))
+    if design_issues:
+        upsert_artifact(job_id=job_id, step="outline_design_incomplete", content_type="text/markdown",
+                        content_text=outline_text, meta={"issues": design_issues, "audited": False})
+        raise ContentQualityError("構成の論点割当て・回答設計が不足しています: " + json.dumps(design_issues, ensure_ascii=False))
     if volume_repaired:
-        print("[outline] Rebuilt incomplete section volume design")
+        print("[outline] Normalized outline headings or section volume design")
 
     artifact = upsert_artifact(
         job_id=job_id,
@@ -556,6 +576,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             "output_tokens": total_output,
             "volume_design_repaired": volume_repaired,
             "editorial_policy": current_policy(),
+            "length_origin": "user" if job.get("word_count_setting") else "reference",
+            "length_reference": computed_target,
+            "topic_assignments": topic_assignments(outline_text),
         },
     )
     print(f"[outline] Done → artifact id={artifact['id']}")

@@ -68,6 +68,9 @@ WRITING_POLICY = """
 「次のH3」「このH2」など制作上の説明を読者向け本文に混ぜず、具体的な章の主題で案内する。
 """
 
+# Authoring consumes the already validated decisions. Research/QA retains the
+# full adoption contract; the body writer keeps fact scope and reader criteria.
+PUBLICATION_WRITING_POLICY = WRITING_POLICY + READER_PRESENTATION_POLICY
 WRITING_POLICY += EVIDENCE_POLICY + READER_PRESENTATION_POLICY
 DIRECT_POLICY += EVIDENCE_POLICY
 

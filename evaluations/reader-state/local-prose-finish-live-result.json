@@ -1,0 +1,96 @@
+{
+  "status": "local_review_passed",
+  "whole_article_accepted": false,
+  "normal_flow_success": false,
+  "paid_calls": 2,
+  "mechanical_issues": [],
+  "cost_plus_reserved_jpy": 6.4662,
+  "unsettled": 0,
+  "calls": [
+    {
+      "model": "claude-opus-5-5",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 3.2552
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 3.211
+    }
+  ],
+  "authorization": {
+    "user_message": "はい",
+    "cap_jpy": 80,
+    "conversion_jpy_per_usd": 200,
+    "max_calls": 2,
+    "full_article_acceptance": false,
+    "production_writes": false
+  },
+  "changes": [
+    {
+      "id": "block-0094",
+      "before": "家族や知人に知られにくい仕組みは、5社とも土台はそろっています。Webやブラウザで使えるため、ホーム画面にアイコンが残りません。",
+      "after": "5社とも、家族や知人に知られにくい基本的な仕組みがそろっています。Webやブラウザで使えるため、ホーム画面にアイコンが残りません。"
+    },
+    {
+      "id": "block-0142",
+      "before": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないとしたうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。個別の事案の判断は、弁護士への相談が必要です。",
+      "after": "浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないと解説しています。そのうえで同弁護士は、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると指摘しています。個別の事案の判断は、弁護士への相談が必要です。"
+    }
+  ],
+  "review": {
+    "checks": [
+      {
+        "id": "block-0094",
+        "key": "meaning_preserved",
+        "status": "pass",
+        "reason": "修正前の「5社とも土台はそろっています」を「5社とも、家族や知人に知られにくい基本的な仕組みがそろっています」とし、対象の5社と基本的な仕組みが備わるという意味を維持しています。Web・ブラウザ利用とアイコンに関する説明も変わっていません。"
+      },
+      {
+        "id": "block-0094",
+        "key": "finding_resolved",
+        "status": "pass",
+        "reason": "「仕組みは、5社とも土台は」という主題の重なりが、「5社とも、基本的な仕組みがそろっています」に整理され、指摘された主述の不自然さが解消しています。"
+      },
+      {
+        "id": "block-0094",
+        "key": "natural_language",
+        "status": "pass",
+        "reason": "修正前の「仕組みは」「土台は」の重なりがなくなり、修正後は「基本的な仕組みが」と「そろっています」が自然に対応しています。続く「Webやブラウザで使えるため」との接続にも新しい不具合はありません。"
+      },
+      {
+        "id": "block-0094",
+        "key": "context_consistent",
+        "status": "pass",
+        "reason": "見出し「家族や知人に知られにくい仕組みを確かめる」に対し、修正前後とも5社共通の基本的な仕組みを説明しています。後続の「差が出るのは、写真の見せ方や知人を避ける機能です」との共通点・相違点の関係も維持しています。"
+      },
+      {
+        "id": "block-0142",
+        "key": "meaning_preserved",
+        "status": "pass",
+        "reason": "修正前の「利用自体は違法ではないとしたうえで」を独立した説明にし、後半も「そのうえで同弁護士は」と発言者を維持しています。不貞行為に発展した場合の慰謝料請求・離婚の争いで不利になる「おそれ」と、個別事案では相談が必要という条件も変わっていません。"
+      },
+      {
+        "id": "block-0142",
+        "key": "finding_resolved",
+        "status": "pass",
+        "reason": "修正前の「浅野総合法律事務所の浅野英之弁護士は」から「解説しています」までの長文を、利用自体の違法性の説明と「そのうえで同弁護士は」から始まる不貞行為の説明に分割しています。両文とも80字以内で、どちらも同弁護士の解説であることが明示されています。"
+      },
+      {
+        "id": "block-0142",
+        "key": "natural_language",
+        "status": "pass",
+        "reason": "修正前の「としたうえで」による接続を、修正後は「そのうえで同弁護士は」で受けており、指示対象は明確です。「違法ではないと解説しています」「おそれがあると指摘しています」の主述も自然です。"
+      },
+      {
+        "id": "block-0142",
+        "key": "context_consistent",
+        "status": "pass",
+        "reason": "前段の「サービスの利用そのものについての説明です」を受け、修正後も利用自体と不貞行為に発展した場合を区別しています。後続見出し「肉体関係を持つと不貞行為として慰謝料を請求されることがある」への導入と、個別事案の相談を促す役割も維持しています。"
+      }
+    ]
+  },
+  "cost_basis": "Recorded API token usage at configured rates, 200 JPY/USD; not provider invoice",
+  "production_reflected": false,
+  "limits": "Two-paragraph local model test only. Historical full-audit snapshot is stale; no full-article or normal-flow acceptance."
+}

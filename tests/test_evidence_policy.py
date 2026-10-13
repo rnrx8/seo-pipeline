@@ -18,11 +18,45 @@ def fixture(priority='essential'):
     value={'coverage_sufficient':True,'coverage_reason':'主要な料金比較に回答できる','items':[
         {'id':'q1','status':'confirmed','answer':'2025年1月時点で月額2,000円','reason':'条件と時点が一致',
          'basis':'corroborated','official_checked_urls':[pages[0]['url']],'applicable_at':'2025年1月',
-         'supports_current_conclusion':False,'omission_reason':'','exploration_complete':True,'exploration_reason':'関連公式資料と独立メディア本文を確認','evidence':refs}]}
+         'supports_current_conclusion':False,'omission_reason':'',
+         'publication_conditions':['2025年1月時点'], 'claim_limits':['現在の価格との比較には使わない'],
+         'exploration_complete':True,'exploration_reason':'関連公式資料と独立メディア本文を確認','evidence':refs}]}
     return plan,pages,value
 
 
 class EvidencePolicyTests(unittest.TestCase):
+    def test_correlated_main_claims_can_survive_an_omitted_identifier_conflict(self):
+        from pipeline.generation_context import decision_bundle
+        from pipeline.research_requirements import matrix_policy
+        plan,pages,value=fixture('important')
+        plan['items'][0]['question']='Aの運営者と届出状況'
+        pages[0]['status']='failed';pages[0]['text']=''
+        for page,number in zip(pages[1:],('受理001','受理002')):
+            page['text']=f'AはB社が運営。届出済み。受理番号：{number}。'
+        item=value['items'][0]
+        for ref,page in zip(item['evidence'],pages[1:]):ref['quote']=page['text']
+        item.update(answer='AはB社が運営し、届出済み。',
+                    publication_conditions=[],claim_limits=['受理番号を掲載しない'],
+                    applicable_at='取得時点の独立した第三者本文2件。',
+                    reason='運営者・届出状況が一致。番号だけが異なり番号は採用しない。',
+                    omission_reason='受理番号の不一致。番号を省いて運営者・届出状況を回答する。',
+                    supports_current_conclusion=True)
+        original_pages=copy.deepcopy(pages)
+        self.assertEqual(validate_matrix(value,plan,pages),[])
+        value.update(valid=True,policy_sha256=matrix_policy())
+        text=decision_bundle(plan,value,quotes=False)
+        published=json.loads(text[text.index('{'):])
+        row=published['decisions'][0]
+        self.assertEqual(row['answer'],item['answer'])
+        self.assertEqual(row['claim_limits'],['受理番号を掲載しない'])
+        self.assertEqual(row['publication_conditions'],[])
+        self.assertTrue(row['publishable'])
+        self.assertNotIn(item['omission_reason'],text)
+        self.assertEqual(pages,original_pages)
+        # Source independence remains required for the adopted main claim.
+        item['evidence'][1]['independence_group']=item['evidence'][0]['independence_group']
+        self.assertTrue(validate_matrix(value,plan,pages))
+
     def test_selected_secondary_prices_keep_dates_and_scope_through_writing(self):
         from pipeline.generation_context import decision_bundle
         plan,pages,value=fixture()
@@ -35,6 +69,7 @@ class EvidencePolicyTests(unittest.TestCase):
         note='media-one：更新2026-09-19。media-two：更新日不明。確認2026-10-04。第三者掲載情報。'
         item.update(answer='男性スタンダードの1ヶ月契約6,480円。3ヶ月契約は総額14,940円、月額換算4,980円。',
                     applicable_at=note,supports_current_conclusion=True,
+                    publication_conditions=['男性スタンダード','1ヶ月契約6,480円','3ヶ月契約は総額14,940円・月額換算4,980円'],claim_limits=[],
                     reason='独立した具体的な料金表2件で対象・契約期間・金額が一致。他資料の別料金は現行公式料金による否定ではなく、選択元の掲載情報として限定する。')
         self.assertEqual(validate_matrix(value,plan,pages),[])
         value['valid']=True
@@ -42,7 +77,8 @@ class EvidencePolicyTests(unittest.TestCase):
         from pipeline.research_requirements import matrix_policy
         value['policy_sha256']=matrix_policy()
         bundle=decision_bundle(plan,value,quotes=True)
-        self.assertIn(note,bundle)
+        self.assertNotIn(note,bundle)
+        self.assertIn(note,accepted_facts(value,plan))
         self.assertNotIn(item['reason'],bundle)
         self.assertIn('月額換算4,980円',bundle)
         # Source selection still needs independent bodies and exact quotations.

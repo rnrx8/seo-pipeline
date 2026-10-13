@@ -39,6 +39,44 @@ class OutlineNormalizationTests(unittest.TestCase):
         self.assertTrue(result.endswith('#### H3：質問\n'))
         self.assertEqual(normalize_outline_headings(result),result)
 
+    def test_optional_faq_keeps_answers_and_budget_through_shared_outline_reader(self):
+        from pipeline.outline_design import assignment_issues, topic_assignments
+        faq='''## FAQ
+### Q. 登録情報はどうなる？
+- 回答要素：公式の退会後の削除案内を説明する
+- 対応論点：q28
+- 使用する根拠：削除案内：https://example.test/faq
+
+## 編集メモ
+省略の理由
+## セクション別ボリューム設計
+| FAQ | 1 | 200字 | 退会後の疑問への補足回答 |
+'''
+        result,changed=ensure_complete_volume_design(faq,'14,000字',reference_only=True)
+        self.assertTrue(changed)
+        self.assertIn('- 回答要素：公式の退会後の削除案内を説明する',result)
+        self.assertIn('https://example.test/faq',result)
+        self.assertEqual(step_article._parse_volume_design(result),[('FAQ',1,200)])
+        self.assertEqual([(s['level'],s['title']) for s in outline_sections(result)],
+                         [(2,'FAQ'),(3,'登録情報はどうなる？')])
+        self.assertEqual(assignment_issues(result,{'items':[{'id':'q28','priority':'important'}]}),[])
+        self.assertEqual(topic_assignments(result)[1]['ids'],['q28'])
+        self.assertIn('削除案内',select_outline(result,['FAQ']))
+        self.assertEqual(ensure_complete_volume_design(result,'14,000字',reference_only=True),(result,False))
+        self.assertEqual(normalize_outline_headings(faq.replace('## FAQ','### FAQ')),result)
+        # Code examples do not become article chapters.
+        self.assertEqual(normalize_outline_headings('```\n'+faq+'```\n'),'```\n'+faq+'```\n')
+        from pipeline.content_quality import ContentQualityError
+        with self.assertRaises(ContentQualityError):
+            ensure_complete_volume_design(faq.replace('200字','199字'),'14,000字',reference_only=True)
+
+    def test_faq_metadata_without_actual_answer_design_is_not_promoted(self):
+        for text in ('## FAQ\n- 必要な場合のみ追加する\n',
+                     '## FAQ\n### Q. 登録情報はどうなる？\n未調査\n',
+                     '## FAQ\n### H2：よくある質問\n#### H3：年齢層は？\n説明\n'):
+            result=normalize_outline_headings(text)
+            self.assertNotIn('### H2：FAQ\n',result)
+
     def test_incomplete_part_attempts_are_preserved_for_diagnosis(self):
         outline='### H2：FAQ\n#### H3：年齢層は？'
         with patch.object(step_article,'_call',return_value=('## FAQ\n不完全な本文。',1,1)), \

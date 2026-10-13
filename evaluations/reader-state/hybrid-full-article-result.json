@@ -1,0 +1,215 @@
+{
+  "status": "one_opus_repair_complete_reaudit_failed_prose",
+  "test_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
+  "source_job_id": "a401a011-bfd9-44c9-86e7-4bb9f61b2988",
+  "preset": "meetingtechnology",
+  "keyword": "マッチングアプリ 40代 既婚者",
+  "yen_per_usd": 200,
+  "authorized_cap_jpy": 500,
+  "settled_usage_priced_jpy": 312.8817,
+  "unsettled_maximum_reserved_jpy": 101.62299999999999,
+  "spent_plus_reserved_jpy": 414.5047,
+  "total_remaining_jpy": 85.49529999999999,
+  "draft_generation_jpy": 112.8152,
+  "paid_requests": 17,
+  "generation_requests": 3,
+  "opus_repairs": 1,
+  "completed_stages": [
+    "research_validation",
+    "article",
+    "cta_inject"
+  ],
+  "incomplete_stages": [
+    "final_structure_validation"
+  ],
+  "storage_adapter_incident": {
+    "fixed": true,
+    "cause": "FileNotFoundError instead of production missing-row ValueError",
+    "paid_repeat_calls": 0,
+    "resume": "content_audit only; same job and ledger"
+  },
+  "known_draft_issues": {
+    "continuous_prose_characters": [
+      339,
+      392
+    ],
+    "unnecessary_disclaimer_example": "業者の完全な排除を約束するものではないため",
+    "automated_semantic_review_completed": true
+  },
+  "free_tests_after_diagnostic_fix": 505,
+  "production_writes": false,
+  "deployment": false,
+  "comparison": {
+    "historical_opus_draft_token_pricing_jpy": 248.9544,
+    "historical_is_not_matched_run": true,
+    "hybrid_final_quality_and_total_cost_established": false,
+    "hybrid_drafting_and_repair_jpy": 154.8808,
+    "research_and_outline_reused": true
+  },
+  "diagnostic_fix": {
+    "records": [
+      "http_status",
+      "request_id",
+      "response_id_when_available",
+      "event_type",
+      "error_code",
+      "error_type",
+      "error_digest"
+    ],
+    "raw_messages_or_headers_saved": false,
+    "automatic_retries_or_budget_changes": false,
+    "docs": [
+      "https://developers.openai.com/api/reference/overview",
+      "https://developers.openai.com/api/docs/guides/streaming-responses"
+    ]
+  },
+  "authorized_resume": {
+    "user_message": "再開して",
+    "same_job_and_ledger": true,
+    "resubmitted_failed_request_once": true,
+    "successful_cached_evidence_scope_reused": true,
+    "additional_cost_jpy": 65.6745,
+    "no_article_regeneration": true
+  },
+  "first_article_audit": {
+    "evidence": "pass",
+    "coverage": "pass",
+    "language": "fail",
+    "consistency": "pass",
+    "organization": "fail",
+    "repair_required": true,
+    "final_acceptance": false
+  },
+  "previous_stop": {
+    "stage": "before_opus_repair",
+    "cause": "quality budget remainder below measured conservative reservation",
+    "quality_limit_jpy": 250,
+    "quality_remaining_jpy": 56.26667499999999,
+    "repair_actual_input_tokens": 27969,
+    "repair_input_token_bound": 35168,
+    "repair_output_token_limit": 6000,
+    "repair_reservation_jpy": 80.2688,
+    "repair_request_sent": false,
+    "further_boundary": "Coverage has two counted attempts including the failed stream; a changed-text re-audit would exceed its two-attempt limit."
+  },
+  "approved_repair_proposal": {
+    "total_limit_jpy": 500,
+    "isolate_to_this_test": true,
+    "quality_allocation": "Allow the remaining total allowance to be used for quality; production/default JPY250 quality allowance unchanged.",
+    "attempt_change": "One additional coverage-role attempt only, for re-audit after correction; retain the failed call and its reserved cost. No additional calls for other roles.",
+    "repair_conservative_reservation_jpy": 80.2688,
+    "reaudit_scenario_jpy": 70,
+    "resulting_total_scenario_jpy": 456.817325,
+    "not_a_completion_or_price_guarantee": true,
+    "no_new_research_or_drafting": true,
+    "user_message": "はい"
+  },
+  "opus_repair_jpy": 42.065599999999996,
+  "repair_completed": true,
+  "reaudit_completed": true,
+  "final_acceptance": false,
+  "stop": {
+    "stage": "content_audit",
+    "cause": "Two prose findings remain after the one authorized repair and re-audit. No further paid pass authorized."
+  },
+  "final_audit": {
+    "checks": [
+      {
+        "key": "coverage",
+        "status": "pass",
+        "reason": "入力意図は、40代の既婚者が一人の人として話せる同世代の相手を探しつつ、家庭生活への影響や危険な相手を避け、自分に合うサービスを選ぶこと。比較H2「40代の既婚者におすすめのマッチングアプリ5選」の直下で「40代の既婚者向けのマッチングアプリでは、既婚者クラブが特におすすめです」と対象・カテゴリ・結論を明示し、同世代の構成、知られにくい工夫、検索まで無料という選定理由を示している。既婚者クラブのH3では「同じ既婚者の立場で話せる同世代の相手」を探せる価値を述べ、Web利用、写真ぼかし、ニックネーム、電話番号による閲覧制限を具体的な利用場面へ展開している。さらに無料検索後に有料プランを選ぶ手順を示しており、望みと避けたい状況の両方から第一候補を選ぶ理由が分かる。実在する別の5サービスについて、男女別料金、契約期間別総額・月額換算、無料範囲、本人確認、身バレ対策を比較表と各社の個別表で説明し、他の4社は同世代との交流、写真の公開範囲、本人確認、予算による代替として選び分けられる。40代の利用者情報と個人の体験例、利用と不貞行為の線引き、通知・履歴対策、初対面の場所選び、被害時の初動、退会後の扱いにも実質的な回答がある。まとめでも第一候補の理由と無料登録への行動を再提示しており、比較検討とCVの目的を満たしている。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "evidence_support",
+        "status": "pass",
+        "reason": "採用済み回答・条件と照合しました。既婚者クラブの料金と無料範囲（block-0010、block-0022〜0030、block-0114〜0118）、年齢構成・累計会員数・身バレ対策・本人確認（block-0006、block-0018〜0036、block-0084〜0090）、各比較サービスの料金・利用条件（block-0010、block-0040〜0068）、法律・初動対応・一般的助言（block-0138〜0184）、体験談（block-0132〜0134）は、提示された採用回答の範囲と一致しています。第三者情報を公式確定料金と偽る記述や、採用回答で省略された情報を断定する箇所も見当たりません。原文がこの入力に含まれないだけでは不合格にしません。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "comparison_conditions",
+        "status": "pass",
+        "reason": "比較表（block-0010）は、男性料金についてサービスごとのプラン名・1か月額・12か月契約の月額換算を示し、女性料金も分けています。対象の違いはセルに記載され、カドルの利用者層・アネモネの年代情報には対象時点が残っています。既婚者クラブの詳細料金表（block-0024〜0026）も総額と月額換算を区別しています。料金の安さを主張するblock-0052はカドルの12か月換算額8,480円を比較表の同条件の値と対照して「負担が大きめ」としており、block-0064〜0066はマリーゴーの12か月契約と月額換算を明示しています。条件の不一致に基づく比較断定は確認できません。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "conclusion_consistency",
+        "status": "pass",
+        "reason": "冒頭・比較表・個別紹介・まとめで、既婚者クラブを第一候補とする理由と各社の位置付けが整合しています。男女別の無料範囲、有料プランの条件、契約期間と月額換算にも本文内の矛盾はありません。累計会員数と現在活動中の人数も区別されています。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "metric_scope",
+        "status": "pass",
+        "reason": "累計会員数はblock-0022で「2026年10月現在の累計」と定義され、block-0036とblock-0090でも「現在活動中の人数ではありません」と区別されています。年齢構成の数値は男女別の割合として示され、カドルとアネモネの年代情報にはそれぞれ2025年12月時点・2025年7月時点が残っています。体験談の「約1年に50人以上」はblock-0132で発信者・公開日・経験期間を限定し、block-0134で一般化していません。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "unfinished_content",
+        "status": "pass",
+        "reason": "5社すべてで代表的な男性有料プランの料金、契約期間別総額と月額換算、女性の料金負担、主要な無料・有料の境界、本人確認、身バレ対策を本文に掲載しており、「料金は公式サイト参照」などで必須回答を読者へ委ねていない。マリーゴーの年代情報の「—」は主要比較を損なわない補助情報の省略であり、非公表や40代が少ないという断定には置き換えていない。明細の表示名称（q06の未確認部分）、自動更新停止条件（q09）、一般アプリとの違い（q31）は、採用判断に記録された省略範囲に沿って掲載せず、未調査を公式の非公表として説明していない。主要な選択判断と推奨結論は確認済みの掲載情報で成立している。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "unsupported_guarantees",
+        "status": "pass",
+        "reason": "家族に知られにくい仕組みや安全対策を紹介する記述はありますが、block-0100では端末通知・閲覧履歴・カード明細が別対策と明記し、block-0108では本人による見極めも必要としています。block-0036も監視を会う前の判断材料として述べるにとどまり、リスクゼロ、絶対に身バレしない、必ず出会えるといった保証は見当たりません。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "prose_quality",
+        "status": "fail",
+        "reason": "主題と述語のつながりが不自然な文が1箇所、編集基準の一文80字以内を超える文が1箇所あります。該当文の主述を整え、長文を自然な区切りで分割してください。\n個別サービスの主要情報表や表・リストの導入はそろっていますが、block-0142に80字を超える一文があります。説明内容と条件を維持し、自然な区切りで分割してください。",
+        "affected_blocks": [
+          {
+            "id": "block-0094",
+            "reason": "「家族や知人に知られにくい仕組みは、5社とも土台はそろっています」は、「仕組みは」と「土台は」が重なり、主題と述語のつながりが不自然です。「5社とも、家族や知人に知られにくい基本的な仕組みがそろっています」のように主述を整えてください。"
+          },
+          {
+            "id": "block-0142",
+            "reason": "「浅野総合法律事務所の浅野英之弁護士は」から「解説しています。」までの一文が80字を超えています。アプリ利用自体の違法性についての説明と、不貞行為に発展した場合の説明を2文に分け、弁護士の解説であることは維持してください。\n「浅野総合法律事務所の浅野英之弁護士は、アプリの利用自体は違法ではないとしたうえで、不貞行為に発展すれば配偶者から慰謝料を請求されたり、離婚の争いで不利に扱われたりするおそれがあると解説しています。」が80字を超えています。利用自体の説明と、不貞行為に発展した場合の説明を2文に分け、どちらも同弁護士の解説であることを維持してください。"
+          }
+        ],
+        "research_ids": [],
+        "source_urls": []
+      },
+      {
+        "key": "redundancy",
+        "status": "pass",
+        "reason": "年代情報・料金・身バレ対策の再掲は、サービス比較、選び方、出会いへの疑問、まとめという各章の目的に対応しています。比較章の推薦理由は個別紹介で具体化されており、複数文にわたる不要な説明の二重挿入や、同一章内のCTA重複はありません。",
+        "affected_blocks": [],
+        "research_ids": [],
+        "source_urls": []
+      }
+    ],
+    "readability_issues": [],
+    "structural_issues": [],
+    "attempt": 2,
+    "residual_findings_preexisting_in_sonnet_draft": true,
+    "first_audit_missed_residual_findings": true
+  },
+  "repair_preflight_incident": {
+    "cause": "Worker allocation changed before durable quality limit; reservation correctly blocked the request.",
+    "paid_calls_before_fix": 0,
+    "fixed_for_authorized_isolated_test": true
+  },
+  "preview": {
+    "html": "/Users/ryoka/seo-saas/tmp/hybrid-full-article-20261007/preview/index.html",
+    "article": "/Users/ryoka/seo-saas/tmp/hybrid-full-article-20261007/repaired-article.md",
+    "manual_prose_edits": false
+  }
+}

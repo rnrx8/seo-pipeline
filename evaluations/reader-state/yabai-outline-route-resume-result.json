@@ -1,0 +1,33 @@
+{
+  "status": "stopped",
+  "completed_stages": [],
+  "reused_stages": [
+    "serp",
+    "search_intent",
+    "research_plan",
+    "fact_sheet",
+    "research_completeness",
+    "reference_structure",
+    "content_contract",
+    "outline",
+    "structure_guard"
+  ],
+  "production_writes": false,
+  "stage": "research_validation",
+  "cost_plus_reserved_jpy": 1016.1685949999998,
+  "this_resume_jpy": 1.0586999999999236,
+  "quality_cost_plus_reserved_jpy": 578.1261650000001,
+  "new_calls": 1,
+  "error_type": "ContentQualityError",
+  "error": "この確認段階の費用枠を超えます。後工程の予算を消費せず送信前に停止しました。",
+  "article_generated": false,
+  "paid_calls_after_budget_stop": 0,
+  "free_tests_passed": 556,
+  "outline_routing_fix_validated": true,
+  "repair_request_model": "claude-opus-5-5",
+  "repair_request_max_tokens": 6000,
+  "repair_source_documents_json_chars": 66357,
+  "repair_outline_blocks_json_chars": 4222,
+  "issue": "Local repair still receives whole selected source documents (~66k chars), even after source check has resolved factual corrections. Outline phase reservation limit blocks send.",
+  "next_action": "Reduce redundant source input to repairs with preserved supporting conditions and provenance; do not raise budget or restart research to bypass this stop."
+}

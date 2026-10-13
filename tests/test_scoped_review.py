@@ -26,8 +26,8 @@ class ScopedReviewTests(unittest.TestCase):
                     {'url':'https://b.example/price','text':'12ヶ月一括1200円。','fetched_at':'2026-10-01'},
                     {'url':'https://unrelated.example','text':'unrelated'*1000}]
         self.req={'keyword':'比較','research_plan':{'items':[{'id':'a','subject':'A'},{'id':'b','subject':'B'}]},
-                  'research_decisions':{'items':[{'id':'a','answer':'女性は基本無料','evidence_sources':[{'url':self.pages[0]['url']}]},
-                                                  {'id':'b','answer':'月額換算100円','evidence_sources':[{'url':self.pages[1]['url']}]}]}}
+                  'research_decisions':{'items':[{'id':'a','answer':'女性は基本無料','publication_conditions':['女性・標準プラン'], 'claim_limits':[], 'evidence_sources':[{'url':self.pages[0]['url']}]},
+                                                  {'id':'b','answer':'月額換算100円','publication_conditions':['12か月一括払い・総額1,200円'], 'claim_limits':[], 'evidence_sources':[{'url':self.pages[1]['url']}]}]}}
         self.check={'key':'evidence_support','status':'fail','reason':'標準プランとメッセージの対応',
                     'requires_source_check':True,'research_ids':['a'],'source_urls':[],
                     'affected_blocks':[{'id':self.a,'reason':'無料範囲'},{'id':self.summary,'reason':'同じ主張'}]}
@@ -44,11 +44,20 @@ class ScopedReviewTests(unittest.TestCase):
 
     def message(self,request,fail=False):
         fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
-        return {'checks':[{'key':k,'status':'fail' if fail and k=='evidence_support' else 'pass',
+        value = {'checks':[{'key':k,'status':'fail' if fail and k=='evidence_support' else 'pass',
             'reason':'女性の標準プランが無料。メッセージを含む。',
-            'affected_blocks':[{'id':self.a,'reason':'条件欠落'}] if fail and k=='evidence_support' else []}
+            'affected_blocks':[{'id':self.a,'reason':'条件欠落'}] if fail and k=='evidence_support' else [],
+            'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}] if fail and k=='evidence_support' else []}
             for k in fields['key']['enum']],
             'review':{'needed':False,'block_ids':[],'source_urls':[self.pages[0]['url']],'reason':'原文で対応確認済み'}}
+        if 'claim_decisions' in request['output_config']['format']['schema']['properties']:
+            data = json.loads(request['messages'][0]['content'])
+            expected = {c['key']: c['affected_blocks'] for c in data['candidate_checks'] if c['status']=='fail'}
+            for check in value['checks']:
+                failed = {l['id'] for l in check['affected_blocks']}
+                check['claim_verdicts'] = [{'id':l['id'],'status':'fail' if l['id'] in failed else 'pass',
+                    'reason':'対象条件を原文で照合した判定'} for l in expected.get(check['key'],[])]
+        return value
 
     def fake_provider(self,fail=False):
         def send(_,**request):
@@ -58,6 +67,19 @@ class ScopedReviewTests(unittest.TestCase):
             result=self.message(request,fail)
             return NS(stop_reason="end_turn",content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=100,output_tokens=20))
         return send
+
+    def test_outline_repair_scope_preserves_relevance_without_source_bookkeeping(self):
+        self.req['research_plan']['items'][0]['priority_reason'] = '主回答の判断を補足する'
+        self.req['research_plan']['items'][1]['priority_reason'] = '無関係の論点'
+        original = copy.deepcopy(self.req)
+        check = {**self.check, 'key': 'coverage', 'requires_source_check': False}
+        outline = scope.repair_packet(self.text, self.req, self.pages,
+                                     {'checks': [check]}, planning=True)
+        article = scope.repair_packet(self.text, self.req, self.pages, {'checks': [check]})
+        self.assertEqual(outline['requirements']['research_plan']['items'],
+                         [{'id': 'a', 'subject': 'A', 'priority_reason': '主回答の判断を補足する'}])
+        self.assertNotIn('priority_reason', article['requirements']['research_plan']['items'][0])
+        self.assertEqual(self.req, original)
 
     def test_scope_keeps_all_occurrences_but_excludes_other_services(self):
         packet=scope.scoped_packet(self.payload,[self.check])
@@ -102,6 +124,195 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(send.call_count,1)
         self.assertEqual(first[0][0]['status'],'fail')
         self.assertEqual(second[0][0]['status'],'fail')
+
+    def test_scoped_source_response_only_requires_routed_check_categories(self):
+        def send(job,step,request):
+            value=self.message(request)
+            value['checks']=[c for c in value['checks'] if c['key']=='evidence_support']
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            checks,_,_=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertEqual([c['key'] for c in checks],['evidence_support'])
+        self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
+
+    def test_missing_screener_correction_quote_uses_existing_adjudicator(self):
+        seen=[]
+        def send(job,step,request):
+            seen.append(step)
+            value=self.message(request,fail=step.endswith('screen'))
+            if step.endswith('screen'):
+                value['checks'][0]['correction_evidence']=[]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(seen,['tiered_article_evidence_screen','tiered_article_evidence_adjudicate'])
+        self.assertEqual(checks[0]['status'],'pass')
+        self.assertEqual(trace[0]['pending_correction_quote_ids'],[self.a])
+        self.assertFalse(trace[0]['recorded_review']['needed'])
+        self.assertTrue(trace[0]['review']['needed'])
+        self.assertEqual(trace[0]['visible_source_urls'],trace[1]['visible_source_urls'])
+        self.assertEqual(set(trace[1]['reviewed_block_ids']),{self.blocks[1]['id'],self.a,self.blocks[3]['id']})
+        self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
+
+    def test_missing_adjudicator_quote_still_stops_before_article_repair(self):
+        def send(job,step,request):
+            value=self.message(request,fail=True)
+            value['checks'][0]['correction_evidence']=[]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'訂正に必要な原文引用'):
+                evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,2)
+        self.assertFalse(scope.source_resolutions('article',self.blocks,self.pages,self.req))
+
+    def test_local_correction_quotes_do_not_drag_other_screened_facts(self):
+        check={**self.check,'research_ids':['a','b'],
+               'source_urls':[self.pages[0]['url'],self.pages[1]['url']],
+               'requires_source_check':False,
+               'correction_evidence':[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}]}
+        before=copy.deepcopy(check)
+        packet=scope.repair_packet(self.text,self.req,self.pages,{'checks':[check]})
+        self.assertEqual([r['id'] for r in packet['requirements']['research_decisions']['items']],['a'])
+        self.assertEqual(set(packet['target_block_ids']),{self.a,self.summary})
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(check,before)
+
+    def test_source_pass_cannot_omit_one_of_two_named_findings(self):
+        def send(job,step,request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check['claim_verdicts']=check['claim_verdicts'][:1]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'指摘ごとの判定'):
+                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
+
+    def test_followup_retains_resolved_claim_without_requiring_provider_echo(self):
+        prior={'key':'evidence_support','status':'fail',
+               'affected_blocks':[{'id':self.a,'reason':'remaining condition'}],
+               'claim_verdicts':[{'id':self.a,'status':'fail','reason':'remaining condition'},
+                                 {'id':self.summary,'status':'pass','reason':'already verified'}]}
+        for echo in (False,True):
+            current={'key':'evidence_support','status':'fail',
+                     'affected_blocks':[{'id':self.a,'reason':'still unsupported'}],
+                     'claim_verdicts':[{'id':self.a,'status':'fail','reason':'still unsupported'}]}
+            if echo:
+                current['claim_verdicts'].append({'id':self.summary,'status':'pass','reason':'echoed context'})
+            evidence.validate_claim_verdicts([current],[prior])
+            self.assertEqual(current['claim_verdicts'][-1],prior['claim_verdicts'][-1])
+            self.assertEqual(current['status'],'fail')
+
+    def test_followup_cannot_drop_pending_claim_or_reopen_retained_pass(self):
+        prior={'key':'evidence_support','status':'fail',
+               'affected_blocks':[{'id':self.a,'reason':'remaining'}],
+               'claim_verdicts':[{'id':self.summary,'status':'pass','reason':'verified'}]}
+        for rows in ([{'id':self.summary,'status':'pass','reason':'verified'}],
+                     [{'id':self.a,'status':'pass','reason':'matched'},
+                      {'id':self.summary,'status':'fail','reason':'new finding'}],
+                     [{'id':self.a,'status':'pass','reason':'matched'},
+                      {'id':'block-9999','status':'pass','reason':'unknown'}]):
+            with self.assertRaisesRegex(ContentQualityError,'指摘ごとの判定'):
+                evidence.validate_claim_verdicts([{'key':'evidence_support','status':'pass',
+                    'affected_blocks':[],'claim_verdicts':rows}],[prior])
+
+    def test_source_check_cannot_pass_when_one_named_finding_still_fails(self):
+        def send(job,step,request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check['claim_verdicts'][1].update(status='fail',reason='写真の対象条件が欠ける')
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send) as calls:
+            with self.assertRaisesRegex(ContentQualityError,'個別判定と集約判定'):
+                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
+
+    def test_source_resolution_preserves_local_failure_and_overrules_other_candidate(self):
+        def send(client,**request):
+            value=self.message(request)
+            check=next(c for c in value['checks'] if c['key']=='evidence_support')
+            check.update(status='fail',reason='一つは原文一致、別の対象条件は欠落',
+                         affected_blocks=[{'id':self.summary,'reason':'対象条件が欠ける'}],
+                         correction_evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+            check['claim_verdicts'][1].update(status='fail',reason='対象条件が欠ける')
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(value,ensure_ascii=False))],
+                      usage=NS(input_tokens=0,output_tokens=0))
+        with patch.object(research,'create_with_retry',side_effect=send) as calls:
+            checks,_,_=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+            again,_,trace=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(calls.call_count,1)
+        check=next(c for c in checks if c['key']=='evidence_support')
+        self.assertEqual(check['status'],'fail')
+        self.assertEqual([l['id'] for l in check['affected_blocks']],[self.summary])
+        self.assertEqual(check['claim_verdicts'][0]['status'],'pass')
+        self.assertEqual(again,checks)
+        self.assertEqual(trace[0]['phase'],'reused')
+        changed=copy.deepcopy(self.blocks)
+        changed[8]['text']='結論の条件を修正した。'
+        receipts=scope.source_resolutions('research',changed,self.pages,self.req)
+        self.assertTrue(any(r['reviewed_blocks']==[self.blocks[2]] and
+                            all(c['status']=='pass' for c in r['checks']) for r in receipts))
+
+    def test_source_excerpt_survives_edit_but_old_verdict_does_not(self):
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        changed=copy.deepcopy(self.blocks);changed[2]['text']='女性・標準プランは無料。'
+        receipts=scope.source_resolutions('research',changed,self.pages,self.req)
+        self.assertTrue(receipts)
+        self.assertTrue(all(r['reviewed_blocks']==[self.blocks[8]] and
+                            all(c['status']=='pass' for c in r['checks']) for r in receipts))
+        refs=scope.source_excerpts('research',self.pages)
+        self.assertEqual(refs,[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+        self.assertNotIn('status',refs[0])
+        self.assertEqual(scope.source_excerpts('article',self.pages),refs)
+        changed_pages=copy.deepcopy(self.pages);changed_pages[0]['text']+='新条件が追加された。'
+        self.assertEqual(scope.source_excerpts('research',changed_pages),[])
+        changed_pages=copy.deepcopy(self.pages);changed_pages[0]['fetched_at']='new fetch'
+        self.assertEqual(scope.source_excerpts('research',changed_pages),[])
+
+    def test_legacy_source_receipt_is_not_promoted_to_current_excerpt(self):
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        artifact=self.saved['tiered_research_evidence_screen']
+        for r in artifact['meta']['source_resolutions']:r.pop('source_snapshots')
+        self.assertEqual(scope.source_excerpts('research',self.pages),[])
+
+    def test_outline_and_article_rechecks_receive_source_not_old_verdict(self):
+        from pipeline.content_quality import audit
+        from pipeline.focused_quality import audit_article
+        with patch.object(research,'create_with_retry',side_effect=self.fake_provider(True)):
+            evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+        requests={}
+        def send(j,step,request):
+            requests[step]=json.loads(request['messages'][0]['content'])
+            fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
+            return {'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[],
+                'requires_source_check':False,'research_ids':[],'source_urls':[]} for k in fields['key']['enum']]},NS(input_tokens=0,output_tokens=0)
+        text=self.text.replace('Aの女性は標準プランでメッセージ無料。','女性・標準プランは無料。')
+        args=dict(text=text,facts='',outline=text,contract={},requirements=self.req,sources=json.dumps(self.pages))
+        with patch.object(research,'checked_request',side_effect=send):
+            audit(None,stage='research',**args)
+            audit_article(None,**args)
+        for step in ('tiered_audit_research','tiered_article_evidence_scope'):
+            self.assertTrue(all(r['reviewed_blocks']==[self.blocks[8]] and
+                                all(c['status']=='pass' for c in r['checks'])
+                                for r in requests[step]['requirements']['source_resolutions']))
+            self.assertEqual(requests[step]['source_excerpts'],[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
+
+    def test_unrouted_role_cannot_add_a_failure_to_source_handoff(self):
+        def reply(j,s,request):
+            value=self.message(request,True)
+            other=next(c for c in value['checks'] if c['key']=='unsupported_guarantees')
+            other.update(status='fail',reason='範囲外の新規指摘',
+                         affected_blocks=[{'id':self.a,'reason':'範囲外'}],correction_evidence=[])
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=reply):
+            checks,_,_=evidence.evidence_audit('research',self.payload,(*ROLES['evidence'],'unsupported_guarantees'),self.text)
+        self.assertNotIn('unsupported_guarantees',[c['key'] for c in checks])
+        self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
 
     def test_durable_limits_apply_to_direct_calls_and_survive_restarts(self):
         step='outline_local_repair_response'
@@ -180,7 +391,7 @@ class ScopedReviewTests(unittest.TestCase):
             report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
         self.assertFalse(report['valid'])
         packet=scope.repair_packet(self.text,self.req,self.pages,report)
-        self.assertEqual(packet['source_documents'],self.pages[:1])
+        self.assertEqual(packet['source_documents'],[])
         self.assertEqual(set(packet['target_block_ids']),{self.a,self.summary})
 
     def test_normal_outline_repair_recheck_and_restart_use_same_durable_flow(self):
@@ -198,7 +409,8 @@ class ScopedReviewTests(unittest.TestCase):
             n=budget.reserve({'model':request['model'],'max_output_tokens':100,'input':'offline fixture'})
             budget.settle(n,{'input_tokens':100,'output_tokens':20})
             if 'edits' in request['output_config']['format']['schema']['properties']:
-                self.assertEqual([p['url'] for p in data['source_documents']],[self.pages[0]['url']])
+                self.assertEqual(data['source_documents'],[])
+                self.assertTrue(data['requirements']['research_decisions']['items'])
                 self.assertEqual(set(data['target_block_ids']),{self.a,self.summary})
                 value={'edits':[{'id':b['id'],'new':b['text']+'（女性の標準プラン）'} for b in self.blocks if b['id'] in (self.a,self.summary)]}
             else:
@@ -214,7 +426,8 @@ class ScopedReviewTests(unittest.TestCase):
             stack.enter_context(patch.object(guard,'upsert_artifact',side_effect=write))
             stack.enter_context(patch.object(guard,'intent_review_requirements',return_value=self.req))
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value={}))
-            stack.enter_context(patch('pipeline.step_outline.ensure_complete_volume_design',side_effect=lambda t,w:(t,False)))
+            stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value={'items':[]}))
+            stack.enter_context(patch('pipeline.step_outline.ensure_complete_volume_design',side_effect=lambda t,w,**kw:(t,False)))
             stack.enter_context(patch('pipeline.step_structure_guard.validate_structure',return_value=[]))
             stack.enter_context(patch('pipeline.step_structure_guard.run_before_research'))
             stack.enter_context(patch.object(guard.anthropic,'Anthropic'))
@@ -248,6 +461,46 @@ class ScopedReviewTests(unittest.TestCase):
             revised['candidate_checks'][0]['reason']='同じ料金ページだが、返金条件という別の疑問'
             evidence.evidence_audit('research',revised,ROLES['evidence'],self.text)
             self.assertEqual(send.call_count,2)
+
+    def test_article_source_correction_survives_phase_merge_into_small_repair(self):
+        from pipeline.focused_quality import audit_article
+        def send(job,step,request):
+            value=self.message(request,fail=step=='tiered_article_evidence_screen')
+            fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
+            if 'requires_source_check' in fields:
+                for c in value['checks']:
+                    c.update(requires_source_check=False,source_urls=[],research_ids=[])
+                    if step=='tiered_article_evidence_scope' and c['key']=='evidence_support':
+                        c.update(**{k:v for k,v in self.check.items() if k!='key'})
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
+        check=next(c for c in report['checks'] if c['key']=='evidence_support')
+        self.assertEqual(check['correction_evidence'][0]['quote'],self.pages[0]['text'])
+        packet=scope.repair_packet(self.text,self.req,self.pages,report)
+        self.assertEqual(packet['source_documents'],[])
+        self.assertEqual(packet['correction_sources']['correction-1']['quote'],self.pages[0]['text'])
+        self.assertFalse(report['valid'])
+
+    def test_outline_coverage_can_check_named_sources_without_losing_failure(self):
+        from pipeline.content_quality import audit, CHECKS
+        check={**self.check,'key':'coverage','reason':'推奨プランの必要料金が不明'}
+        value={'checks':[check if k=='coverage' else {'key':k,'status':'pass','reason':'fixture',
+            'affected_blocks':[],'requires_source_check':False,'source_urls':[],'research_ids':[]} for k in CHECKS]}
+        seen=[]
+        def source_check(stage,payload,keys,text):
+            self.assertEqual(stage,'research');self.assertIn('coverage',keys)
+            self.assertIn('unsupported_guarantees',keys)
+            packet=scope.scoped_packet(payload,[check]);seen.append(packet)
+            return [check],NS(input_tokens=0,output_tokens=0),[{'review':{'needed':True}}]
+        with patch.object(research,'checked_request',return_value=(value,NS(input_tokens=0,output_tokens=0))), \
+             patch.object(evidence,'evidence_audit',side_effect=source_check), \
+             patch('pipeline.db.get_optional_artifact',return_value=None):
+            report=audit(None,stage='research',text=self.text,outline=self.text,facts='',requirements=self.req,sources=json.dumps(self.pages),contract={})
+        self.assertEqual(seen[0]['source_documents'],self.pages[:1])
+        self.assertFalse(report['valid']);self.assertTrue(report['evidence_pending'])
+        self.assertEqual(next(c for c in report['checks'] if c['key']=='coverage')['status'],'fail')
+        self.assertNotIn('coverage',ROLES['evidence'])  # Article roles stay separate.
 
     def test_unresolved_comparison_cannot_become_pass_when_evidence_support_was_not_requested(self):
         from pipeline.content_quality import audit, CHECKS
@@ -324,6 +577,87 @@ class ScopedReviewTests(unittest.TestCase):
                 self.assertAlmostEqual(budget.review_remaining(ledger),1.1)
                 budget.guard_review(ledger,1.0)  # > previous .75 article ceiling
                 with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.11)
+
+    def test_article_first_source_screen_after_repair_keeps_call_and_cost_caps(self):
+        with budget.ledger() as ledger:
+            ledger['calls']=[{'reserved_usd':.2,'cost_usd':.2,'category':'quality',
+                'review_operation':{'phase':'article','role':'repair','request_sha256':'repair'}}]
+        request={'messages':[{'content':json.dumps({'source_documents':self.pages[:1]})}]}
+        with budget.request_scope('offline-job','tiered_article_evidence_screen','screen',request):
+            with budget.ledger() as ledger:
+                budget.guard_review(ledger,.01)
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,1.1)
+                ledger['calls'].extend([{'reserved_usd':.01,'cost_usd':.01,'category':'quality',
+                    'review_operation':{'phase':'article','role':'evidence_screen','request_sha256':str(i)}} for i in range(2)])
+                with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.01)
+
+    def test_catalog_selects_only_requested_fetched_body_without_whole_collection(self):
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request)
+            value['review'].update(needed=step.endswith('screen'),block_ids=[self.a],
+                                   source_urls=[self.pages[1]['url']],reason='対象の条件の補足がB資料にあるため確認')
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch('pipeline.review_scope.save_resolution') as save:
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(len(seen),2)
+        self.assertEqual(seen[0]['source_documents'],self.pages[:1])
+        self.assertEqual(seen[1]['source_documents'],self.pages[:2])
+        self.assertTrue(all('text' not in p for p in seen[0]['source_catalog']))
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+        save.assert_not_called() # Never bind the expanded result to the smaller initial packet.
+
+    def test_catalog_cannot_be_claimed_as_read_or_request_unfetched_url(self):
+        for needed,url in [(False,self.pages[1]['url']),(True,'https://not-fetched.example')]:
+            def send(job,step,request):
+                value=self.message(request)
+                value['review'].update(needed=needed,block_ids=[self.a],source_urls=[url])
+                return value,NS(input_tokens=0,output_tokens=0)
+            with self.subTest(url=url),patch.object(research,'checked_request',side_effect=send),self.assertRaises(ContentQualityError):
+                evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+
+    def test_adjudicator_can_request_one_fetched_missing_body_in_existing_expansion(self):
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request)
+            value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
+                source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(len(seen),3)
+        self.assertEqual(seen[-1]['source_documents'],self.pages[:2])
+        self.assertTrue(all(c['status']=='pass' for c in checks))
+
+    def test_expansion_preserves_resolved_checks_and_sends_only_remaining_claim(self):
+        # A retained verdict must actually belong to this routed source task.
+        self.payload['candidate_checks'].append({**self.check,'key':'comparison_conditions',
+            'affected_blocks':[{'id':self.summary,'reason':'比較条件'}]})
+        seen=[]
+        def send(job,step,request):
+            data=json.loads(request['messages'][0]['content']);seen.append(data)
+            value=self.message(request,fail=not step.endswith('expanded'))
+            value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
+                source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
+            if step.endswith('adjudicate'):
+                next(c for c in value['checks'] if c['key']=='comparison_conditions')['reason']='already resolved comparison'
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(seen[-1]['target_block_ids'],[self.a])
+        self.assertEqual(seen[-1]['source_documents'],self.pages[1:2])
+        self.assertEqual(next(c for c in checks if c['key']=='comparison_conditions')['reason'],'already resolved comparison')
+
+    def test_fetched_phrase_lookup_keeps_requested_host_and_does_not_invent_sources(self):
+        pages=[{'url':'https://a.example/faq','text':'問い合わせ一覧'},
+               {'url':'https://a.example','text':'通知の時間帯を細かく指定できます。'},
+               {'url':'https://other.example','text':'通知の時間帯を細かく指定できます。料金も無料です。'}]
+        blocks=[{'id':'x','text':'通知の時間帯を細かく指定できます。料金も無料です。'}]
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://a.example/faq'],blocks,{'x'}),pages[1:2])
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://missing.example'],blocks,{'x'}),[])
+        self.assertEqual(evidence.matching_fetched_pages(pages,['https://a.example/faq'],blocks,{'absent'}),[])
 
     def test_generation_allocation_preserves_quality_budget(self):
         with budget.ledger() as ledger:
@@ -405,6 +739,14 @@ class ScopedReviewTests(unittest.TestCase):
                 budget.guard_review(ledger,.1)
                 self.assertAlmostEqual(budget.review_remaining(ledger),.3)
                 with self.assertRaises(ContentQualityError):budget.guard_review(ledger,.31)
+                prior['retry_authorization']['reason']='provider_stream_error'
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                for event in ('error','response.failed'):
+                    prior['interruption']['event_type']=event
+                    budget.guard_review(ledger,.1)
+                prior['retry_authorization']['user_message']=''
+                with self.assertRaisesRegex(ContentQualityError,'再送'):budget.guard_review(ledger,0)
+                prior['retry_authorization']['user_message']='再開して'
                 for field in ('process_exit_confirmed','response_saved'):
                     original=prior['interruption'][field]
                     prior['interruption'][field]=not original
@@ -434,6 +776,20 @@ class ScopedReviewTests(unittest.TestCase):
                 with budget.request_scope('offline-job','outline_local_repair_response','repair',req):
                     value['calls'].append({'status':'accounted','reserved_usd':0,'cost_usd':0,'category':'quality','review_operation':{**budget.REQUEST.get(),'request_sha256':'old-repair'}})
                     with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
+
+    def test_article_extension_is_limited_to_named_role(self):
+        req={'messages':[{'content':'{}'}]}
+        for role in ('coverage','language'):
+            with budget.request_scope('offline-job','tiered_article_'+role,'new',req):
+                with budget.ledger() as value:
+                    meta=dict(budget.REQUEST.get())
+                    value['calls']=[{'status':'accounted','reserved_usd':.1,'cost_usd':.1,'category':'quality',
+                        'review_operation':{**meta,'request_sha256':str(i)}} for i in range(2)]
+                    value['additional_review_authorization']={'phase':'article','role':'coverage',
+                        'extra_calls_per_role':1,'user_message':'はい'}
+                    if role=='coverage':budget.guard_review(value,.1)
+                    else:
+                        with self.assertRaisesRegex(ContentQualityError,'通算回数'):budget.guard_review(value,0)
 
     def test_review_date_survives_midnight_but_changes_with_snapshot(self):
         from pipeline.quality_context import review_reference_date
@@ -493,7 +849,7 @@ class ScopedReviewTests(unittest.TestCase):
         from pipeline.article_quality import validate_delivery
         from pipeline.content_edits import apply_block_edits
         text='# 記事\n\n## 安全\n\n説明します。\n\n### 個人情報\n\n#### 書類\n\n書類は確認後に破棄します。'
-        outline='### H2：安全\n#### H3：個人情報'
+        outline='### H2：安全\n#### H3：個人情報\n##### H4：書類'
         issues=validate_delivery(text,outline)
         self.assertEqual([i['key'] for i in issues],['empty_section'])
         packet=scope.repair_packet(text,{},[],{'checks':[],'structural_issues':issues})

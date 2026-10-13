@@ -3,6 +3,7 @@ import json
 import os
 import unittest
 import requests
+import tempfile
 from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
@@ -14,6 +15,41 @@ from pipeline.step_plan import build_step_plan
 
 
 class ModelRoutingTests(unittest.TestCase):
+    def test_stream_failure_keeps_diagnostics_without_raw_messages_or_retry(self):
+        from pipeline.quality_budget import scope, ledger
+        events = [
+            {'type': 'error', 'code': 'new_provider_error', 'message': 'private-input-sentinel'},
+            {'type': 'response.failed', 'response': {'id': 'resp_example',
+             'error': {'code': 'server_error', 'message': 'private-input-sentinel'}}},
+        ]
+        for event in events:
+            with self.subTest(event=event['type']), tempfile.TemporaryDirectory() as directory, \
+                 patch.dict(os.environ, {'OPENAI_API_KEY': 'test-only', 'QUALITY_BUDGET_DIR': directory,
+                                        'QUALITY_TOTAL_LIMIT_USD': '2.5'}), scope('diagnostic-test', 'quality'):
+                response = self.http_response(200, {})
+                response.headers = {'x-request-id': 'req_example', 'Authorization': 'private-input-sentinel'}
+                response.iter_lines.return_value = [
+                    ('data: ' + json.dumps(event)).encode(), b'']
+                request = {**self.request(), 'model': 'gpt-6.1-sol'}
+                with patch('pipeline.openai_review.requests.post', return_value=response) as post, \
+                     self.assertRaises(ContentQualityError) as caught:
+                    create_review_response(**request)
+                self.assertEqual(post.call_count, 1)
+                with ledger() as value:
+                    call = value['calls'][0]
+                    self.assertEqual(call['status'], 'unknown_cost_reserved')
+                    self.assertNotIn('cost_usd', call)
+                    self.assertEqual(call['diagnostics']['request_id'], 'req_example')
+                    self.assertEqual(call['diagnostics']['http_status'], 200)
+                    self.assertEqual(call['diagnostics']['event_type'], event['type'])
+                    self.assertEqual(call['diagnostics']['error_code'],
+                                     'new_provider_error' if event['type'] == 'error' else 'server_error')
+                    if event['type'] == 'response.failed':
+                        self.assertEqual(call['diagnostics']['response_id'], 'resp_example')
+                    self.assertEqual(len(call['diagnostics']['error_sha256']), 64)
+                    self.assertNotIn('private-input-sentinel', json.dumps(value))
+                self.assertNotIn('private-input-sentinel', str(caught.exception))
+
     def request(self):
         return dict(model='gpt-6-astra', max_tokens=7000, system='audit',
                     messages=[{'role':'user','content':'sample'}],

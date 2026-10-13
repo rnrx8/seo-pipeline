@@ -1,0 +1,53 @@
+{
+  "status": "checked",
+  "this_check_jpy": 30.154500000000002,
+  "cumulative_jpy": 771.4558199999998,
+  "cumulative_quality_jpy": 450.09899,
+  "model_calls": 1,
+  "production_writes": false,
+  "article_completed": false,
+  "matrix_applied": false,
+  "coverage_sufficient": false,
+  "coverage_reason": "q10の美人局・投資誘導とq12の一般的な初動は採用可能。q15の事例は省略できるが、essentialのq01で刑事罰と民事責任の明示的な区別が未確認であり、「利用自体が刑事罰の対象か」という主要な判断を十分に説明できない。今回の4項目の調査充足は未達で、他の質問の充足は判定対象外。",
+  "adoptable_answers": [
+    "q01",
+    "q10",
+    "q12"
+  ],
+  "omission_candidates": [
+    "q15"
+  ],
+  "validation_replay_note": "Actual reviewed source URLs recorded as in focused_research.ask. No new model call, no altered answer or coverage verdict.",
+  "quality_remaining_jpy": 199.90100999999999,
+  "outcomes": [
+    {
+      "id": "q01",
+      "verified": true,
+      "basis": "expert",
+      "answer": "既婚者専用マッチングアプリへの登録・利用そのものは違法ではない。ただし、配偶者以外の異性と性的関係を持つと不貞行為となり、配偶者から慰謝料を請求される可能性がある。",
+      "omission_reason": "刑事罰の対象性と民事責任との明示的な区別は回答に含めない。この不足により、質問の主要な疑問全体は解消していない。"
+    },
+    {
+      "id": "q10",
+      "verified": true,
+      "basis": "corroborated",
+      "answer": "既婚者が注意すべき手口には、性的関係を持ったことを利用して家庭や職場に知らせると脅し金銭を要求する美人局や、親密さ・恋愛感情を利用して投資話を持ち掛け、金銭をだまし取る手口がある。",
+      "omission_reason": "配偶者を装う示談金要求はデイライト本文で説明されるが、同条件の独立した裏付けは未確認。副業勧誘・LINE誘導も採用しない。美人局と投資誘導の説明は残し、全手口を網羅した一覧とはしない。"
+    },
+    {
+      "id": "q12",
+      "verified": true,
+      "basis": "guidance",
+      "answer": "美人局や不審な示談金要求を受けた際は、その場で返答・支払いをせず、やり取りを録音・保存して警察や弁護士に相談する。相手が攻撃的な場合は、記録より身の安全を優先して安全な場所へ退避する。",
+      "omission_reason": "支払義務や犯罪の成立、金銭回復の可能性に関する個別判断は質問の対象外として省く。"
+    },
+    {
+      "id": "q15",
+      "verified": true,
+      "basis": "omitted",
+      "answer": "",
+      "omission_reason": "本人または報道元に直接帰属させられる事例の根拠が不足するため、本稿では実体験事例を使用しない。確認済みの法的線引き・手口・初動の説明は維持できるが、具体的な被害事例による補強はできない。"
+    }
+  ],
+  "next_decision": "Clarify whether this query requires explicit criminal/civil terminology beyond the verified explanation distinguishing app use and infidelity liability. Do not silently downgrade saved essential scope or claim article completion."
+}

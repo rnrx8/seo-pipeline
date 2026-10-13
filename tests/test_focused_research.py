@@ -69,6 +69,30 @@ class FocusedResearchTests(unittest.TestCase):
             return {**self.unknown(),'needs_more_sources':False}
         return {**self.answer,'needs_more_sources':False}
 
+    def test_publication_scope_reaches_cross_subject_and_coverage_checks(self):
+        self.plan['items'].append({**self.plan['items'][0],'id':'q2','subject':'共通','question':'Aの料金の比較条件'})
+        self.answer['items'][0].update(publication_conditions=['男性・3か月契約・税込'],
+                                       claim_limits=['他のプランの価格へ広げない'])
+        original=copy.deepcopy(self.answer)
+        def respond(request,payload):
+            if 'decisions' in payload:
+                for row in payload['decisions']:
+                    self.assertEqual(row['publication_conditions'],original['items'][0]['publication_conditions'])
+                    self.assertEqual(row['claim_limits'],original['items'][0]['claim_limits'])
+                return dict(coverage_sufficient=True,coverage_reason='fixture',coverage_issues=[])
+            rows=[{**copy.deepcopy(original['items'][0]),'id':q['id']} for q in payload['plan']['items']]
+            if any(q['subject']=='共通' for q in payload['plan']['items']):
+                related=payload['related_verified_answers'][0]
+                self.assertEqual(related['publication_conditions'],original['items'][0]['publication_conditions'])
+                self.assertEqual(related['claim_limits'],original['items'][0]['claim_limits'])
+            return {**original,'items':rows,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertTrue(all(i['verified'] for i in result['items']))
+        self.assertEqual(self.answer,original)
+        # Screening, existing independent audits and coverage; no added phase.
+        self.assertEqual([r['model'] for r,p in self.calls],
+                         ['gpt-6-luna','gpt-6.1-sol','gpt-6-luna','gpt-6.1-sol','gpt-6.1-sol'])
+
     def test_required_unknown_is_reread_once_then_remains_blocking(self):
         result,_=self.run_flow(self.responder)
         self.assertEqual([r['model'] for r,p in self.calls],['gpt-6-luna','gpt-6-luna','gpt-6.1-sol'])
@@ -115,6 +139,46 @@ class FocusedResearchTests(unittest.TestCase):
             return {**partial,'needs_more_sources':False}
         result,_=self.run_flow(respond)
         self.assertFalse(result['items'][0]['verified'])
+        self.assertTrue(validate_matrix(result,self.plan,self.pages))
+        self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
+
+    def test_disputed_source_gap_keeps_candidate_for_existing_independent_audit(self):
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:
+                result=self.unknown();result['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])
+                return result
+            result=copy.deepcopy(self.answer)
+            if request['model']=='gpt-6-luna':
+                result['items'][0].update(status='searched_not_found',basis='unresolved',
+                    additional_sources_needed=True,reason='一次読者は片方の資料を見落とした')
+                return {**result,'needs_more_sources':True}
+            candidate=payload['candidate_answers'][0]
+            self.assertFalse(candidate['verified'])
+            self.assertTrue(candidate['additional_sources_needed'])
+            self.assertEqual(candidate['answer'],self.answer['items'][0]['answer'])
+            self.assertEqual(candidate['publication_conditions'],self.answer['items'][0]['publication_conditions'])
+            self.assertEqual(candidate['claim_limits'],self.answer['items'][0]['claim_limits'])
+            self.assertTrue(payload['sources_complete'])
+            return {**result,'needs_more_sources':False}
+        result,_=self.run_flow(respond)
+        self.assertTrue(result['items'][0]['verified'])
+        self.assertEqual(result['items'][0]['answer'],self.answer['items'][0]['answer'])
+        self.assertFalse(validate_matrix(result,self.plan,self.pages))
+        self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
+
+    def test_final_source_gap_is_not_promoted_by_preserving_a_candidate(self):
+        def respond(request,payload):
+            if 'decisions' in payload:return self.responder(request,payload)
+            if 'candidate_answers' not in payload:
+                result=self.unknown();result['items'][0]['evidence']=copy.deepcopy(self.answer['items'][0]['evidence'])
+                return result
+            result=copy.deepcopy(self.answer)
+            result['items'][0].update(status='searched_not_found',basis='unresolved',additional_sources_needed=True)
+            return {**result,'needs_more_sources':True}
+        result,_=self.run_flow(respond)
+        self.assertFalse(result['items'][0]['verified'])
+        self.assertEqual(result['items'][0]['answer'],'')
         self.assertTrue(validate_matrix(result,self.plan,self.pages))
         self.assertEqual(len([r for r,p in self.calls if r['model']=='gpt-6.1-sol' and 'candidate_answers' in p]),1)
 
@@ -336,6 +400,39 @@ class FocusedResearchTests(unittest.TestCase):
         audits=[p for r,p in self.calls if 'candidate_answers' in p]
         self.assertEqual([[q['id'] for q in p['plan']['items']] for p in audits],[['q1','q2'],['q2']])
         self.assertEqual(len(self.calls),4)
+
+    def test_supported_partial_answer_expands_unreviewed_saved_sources_once(self):
+        extra = {'url':'https://additional.example/scams', 'status':'success',
+                 'text':'別の主要な手口についての保存済み資料。'}
+        self.pages.append(extra)
+        audits = []
+        def respond(request, payload):
+            if 'decisions' in payload:
+                return dict(coverage_sufficient=False, coverage_reason='主要回答が未完了',
+                            coverage_issues=[{'id':'q1','reason':'主要回答が未完了'}])
+            answer = copy.deepcopy(self.answer)
+            if 'candidate_answers' in payload:
+                audits.append(payload)
+            for item in answer['items']:
+                item['exploration_complete'] = False
+                item['additional_sources_needed'] = False
+            return answer
+        result, _ = self.run_flow(respond)
+        self.assertEqual(len(audits), 3)  # reread, bounded expansion, independent audit
+        self.assertNotIn(extra['url'], {p['url'] for p in audits[0]['sources']})
+        self.assertIn(extra['url'], {p['url'] for p in audits[1]['sources']})
+        self.assertTrue(audits[1]['sources_complete'])
+        self.assertIn(extra['url'], {p['url'] for p in audits[2]['sources']})
+        self.assertTrue(audits[2]['sources_complete'])
+        self.assertFalse(result['coverage_sufficient'])
+        self.assertTrue(validate_matrix(result, self.plan, self.pages))
+        self.assertTrue(all('tools' not in r for r, _ in self.calls))
+
+    def test_completeness_uses_saved_corpus_not_only_already_packed_subset(self):
+        self.assertFalse(focused.has_all_saved_bodies(self.pages[:1], self.pages))
+        self.assertTrue(focused.has_all_saved_bodies(self.pages, self.pages))
+        self.assertTrue(focused.needs_saved_expansion({
+            'additional_sources_needed':False, 'exploration_complete':False}))
 
     def test_missing_per_question_source_decision_is_rejected(self):
         with patch.object(tiered,'checked_request',return_value=(self.answer,NS(input_tokens=0,output_tokens=0))):
