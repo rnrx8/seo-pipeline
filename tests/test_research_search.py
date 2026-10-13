@@ -12,7 +12,7 @@ from pipeline.content_quality import ContentQualityError
 class ResearchSearchTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
-        self.env=patch.dict(os.environ,{'SERPER_API_KEY':'test','QUALITY_BUDGET_DIR':self.tmp.name,'QUALITY_COMPLETION_EVAL':'0'})
+        self.env=patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded','SERPER_API_KEY':'test','QUALITY_BUDGET_DIR':self.tmp.name,'QUALITY_COMPLETION_EVAL':'0'})
         self.env.start();self.ctx=budget.scope('test','research_completeness');self.ctx.__enter__()
         self.records={}
         self.get=patch.object(search,'get_optional_artifact',side_effect=lambda j,s:self.records.get(s));self.get.start()

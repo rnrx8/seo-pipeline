@@ -35,7 +35,7 @@ class ScopedReviewTests(unittest.TestCase):
         self.saved={}
         self.stack=ExitStack();self.addCleanup(self.stack.close)
         self.tmp=self.stack.enter_context(tempfile.TemporaryDirectory())
-        self.stack.enter_context(patch.dict(os.environ,{'QUALITY_BUDGET_DIR':self.tmp,'ARTICLE_REVIEW_PROVIDER':'tiered',
+        self.stack.enter_context(patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded','QUALITY_BUDGET_DIR':self.tmp,'ARTICLE_REVIEW_PROVIDER':'tiered',
             'QUALITY_RESEARCH_ROUTING':'focused','QUALITY_COMPLETION_EVAL':'','QUALITY_TOTAL_LIMIT_USD':'10'}))
         self.stack.enter_context(budget.scope('offline-job'))
         self.stack.enter_context(patch.object(socket.socket,'connect',side_effect=AssertionError('NO NETWORK')))

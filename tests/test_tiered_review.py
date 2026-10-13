@@ -18,7 +18,7 @@ from test_evidence_policy import fixture
 class TieredReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
-        self.env=patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_BUDGET_DIR':self.tmp.name,'OPENAI_API_KEY':'test-only'})
+        self.env=patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded','ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_BUDGET_DIR':self.tmp.name,'OPENAI_API_KEY':'test-only'})
         self.env.start();self.ctx=budget.scope('test-job');self.ctx.__enter__()
     def tearDown(self):
         self.ctx.__exit__(None,None,None);self.env.stop();self.tmp.cleanup()

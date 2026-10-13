@@ -14,7 +14,7 @@ from pipeline.content_edits import content_blocks
 
 class CompactQualityFlowTests(unittest.TestCase):
     def setUp(self):
-        env=patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'})
+        env=patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded','ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'})
         env.start();self.addCleanup(env.stop)
         self.text='# 比較\n\n## 料金\n\n月額の対象は男性です。\n\n年契約です。\n\n## まとめ\n\n期間を確認してください。'
         # A non-sampled fixture; sample path gets its own explicit test.

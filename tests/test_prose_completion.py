@@ -199,7 +199,7 @@ class CompletionTests(unittest.TestCase):
         saved={}
         with ExitStack() as stack:
             directory=stack.enter_context(tempfile.TemporaryDirectory())
-            stack.enter_context(patch.dict(os.environ,QUALITY_BUDGET_DIR=directory,QUALITY_TOTAL_LIMIT_USD='1',QUALITY_COMPLETION_EVAL=''))
+            stack.enter_context(patch.dict(os.environ,QUALITY_BUDGET_MODE='bounded',QUALITY_BUDGET_DIR=directory,QUALITY_TOTAL_LIMIT_USD='1',QUALITY_COMPLETION_EVAL=''))
             stack.enter_context(budget.scope('job'))
             stack.enter_context(patch.object(research,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(saved.get(s))))
             stack.enter_context(patch.object(research,'upsert_artifact',side_effect=lambda **kw:saved.update({kw['step']:copy.deepcopy(kw)})))
@@ -223,7 +223,7 @@ class CompletionTests(unittest.TestCase):
 class CompletionBudgetTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        env=patch.dict(os.environ,QUALITY_BUDGET_DIR=self.tmp.name,QUALITY_TOTAL_LIMIT_USD='0.3',QUALITY_COMPLETION_EVAL='')
+        env=patch.dict(os.environ,QUALITY_BUDGET_MODE='bounded',QUALITY_BUDGET_DIR=self.tmp.name,QUALITY_TOTAL_LIMIT_USD='0.3',QUALITY_COMPLETION_EVAL='')
         env.start();self.addCleanup(env.stop)
 
     def charge(self,step,fingerprint,amount=.02):
