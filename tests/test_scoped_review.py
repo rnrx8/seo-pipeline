@@ -268,7 +268,7 @@ class ScopedReviewTests(unittest.TestCase):
                          affected_blocks=[{'id':self.a,'reason':'範囲外'}],correction_evidence=[])
             return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=reply):
-            checks,_,_=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
+            checks,_,_=evidence.evidence_audit('research',self.payload,(*ROLES['evidence'],'unsupported_guarantees'),self.text)
         self.assertNotIn('unsupported_guarantees',[c['key'] for c in checks])
         self.assertEqual(next(c for c in checks if c['key']=='evidence_support')['status'],'fail')
 
@@ -448,6 +448,7 @@ class ScopedReviewTests(unittest.TestCase):
         seen=[]
         def source_check(stage,payload,keys,text):
             self.assertEqual(stage,'research');self.assertIn('coverage',keys)
+            self.assertIn('unsupported_guarantees',keys)
             packet=scope.scoped_packet(payload,[check]);seen.append(packet)
             return [check],NS(input_tokens=0,output_tokens=0),[{'review':{'needed':True}}]
         with patch.object(research,'checked_request',return_value=(value,NS(input_tokens=0,output_tokens=0))), \

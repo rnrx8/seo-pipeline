@@ -425,7 +425,9 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         # Outline coverage can depend on a missing decision condition (e.g.
         # the price of the recommended plan). Route that named dependency
         # through the same bounded source check, without widening article roles.
-        evidence_keys=(*ROLES['evidence'], 'coverage')
+        # Research audit still verifies all adopted guarantee claims. Article
+        # role ownership must not silently change the research evidence set.
+        evidence_keys=tuple(dict.fromkeys((*ROLES['evidence'], 'unsupported_guarantees', 'coverage')))
         from .quality_context import review_facts, review_conditions
         payload['confirmed_facts']=review_facts(facts,requirements)
         payload['conditional_facts']=review_conditions(facts,requirements)

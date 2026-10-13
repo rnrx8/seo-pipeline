@@ -55,6 +55,15 @@ class ReaderPresentationTests(unittest.TestCase):
         for prompt in (WRITING_POLICY, step_outline.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT, content_quality.AUDIT_SYSTEM):
             self.assertIn(EVIDENCE_POLICY, prompt)
 
+    def test_guarantee_semantics_use_existing_editorial_role_without_extra_call(self):
+        # Source matching and context-sensitive effect language are separate
+        # responsibilities, but every existing check is still delivered once.
+        self.assertNotIn('unsupported_guarantees',focused_quality.ROLES['evidence'])
+        self.assertIn('unsupported_guarantees',focused_quality.ROLES['consistency'])
+        self.assertEqual(sum(keys.count('unsupported_guarantees') for keys in focused_quality.ROLES.values()),1)
+        self.assertEqual(len(focused_quality.ROLES),5)
+        self.assertIn('対策・手順の提案と結果の保証',focused_quality.ROLE_INSTRUCTIONS['consistency'])
+
     def test_cv_value_requirement_is_conditional_on_article_purpose(self):
         for purpose in ('cv', 'awareness'):
             contract = build_content_contract(keyword='スマホケース おすすめ',
