@@ -1,0 +1,104 @@
+{
+  "status": "stopped_research_attempt_2_unresolved",
+  "keyword": "既婚者マッチングアプリ やばい",
+  "preset": "meetingtechnology",
+  "article_generated": false,
+  "production_writes": false,
+  "total_cap_jpy": 1500,
+  "quality_cap_jpy": 650,
+  "cumulative_jpy": 698.3053199999998,
+  "cumulative_quality_jpy": 376.94849000000005,
+  "this_approved_resume_jpy": 150.52047499999998,
+  "new_model_calls": 20,
+  "pricing_basis": "Existing recorded usage pricing and 200 JPY/USD; includes booked search estimates, not invoice.",
+  "completed": [
+    "saved plan reviewed and corrected; 7 general questions no longer require official-first exploration",
+    "saved-source verification ran to its final allowed attempt"
+  ],
+  "stop_reason": "Research acceptance failed at attempt 2, not budget exhaustion. No third attempt or new collection was started.",
+  "findings": [
+    {
+      "id": "q01",
+      "kind": "question_scope_and_partial_answer",
+      "detail": "The verified answer distinguishes app use itself from sexual infidelity/liability. Coverage demands explicit criminal/civil terminology that the planned question included. Needs scope review, not assumed factual error."
+    },
+    {
+      "id": "q10",
+      "kind": "saved_source_visibility_and_exploration_scope",
+      "detail": "Daylight saved body contains investment/romance scam explanation; final q10 review listed only aglaw, police registry, and team-rooters as visible pages. Candidate says more sources not needed for its narrow answer, but exploration incomplete for other details. Existing scoped 2-question test had the fourth page and a broader corroborated answer."
+    },
+    {
+      "id": "q12",
+      "kind": "plan_source_classification",
+      "detail": "Initial response steps are planned as expert_allowed and omitted for lack of expert credentials. Coverage says ordinary response advice is available and suitable. Planning review did not catch this mismatch."
+    },
+    {
+      "id": "q15",
+      "kind": "missing_primary_example",
+      "detail": "Saved decision reports only secondary quotations, not original personal report or original news report for a married-specific app incident. Coverage requires an example. Not established as a false positive."
+    }
+  ],
+  "matrix_gaps": [
+    {
+      "id": "q10",
+      "question": "既婚者を狙う美人局・配偶者を装った示談金要求・投資や副業勧誘・LINE誘導など、業者や詐欺の典型的な手口",
+      "required": true,
+      "subject": "共通",
+      "priority": "essential",
+      "priority_reason": "「やばい相手」への不安は顕在ニーズの中心で、landmark・crystal・singleが主要に扱う",
+      "source_requirement": "standard",
+      "requires_current": false,
+      "official_check_required": false,
+      "status": "unresearched",
+      "reason": "金銭要求を伴う美人局について、浅野総合法律事務所の説明と、ユアマッチが引用する毎日新聞の報道内容が一致する。後者は毎日新聞由来の二次引用として独立性を記録し、報道原文を直接取得した扱いにはしない。\n全体確認：回答が未検証のままで、内容も美人局の金銭要求に限られている。検索上位で繰り返し扱われる投資・副業等の勧誘や外部連絡先への誘導について具体的な手口がなく、読者が美人局以外の業者・詐欺を判断する材料が不足している。全手口の網羅ではなく、主要な勧誘例を根拠付きで補う必要がある。",
+      "validation_issue": {
+        "code": "corroboration_requirements_unmet",
+        "official_check_required": false,
+        "official_attempt_recorded": false,
+        "exploration_complete": false,
+        "independent_groups": 2,
+        "independent_domains": 2
+      }
+    },
+    {
+      "id": "q01",
+      "question": "既婚者が既婚者マッチングアプリに登録・利用すること自体は、刑事罰の対象となる違法行為にあたるか（刑事と民事の区別）",
+      "required": true,
+      "subject": "共通",
+      "priority": "essential",
+      "priority_reason": "「やばい＝違法か」は顕在ニーズの中心。競合の表現（違法になる／罰則なし）が揺れており、正確な線引きが結論の前提になる",
+      "source_requirement": "expert_allowed",
+      "requires_current": true,
+      "official_check_required": true,
+      "status": "unresearched",
+      "reason": "全体確認：登録・利用自体についての説明はあるが、計画と検索意図が主要論点に据えた刑事罰と民事の慰謝料責任の区別は未確認とされている。この区別を支える専門解説を確認し、単なる利用と不貞行為による責任を分けて答える必要がある。"
+    },
+    {
+      "id": "q12",
+      "question": "美人局・脅迫・金銭要求などのトラブルに遭った場合の初動（要求に応じない、証拠保全、相談のタイミング）",
+      "required": false,
+      "subject": "共通",
+      "priority": "important",
+      "priority_reason": "検索意図で競合に欠ける「起きた後」の対処として差別化H2候補に挙げられた論点",
+      "source_requirement": "expert_allowed",
+      "requires_current": false,
+      "official_check_required": true,
+      "status": "unresearched",
+      "reason": "全体確認：初動対応を一括省略したため、脅迫・金銭要求を受けた読者の行動判断が成立しない。提示された本文には、要求に即答しない、支払い・署名を避ける、可能な範囲で記録する、危険時は退避する、警察等へ相談する助言がある。これらは一般的な初動の助言として採用可能であり、犯罪の法的該当性や被害回復の効果を除いて回答に残せる。専門家資格の未確認だけで全体を省略しない。"
+    },
+    {
+      "id": "q15",
+      "question": "既婚者マッチングアプリで実際に起きたトラブル（離婚、美人局、職場での噂、ストーカー、金銭被害等）の本人または報道による体験事例",
+      "required": false,
+      "subject": "共通",
+      "priority": "important",
+      "priority_reason": "体験談は隣接意図であり、上位の知恵袋・現代ビジネス・note・landmarkが中心的に扱う",
+      "source_requirement": "standard",
+      "requires_current": false,
+      "official_check_required": false,
+      "status": "unresearched",
+      "reason": "全体確認：本人の発信原文または報道元本文によるトラブル事例が一件も採用されていない。体験談・実態確認は検索意図と上位記事の主要論点であり、一般的なリスク説明と利用経験率だけでは『実際に何が起きたのか』に答えられない。確認可能な事例を少なくとも一件、発信者・報告の範囲を限定して採用する必要がある。"
+    }
+  ],
+  "next_action": "No further paid execution automatically. Address planning scope/classification and consistent saved-source visibility together; separately review the necessity/availability of a firsthand example. Do not mark current article complete or change findings to pass."
+}

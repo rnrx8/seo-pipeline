@@ -22,6 +22,8 @@ REVIEW_PHASE_LIMITS={'outline':.5,'article':LIMIT}
 
 
 def review_operation(step):
+ if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
+ if step=='tiered_prose_finish_review':return 'article','prose_finish_review',1
  if step=='tiered_audit_research':return 'outline','audit',2
  if step=='outline_local_repair_response':return 'outline','repair',1
  if step.startswith('tiered_research_evidence_'):return 'outline',step.removeprefix('tiered_research_evidence_'),2
@@ -89,16 +91,21 @@ def guard_review(value,amount):
           and kept.get('review_operation',{}).get('phase')==c['review_operation']['phase']
           and replacement.get('retained_request_sha256')==kept.get('review_operation',{}).get('request_sha256'))
  same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c) and not superseded_duplicate(c)]
- if meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
+ # Article re-audits cover the whole repaired text, so their first source screen
+ # may occur after repair. Source selection remains restricted to fetched pages
+ # by validate_routes/scoped_packet; this guard is for research-scope expansion.
+ if meta['phase']=='outline' and meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
   allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
   allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}
   if not same or not set(meta['source_urls'])<=allowed_urls or not set(meta['research_ids'])<=allowed_questions:
    raise ContentQualityError('修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。')
- def transport_retry_authorized(c):
+ def interrupted_retry_authorized(c):
   permit=c.get('retry_authorization') or {}
   interrupted=c.get('interruption') or {}
   return (c.get('status')=='unknown_cost_reserved'
-          and permit.get('reason')=='transport_interrupted'
+          and (permit.get('reason')=='transport_interrupted'
+               or (permit.get('reason')=='provider_stream_error'
+                   and interrupted.get('event_type') in ('error','response.failed')))
           and permit.get('request_sha256')==c['review_operation']['request_sha256']
           and bool(permit.get('user_message'))
           and interrupted.get('process_exit_confirmed') is True
@@ -106,7 +113,7 @@ def guard_review(value,amount):
  # Release only the authorized lost response's duplicate lock. Its cost and
  # attempt still count; a later pending/accounted retry blocks another resend.
  if any(c['review_operation']['request_sha256']==meta['request_sha256']
-        and not transport_retry_authorized(c) for c in same):
+        and not interrupted_retry_authorized(c) for c in same):
   raise ContentQualityError('同じ確認要求の送信記録があります。保存応答または未確定費用を確認するまで再送しません。')
  extension=value.get('additional_review_authorization') or {}
  extra=0
@@ -116,8 +123,13 @@ def guard_review(value,amount):
       or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')
       or (phase=='outline' and (extension['extra_calls_per_role']!=1 or extension.get('role')!='audit'))):
    raise ContentQualityError('追加確認の承認設定が不正です。')
-  if meta['phase']==phase and (phase=='article' or meta['role']=='audit'):
+  if meta['phase']==phase and (phase=='article' or meta['role']=='audit') and (not extension.get('role') or extension['role']==meta['role']):
    extra=extension['extra_calls_per_role']
+ if meta['role'] in ('prose_finish_repair','prose_finish_review'):
+  extra=0 # A terminal local finish cannot be extended into another loop.
+  repairs=[c for c in previous if c['review_operation']['role'] in ('repair','prose_finish_repair')]
+  if meta['role']=='prose_finish_repair' and len(repairs)>=2:
+   raise ContentQualityError('既存の修正回数枠を使い切っています。局所修正を追加しません。')
  if len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)
@@ -281,6 +293,22 @@ def settle(index,usage=None):
   else:call['status']='unknown_cost_reserved'
 
 
+def claude_input_ceiling(payload):
+ """Uncached requests cannot incur the one-hour cache creation premium.
+
+ Keep the existing worst-case rate for cache-enabled and server-managed
+ requests. Do not assume a cache hit when reserving a cached request.
+ """
+ data=json.loads(json.dumps(payload,default=lambda v:v.model_dump(mode='json')))
+ def caches(value):
+  if isinstance(value,dict):return 'cache_control' in value or any(caches(v) for v in value.values())
+  if isinstance(value,list):return any(caches(v) for v in value)
+  return False
+ managed=bool(data.get('mcp_servers')) or any(t.get('type','custom')!='custom' for t in data.get('tools',[]))
+ if caches(data) or managed:return CLAUDE_RATES[payload['model']][0],'cache_or_server_ceiling'
+ return CLAUDE_USAGE_RATES[payload['model']][0],'uncached_input'
+
+
 def reserve_claude(payload, input_counter=None):
  """Record generation separately; charge corrective research to quality too."""
  from .content_quality import ContentQualityError
@@ -295,7 +323,8 @@ def reserve_claude(payload, input_counter=None):
  # Server-side search may expand the input up to the model context. Do not
  # promise a hard cap based only on the small outbound request in that case.
  if searches:size=max(size,(searches+1)*1000000)
- ir,orr=CLAUDE_RATES[model]
+ ir,rate_basis=claude_input_ceiling(payload)
+ orr=CLAUDE_RATES[model][1]
  amount=(size*ir+payload['max_tokens']*orr)/1e6+searches*.01
  with ledger() as value:
   guard_review(value,0)
@@ -326,7 +355,8 @@ def reserve_claude(payload, input_counter=None):
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),
-    'reserved_usd':amount,'status':'pending','started_at':time.time(),**review_metadata()})
+    'reserved_usd':amount,'status':'pending','started_at':time.time(),
+    'input_rate_ceiling':ir,'input_rate_basis':rate_basis,**review_metadata()})
  return index
 
 

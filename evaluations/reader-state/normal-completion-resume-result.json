@@ -1,0 +1,134 @@
+{
+  "status": "stopped",
+  "completed_stages": [],
+  "new_article_generation": false,
+  "production_reflected": false,
+  "research_reused": true,
+  "error_type": "ValueError",
+  "error": "Authorized one repair exhausted; no retry",
+  "paid_calls": 15,
+  "cost_plus_reserved_jpy": 191.15707500000002,
+  "unsettled": 0,
+  "calls": [
+    {
+      "model": "gpt-6-luna",
+      "role": "evidence_scope",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 1.061575
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "coverage",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 25.747999999999998
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "language",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 10.931000000000001
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "consistency",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 10.703999999999999
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "organization",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 14.127999999999998
+    },
+    {
+      "model": "claude-opus-5-5",
+      "role": "repair",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 29.399199999999997
+    },
+    {
+      "model": "gpt-6-luna",
+      "role": "evidence_scope",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 1.0959999999999999
+    },
+    {
+      "model": "gpt-6-luna",
+      "role": "evidence_screen",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 0.4808
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "evidence_adjudicate",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 20.5955
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "coverage",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 25.6285
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "language",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 11.329500000000001
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "consistency",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 11.0765
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "organization",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 11.8665
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "evidence_expanded",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 7.1895
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "role": "evidence_expanded",
+      "status": "accounted",
+      "cost_or_reserved_jpy": 9.9225
+    }
+  ],
+  "remaining_checks": [
+    {
+      "key": "prose_quality",
+      "status": "fail",
+      "reason": "block-0170の「切り上げるのが、お互いに安心できる距離感です」は、行動を表す主語と関係性を表す述語が対応していません。切り上げることで適度な距離感を保てる、という関係が伝わるように修正してください。",
+      "affected_blocks": [
+        {
+          "id": "block-0170",
+          "reason": "「『もう少し話したかった』と思うくらいで切り上げるのが、お互いに安心できる距離感です」の「切り上げるのが〜距離感です」という主述の不整合を修正する。"
+        }
+      ],
+      "research_ids": [],
+      "source_urls": []
+    }
+  ],
+  "passed_checks": [
+    "coverage",
+    "evidence_support",
+    "comparison_conditions",
+    "conclusion_consistency",
+    "metric_scope",
+    "unfinished_content",
+    "unsupported_guarantees",
+    "redundancy"
+  ],
+  "offline_tests_passed": 535,
+  "source_routing_fixed": true,
+  "new_sources_fetched": 0,
+  "paid_cost_basis": "API usage at configured rates, 200 JPY/USD; not invoice",
+  "full_flow_completed": false
+}

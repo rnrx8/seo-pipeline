@@ -1,0 +1,21 @@
+{
+  "status": "user_approved_scope_applied_to_local_trial",
+  "changed_question_ids": [
+    "q01"
+  ],
+  "shared_policy": "meaning and necessary conditions, not terminology reproduction",
+  "question": "既婚者マッチングアプリへの登録・利用自体と、利用後に配偶者以外と性的関係を持った場合の不貞行為・慰謝料請求の可能性はどう違うか",
+  "approval": "ユーザー確認済み：登録・利用自体は違法ではないことと、配偶者以外との性的関係は不貞行為となり慰謝料を請求される可能性があることを、根拠付きで説明できればq01の必要範囲を満たす。刑事罰・民事責任という分類名の明示は必須としない。根拠要件・重要度は維持する。",
+  "priority_and_evidence_requirements_unchanged": true,
+  "other_questions_unchanged": true,
+  "plan_readback_verified": true,
+  "old_plan_preserved": true,
+  "existing_matrix_unchanged": true,
+  "old_failure_not_converted_to_pass": true,
+  "model_calls": 0,
+  "production_writes": false,
+  "article_generated": false,
+  "semantic_model_validation": "not_run",
+  "next_step": "Prepare bounded research completion verification under approved scope; no paid execution authorized in this step.",
+  "free_tests_passed": 555
+}

@@ -2,16 +2,35 @@
 import copy
 import json
 
-POLICY_VERSION='generation-evidence-v3-claim-scope'
+POLICY_VERSION='generation-evidence-v4-publication-handoff'
 POLICY='''以下は調査の合格後に採用された回答・条件と省略項目。回答の対象・期間・適用条件を維持する。
 本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
 引用は回答の根拠であり、引用内の別の情報を自由に追加するための資料ではない。
 省略・未確認項目は本文で断定しない。現在の結論に使用不可の情報を現在の比較に使わない。
-decisionsは執筆する回答と条件。usage_constraintsは回答の使用範囲を判断するための記録で、本文用の文章ではない。実際の対象期間・利用条件だけを回答と対応させ、取得日を適用日へ変換しない。
+decisionsのanswerは採用した回答、publication_conditionsは回答と一緒に示す対象・契約・税・期間などの条件、claim_limitsは説明してよい範囲。publishable=falseの論点は掲載しない。supports_current_conclusion=falseの回答で現在の優劣を決めない。claim_limitsは執筆の境界であり、その制約説明を読者へ列挙する文章ではない。
 原資料の独立照合は最終の事実確認で実施する。sourcesは出典対応用であり、記事設定で指定された場合だけ出典を表示する。採用経緯の説明を本文に作らない。'''
 
 
-def decision_bundle(plan, matrix, *, quotes):
+def publication_scope(item):
+    """Use reviewed publication fields, never infer them from audit prose."""
+    from .content_quality import ContentQualityError
+    result={}
+    for field in ('publication_conditions', 'claim_limits'):
+        value=item.get(field)
+        if not isinstance(value,list) or any(not isinstance(v,str) or not v.strip() for v in value):
+            raise ContentQualityError('執筆へ引き継ぐ条件の区分が未確認です。保存資料を再取得せず、既存の調査確認で回答・条件・調査記録の区分を確認してください。自動変換・有料再試行はしません。')
+        result[field]=copy.deepcopy(value)
+    return result
+
+
+def outline_planning_context(plan):
+    """Editorial relevance is separate from accepted facts and source bookkeeping."""
+    return {'topics': [{k: copy.deepcopy(q[k]) for k in
+                       ('id', 'priority_reason') if k in q}
+                       for q in plan.get('items', [])]}
+
+
+def decision_bundle(plan, matrix, *, quotes, planning=False):
     """Project current-policy answers; callers also validate source/plan snapshots."""
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
@@ -42,7 +61,7 @@ def decision_bundle(plan, matrix, *, quotes):
             'reason','basis','applicable_at','omission_reason','verified','evidence','official_checked_urls','exploration_complete','exploration_reason',
             'omission_candidate_from','omission_source_review','unresolved_candidate',
             'additional_sources_needed','reviewed_source_urls'}})
-        constraints[item['id']]={k:copy.deepcopy(item[k]) for k in ('applicable_at','omission_reason') if item.get(k)}
+        row.update(publication_scope(item))
         row['publishable']=item.get('basis')!='omitted' and item.get('status') in ('confirmed','explicitly_undisclosed')
         row['source_ids']=[]
         if item.get('basis')!='omitted':
@@ -56,25 +75,35 @@ def decision_bundle(plan, matrix, *, quotes):
                     name='ref'+str(len(ref_ids)+1);ref_ids[key]=name;sources[name]=ref
                 row['source_ids'].append(ref_ids[key])
         rows.append(row)
-    return POLICY+'\n'+json.dumps({'version':POLICY_VERSION,'scope':{k:v for k,v in plan.items() if k in ('candidate_services',)},
-                                  'decisions':rows,'usage_constraints':constraints,'sources':sources},ensure_ascii=False)
+    bundle={'version':POLICY_VERSION,'scope':{k:v for k,v in plan.items() if k in ('candidate_services',)},
+            'decisions':rows,'sources':sources}
+    if planning:
+        bundle['editorial_planning']=outline_planning_context(plan)
+    return POLICY+'\n'+json.dumps(bundle,ensure_ascii=False)
 
 
-def generation_evidence(job_id, facts, sources, *, quotes=True):
+def generation_evidence(job_id, facts, sources, *, quotes=True, planning=False):
     from .research_requirements import require_matrix,load_plan
     # Every writing route uses the same validated evidence boundary.
     current=require_matrix(job_id)
-    return decision_bundle(load_plan(job_id),current,quotes=quotes)
+    return decision_bundle(load_plan(job_id),current,quotes=quotes,planning=planning)
 
 
-def repair_requirements(requirements):
+def repair_requirements(requirements, *, planning=False):
     """Project an already source-scoped repair packet; do not change audit inputs."""
     result=copy.deepcopy(requirements)
+    # Legacy prose constraints are audit records even without a decision bundle.
+    result.pop('usage_constraints',None)
+    plan=result.get('research_plan',{})
+    plan.pop('scope_reason',None)
+    for question in plan.get('items',[]):
+        if not planning:
+            question.pop('priority_reason',None)
+        question.pop('source_requirement',None)
     decisions=result.get('research_decisions')
     if not isinstance(decisions,dict):return result
-    constraints=copy.deepcopy(result.get('usage_constraints',{}))
     for item in decisions.get('items',[]):
-        constraints.setdefault(item['id'],{}).update({k:copy.deepcopy(item[k]) for k in ('applicable_at','omission_reason') if item.get(k)})
+        item.update(publication_scope(item))
         if 'publishable' not in item:
             item['publishable']=item.get('basis')!='omitted' and item.get('status') in ('confirmed','explicitly_undisclosed')
         for key in ('basis','reason','applicable_at','omission_reason','verified','exploration_reason',
@@ -84,10 +113,5 @@ def repair_requirements(requirements):
         for ref in item.get('evidence',item.get('evidence_sources',[])):
             for key in ('source_kind','independence_group','expert_scope_reason'):ref.pop(key,None)
     decisions.pop('coverage_reason',None)
-    result['usage_constraints']=constraints
     result['evidence_usage_policy']=POLICY
-    plan=result.get('research_plan',{})
-    plan.pop('scope_reason',None)
-    for question in plan.get('items',[]):
-        question.pop('priority_reason',None);question.pop('source_requirement',None)
     return result

@@ -60,7 +60,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .quality_context import compact_enabled, CONTEXT_POLICY
     from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
     from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
-    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
+    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -320,7 +321,7 @@ prose_quality: 誤字脱字、文の途切れ、主述や修飾のねじれ、�
 「追加料金が心配な方」「特に避けたいリスクに合わせて選ぶ」のように、具体的な意味が伝わる文は許可する。
 見出しが問いかけたことに本文が答えているかも確認。異なる言い方が好ましいというだけではfailにしない。
 「損をするリスク」と「損するリスク」のように意味も文法も通る活用・言い回しの違いは両方許可する。
-より短くできることや語調が好みでないことだけでは不合格にせず、意味の取り違えや不自然さの具体的な原因を示す。
+完成を止める欠陥と校閲上の改善余地の区別は、共通の「確認結果の扱い」に従う。
 redundancy: 長い説明段落の二重挿入や、複数文にわたる同じ説明の反復で記事が水増しされている箇所を特定。
 軽い冗長さや単文の言い換えは校閲上の好みでありfailにしない。料金条件の再掲、章の結論や短い要約は許可する。
 「もっと短くできる」だけでは不合格にせず、どの複数文・段落が重複しているか具体的に示す。
@@ -331,11 +332,9 @@ affected_blocksには実際に変更・削除するブロックだけを列挙�
 同じH2内に二重挿入されたCTAや、直前の本文がCTAとほぼ同じ案内だけを繰り返す場合を検出する。
 設定されたCTAは残し、不要な本文側の誘導文を短縮・削除する。
 適切な本文の例（全項目pass）:
-「登録に費用はかかりませんが、利用全体がノーリスクになるわけではありません。
-女性は基本機能を無料で使えます。男性はメッセージ送信から有料です。
-退会後はサービス内のプロフィールが他の利用者から閲覧できなくなります。
-相手が保存した画像や決済記録まで削除されることを意味しません。次の章では料金を比較します。」
-この例のリスク否定は男女共通でよく、性別限定がないことは矛盾ではない。
+「登録に費用はかかりません。女性は基本機能を無料で使えます。男性はメッセージ送信から有料です。
+退会後はサービス内のプロフィールが他の利用者から閲覧できなくなります。次の章では料金を比較します。」
+無料の対象、利用条件、閲覧できなくなる範囲が明確で、推奨を弱める一般的な免責も追加していない。
 """
 
 
@@ -419,18 +418,26 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     compact=compact_enabled()
     evidence_trace=[]
     keys=CHECKS;system=AUDIT_SYSTEM + RECOMMENDATION_REVIEW
+    from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
+    system += '\n' + OUTLINE_DESIGN_POLICY + '\ncoverageでは論点がどこかに存在するだけでなく、主検索意図への回答が結論からどの子節・後続章へ具体化されるか、共通提示基準「章の設計と引継ぎ」に沿って見出しの問いに必要な説明の深さが設計されているか、各子節が親見出しの疑問へ答えるか、前提でない補足が詳細を中断しないかを記事全体で照合する。必須・重要論点の割当て、概要と詳細の重複、独立章の必要性、見出しの分かりやすさ、回答範囲と分量の整合性も確認する。情報の存在・調査優先度・文字数合計だけを構成の合格理由にしない。順序の好みだけで不合格にせず、主回答を妨げる箇所と親子の疑問の食い違いを具体的に示す。完成本文の自然さを評価しないことと、構成設計を評価しないことを混同しない。\n'
     if compact:
         from .focused_quality import ROLES
-        evidence_keys=ROLES['evidence']
+        # Outline coverage can depend on a missing decision condition (e.g.
+        # the price of the recommended plan). Route that named dependency
+        # through the same bounded source check, without widening article roles.
+        # Research audit still verifies all adopted guarantee claims. Article
+        # role ownership must not silently change the research evidence set.
+        evidence_keys=tuple(dict.fromkeys((*ROLES['evidence'], 'unsupported_guarantees', 'coverage')))
         from .quality_context import review_facts, review_conditions
         payload['confirmed_facts']=review_facts(facts,requirements)
         payload['conditional_facts']=review_conditions(facts,requirements)
         payload.pop('source_documents')
         payload['source_revision']=digest(sources)
-        from .review_scope import source_resolutions, ROUTING_POLICY
+        from .review_scope import source_resolutions, source_excerpts, ROUTING_POLICY
         payload['article_blocks']=content_blocks(text)
         payload.pop('document')
         payload['requirements']['source_resolutions']=source_resolutions(stage,content_blocks(text),sources,payload['requirements'])
+        payload['source_excerpts']=source_excerpts(stage,sources)
         system+=ROUTING_POLICY
         system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。各checkにrequires_source_checkを返す。提示された採用回答から誤りと修正内容が確定する場合はfail、requires_source_check=falseとして局所修正へ渡す。要約が短い等の理由で原文を見ないと主張の正誤が判断できない事実項目だけfail、requires_source_check=trueとし、reasonに主張と必要な資料を明示する。pass/not_applicableはfalse。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
     request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=audit_output_config(keys, source_routing=compact),
@@ -489,8 +496,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     return report
 
 
-def _require_audit_strict(report: dict, expected: str, *, stage: str | None = None) -> None:
+def _require_audit_strict(report: dict, expected: str, *, stage: str | None = None, context: dict | None = None) -> None:
     checked = parse_audit(json.dumps(report, ensure_ascii=False))
+    if report.get('local_completion') and stage != 'article':
+        raise ContentQualityError('局所文章修正の完了には記事全体との照合が必要です。')
     if stage and report.get('stage') != stage:
         raise ContentQualityError('監査工程が現在の本文に対応していません。')
     if stage == 'article':
@@ -500,7 +509,11 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
         phases = report.get('phases', {})
         if set(phases) != set(ROLES):
             raise ContentQualityError('分割品質検査が不足しています。')
-        for role, keys in ROLES.items():
+        local = report.get('local_completion')
+        if local:
+            from .prose_completion import validate_completion
+            validate_completion(report, expected, context)
+        for role, keys in (() if local else ROLES.items()):
             phase = phases[role]
             checks = phase.get('checks', [])
             if phase.get('snapshot') != expected or len(checks) != len(keys) or {c.get('key') for c in checks} != set(keys) or any(c.get('status') != 'pass' for c in checks):

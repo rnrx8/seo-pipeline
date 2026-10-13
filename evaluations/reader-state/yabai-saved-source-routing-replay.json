@@ -1,0 +1,17 @@
+{
+  "type": "offline_saved_data_routing_replay",
+  "model_calls": 0,
+  "production_writes": false,
+  "question": "q10",
+  "subject_source_count": 8,
+  "expansion_triggered": true,
+  "saved_daylight_investment_text_retained_for_next_audit": true,
+  "article_pass_established": false,
+  "free_tests_passed": 551,
+  "remaining": [
+    "q01 scope requires model review",
+    "q12 classification requires model review",
+    "q15 original case evidence unresolved"
+  ],
+  "spend_unchanged": true
+}

@@ -2,7 +2,7 @@
 import copy
 import json
 
-CONTEXT_POLICY = 'role-input-v5-intent-value-outline-and-coverage'
+CONTEXT_POLICY = 'role-input-v6-editorial-checklist-routing'
 
 
 def compact_enabled():
@@ -26,6 +26,40 @@ def decision_brief(requirements):
             for key in ('official_checked_urls','exploration_reason','omission_source_review','omission_candidate_from','unresolved_candidate','reviewed_source_urls','additional_sources_needed','exploration_complete'):
                 item.pop(key,None)
     return result
+
+
+# Route the existing built-in checklist, not user rules. Unknown future sections
+# are retained so extending the checklist cannot silently discard requirements.
+EDITORIAL_OWNERS = {
+    '### 【文章の意味と自然さ】': ('language', 'coverage', 'consistency'),
+    '1. 共感表現の語尾': ('language',),
+    '2. H2直下の結論文チェック': ('coverage', 'organization'),
+    '3. H3直下の本文チェック': ('coverage', 'organization'),
+    '4. 表・リスト直前の導入文チェック': ('organization',),
+    '5. プレーンテキスト連続300字超の検出・修正': ('organization',),
+    '6. 長文チェック': ('language',),
+    '7. 文体チェック': ('language',),
+    '8. H2見出しの可読性チェック': ('organization',),
+    '9. 紹介サービス見出しの重複チェック': ('consistency',),
+    '10. 学習済み執筆ルールの適用': ('language',),
+    '11. 並列・列挙内容のリスト化チェック': ('organization',),
+}
+
+
+def editorial_rules_for_role(rules, role):
+    from .step_review import SYSTEM_PROMPT
+    import re
+    builtin = SYSTEM_PROMPT.split('【チェック・修正項目】', 1)[1].split('【出力フォーマット】', 1)[0]
+    if rules != builtin or role not in ('evidence', 'coverage', 'language', 'consistency', 'organization'):
+        return rules
+    sections = re.split(r'(?m)(?=^### 【|^\d+\. )', rules)
+    selected = []
+    for section in sections:
+        owners = next((owners for prefix, owners in EDITORIAL_OWNERS.items()
+                       if section.startswith(prefix)), None)
+        if owners is None or role in owners:
+            selected.append(section)
+    return ''.join(selected)
 
 
 def review_requirements(requirements, role):

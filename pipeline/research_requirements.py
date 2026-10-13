@@ -2,7 +2,7 @@
 import json
 import re
 from urllib.parse import urlsplit
-from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION
+from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION, SOURCE_BASES, allowed_source_bases
 from .fresh_sources import normalize_url
 import anthropic
 from .ai import create_with_retry, get_step_config, is_openai_model
@@ -46,24 +46,28 @@ planの各質問に今回直接取得した原文だけで答えられるかを1
 未調査を正直に書いたことは合格理由にならない。原文の一部に記載がないことを非公表としない。
 一部サービスだけ回答できても質問が複数社を指定した場合は充足ではない。
 statusは confirmed / explicitly_undisclosed / unresearched / fetch_failed / searched_not_found。
-confirmedは主要な回答に必要な対象・期間・条件を満たし、その範囲の証拠を示せる場合。補助的な未確認細目は回答から省く。
+confirmedは、質問の主要な疑問に対して採用する主張が必要な対象・期間・条件と共通の根拠基準を満たす場合。運営者名、届出・認証の有無、識別番号、機能の存在、適用プラン等の主張はそれぞれ対象・条件を揃えて照合する。一致する主要な主張が根拠基準を満たし、不一致の細目を省いても読者の判断が変わらなければ、主要な主張だけをanswerへ採用する。例えば届出の有無が一致して番号だけが異なる場合、番号を確定しないことと、届出の有無を未確認とすることは別である。番号の違いが別の対象・運営者・期間を示す等、主要な主張の対象や条件まで食い違う具体的根拠があれば、その主要な主張も未解決とする。相違を根拠なく誤植・旧情報と決めない。採用しない細目はclaim_limitsへ、理由は調査記録へ分ける。主要な回答の成立に必要な条件は削らない。
 explicitly_undisclosedは非公開と公式に明記されている場合だけ。searched_not_foundは調べたが見つからない場合。
 証拠はsourcesに実在するURLと、そのページの短い連続した原文quoteを返す。省略記号や言い換えは禁止。
 複数社や複数条件の質問はそれぞれの証拠を返す。要約だけを証拠にしない。
-answerには対象・条件・期間を含む回答事実だけを書く。出典の種別、取得成否、採用経緯はreason・basis・applicable_at等の管理フィールドへ分ける。実際の過去時点や利用条件はanswerから落とさない。
+answerには採用した回答事実と、その意味を限定する対象・条件・期間だけを書く。publication_conditionsは、読者が採用回答を使って判断するための実条件の配列（対象、プラン、総額払い、税込・税抜、実際の集計・適用期間等）。answerにある条件も保持し、別欄にしか必要条件が残っていないか確認する。各要素は根拠本文が支える実条件に限り、条件が不要なら空配列。
+claim_limitsは、執筆が採用回答を広げないための指示の配列（採用する範囲・省く細目・保証へ変換しない境界）。例「機能の存在だけを説明し、無料範囲や対象プランを推測しない」。省く項目を掲載条件にせず、省略や採用の理由は調査記録へ分ける。必要な制限がなければ空配列。これは読者向けの免責文ではない。
+出典の種別、取得成否、採用経緯、根拠の公開・更新・取得日はreason・basis・applicable_at・omission_reason等の調査記録へ分ける。調査記録は構成・本文生成へ渡さず、出典表示機能と確認処理が使う。実際の過去時点や利用条件はanswerとpublication_conditionsへ保持し、公開・更新・取得日を適用開始日や集計期間に置き換えない。体験報告・意見の発信者やアンケート調査主体など、主張の意味を限定する帰属は回答に保持する。通常の採用事実に出典種別の説明を付けない。
 JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答","evidence":[{"url":"...","quote":"..."}],"reason":"判断理由/不足の対象と項目"}]} のみ。'''
 
 PLAN_SYSTEM += EVIDENCE_POLICY
 MATRIX_SYSTEM += EVIDENCE_POLICY + '''
 各項目にbasis(primary/guidance/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
-primaryは直接の公式/原典で、本人に帰属を限定した体験報告は本人の発信原文が該当する。guidanceはgeneral_guidanceの質問に対する取得本文の範囲内の一般的助言。expertはexpert_allowedの質問への有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
+primaryは直接の公式/原典で、本人に帰属を限定した体験報告は本人の発信原文が該当する。guidanceは取得本文の範囲内の一般的助言。expertは有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
 expert採用時は、使用する各専門解説のevidenceにexpert_name、expert_qualification_quote（同じ取得本文にある氏名・資格・執筆/監修の関与を示す連続した原文）、expert_scope_reason（専門分野と回答範囲が適合する理由）を記録する。それ以外は空文字。専門解説のsource_kindはsecondaryのまま。名前だけの登場や資格不明のメディア解説では不可。
-official_checked_urlsはsources内で実際に取得を試みた関連公式資料のURL。存在しない探索記録を作らない。未調査・取得失敗だけでomittedにしない。十分な関連資料の探索後に省略可否を判定する。公式の関連ページ・別の公式資料・第三者本文のどこまで探索したかexploration_reasonに記録し、不足が残ればexploration_complete=false。
-exploration_completeは対象・論点に関連する取得済み資料を合理的に確認し終えたことを指す。ウェブ全体の探索完了や、各補助項目専用の追加検索を要求しない。同じ対象の料金・FAQ等の関連本文は複数質問の探索記録に利用できる。関連資料が未取得・未確認なのに探索済みとはしない。記事で使わない補助情報を省略できるか判断するためだけに際限なく調査を追加しない。
+official_checked_urlsはsources内で実際に取得を試みた関連公式資料のURL。存在しない探索記録を作らない。未調査・取得失敗だけでomittedにしない。十分な関連資料の探索後に省略可否を判定する。公式の関連ページ・別の公式資料・第三者本文のどこまで探索したかexploration_reasonに記録する。
+exploration_completeは対象・論点に関連する取得済み資料を合理的に確認し終えたことを指す。回答が質問の全細目を満たすかとは別であり、確認後も残る未回答部分はomission_reasonに記録して全体網羅性判定へ渡す。ウェブ全体の探索完了や、各補助項目専用の追加検索を要求しない。同じ対象の料金・FAQ等の関連本文は複数質問の探索記録に利用できる。関連資料が未取得・未確認なのに探索済みとはしない。記事で使わない補助情報を省略できるか判断するためだけに際限なく調査を追加しない。
 essentialは非公表でも自動合格にしない。important/supportingは省略理由と検索への回答・比較・結論が維持される条件をomission_reasonへ明記。
 全項目の省略を合わせても記事の重要論点を網羅できるかcoverage_sufficientとcoverage_reasonで判定。
 調査計画の重要度は変更しない。保存するanswerは引用が直接支える範囲のみ。複数の条件・断定を引用1件でまとめて保証しない。
 '''
+
+MATRIX_SYSTEM += '\n質問のsource_requirementごとに許されるbasisは次の通り。各basisの根拠要件も満たすこと。区分に合わない出典をprimary等へ付け替えて通さず、満たせない場合はunresolvedと理由を返す。\n' + json.dumps(SOURCE_BASES, ensure_ascii=False)
 
 def _schema(properties):
     return {'format':{'type':'json_schema','schema':{'type':'object','properties':{'items':{'type':'array','items':{
@@ -80,12 +84,14 @@ MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum'
 PLAN_SCHEMA['format']['schema']['properties']['items']['items']['properties'].update({
     'subject': {'type':'string'}, 'priority': {'type':'string','enum':['essential','important','supporting']},
     'priority_reason': {'type':'string'}, 'source_requirement': {'type':'string','enum':['standard','general_guidance','expert_allowed','primary_only']},
-    'requires_current': {'type':'boolean'}})
-PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current']
+    'requires_current': {'type':'boolean'}, 'official_check_required': {'type':'boolean'}})
+PLAN_SCHEMA['format']['schema']['properties']['items']['items']['required'] += ['subject','priority','priority_reason','source_requirement','requires_current','official_check_required']
 mp = MATRIX_SCHEMA['format']['schema']['properties']['items']['items']
 mp['properties'].update({'basis':{'type':'string','enum':['primary','guidance','expert','corroborated','historical','omitted','unresolved']},
     'official_checked_urls':{'type':'array','items':{'type':'string'}}, 'applicable_at':{'type':'string'},
     'supports_current_conclusion':{'type':'boolean'}, 'omission_reason':{'type':'string'},
+    'publication_conditions':{'type':'array','items':{'type':'string'}},
+    'claim_limits':{'type':'array','items':{'type':'string'}},
     'exploration_complete':{'type':'boolean'}, 'exploration_reason':{'type':'string'}})
 mp['required'] = list(mp['properties'])
 ep = mp['properties']['evidence']['items']
@@ -106,6 +112,8 @@ def validate_plan(value):
     if not 1 <= len(items) <= 120 or len({i['id'] for i in items}) != len(items):
         raise ContentQualityError('調査計画の項目数・IDが不正です。')
     for i in items:
+        if 'official_check_required' in i and type(i['official_check_required']) is not bool:
+            raise ContentQualityError('公式先行確認の適用条件が不正です。')
         if i.get('priority') not in ('essential','important','supporting') or not i.get('subject','').strip() or not i.get('priority_reason','').strip():
             raise ContentQualityError('調査計画の対象・重要度・理由が不足しています。計画から再実行してください。')
         if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','general_guidance','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
@@ -344,6 +352,11 @@ def validate_matrix(value, plan_value, pages):
     if any(not isinstance(r,dict) or not isinstance(r.get('url'),str) or not isinstance(r.get('quote'),str) for i in items for r in i['evidence']):
         raise ContentQualityError('調査確認の引用形式が不正です。')
     if len(items)!=len(required) or {i.get('id') for i in items}!=set(required): raise ContentQualityError('調査確認の質問が不足・重複しています。')
+    # A malformed handoff is not missing source material; stop before retrieval.
+    from .generation_context import publication_scope
+    for item in items:
+        if 'publication_conditions' in item or 'claim_limits' in item:
+            publication_scope(item)
     normalize=lambda s: re.sub(r'\s+','',s)
     bodies={p['url']:normalize(p['text']) for p in pages if p.get('status','success')=='success' and p.get('text')}
     gaps=[]
@@ -359,9 +372,24 @@ def validate_matrix(value, plan_value, pages):
         planned = required[item['id']]
         if 'priority' in planned:
             basis = item.get('basis')
+            item.pop('validation_issue', None)
+            if basis not in allowed_source_bases(planned['source_requirement']):
+                accepted = False
+                item['validation_issue'] = {
+                    'code': 'source_basis_mismatch',
+                    'source_requirement': planned['source_requirement'], 'basis': basis,
+                    'allowed_bases': list(allowed_source_bases(planned['source_requirement'])),
+                }
             attempted = [normalize_url(u) for u in item.get('official_checked_urls', [])]
             visited = {normalize_url(p['url']) for p in pages}
-            explored = bool(attempted) and all(u and u in visited for u in attempted) and item.get('exploration_complete') is True and bool(item.get('exploration_reason','').strip())
+            # Missing classification on saved plans retains the old official-first rule.
+            official_required = planned.get('official_check_required', True)
+            if type(official_required) is not bool:
+                raise ContentQualityError('公式先行確認の適用条件が不正です。')
+            explored = ((not official_required or bool(attempted))
+                and all(u and u in visited for u in attempted)
+                and item.get('exploration_complete') is True
+                and bool(item.get('exploration_reason','').strip()))
             primary = any(r.get('source_kind') == 'primary' for r in refs)
             expert = (planned['source_requirement'] == 'expert_allowed' and any(
                 r.get('source_kind') == 'secondary' and r.get('expert_name','').strip()
@@ -375,7 +403,16 @@ def validate_matrix(value, plan_value, pages):
             if basis == 'primary': accepted = accepted and primary
             elif basis == 'guidance': accepted = accepted and planned['source_requirement']=='general_guidance'
             elif basis == 'expert': accepted = accepted and expert
-            elif basis == 'corroborated': accepted = accepted and planned['source_requirement']=='standard' and corroborated
+            elif basis == 'corroborated':
+                accepted = accepted and planned['source_requirement']=='standard' and corroborated
+                if not accepted and not item.get('validation_issue'):
+                    item['validation_issue'] = {
+                        'code':'corroboration_requirements_unmet',
+                        'official_check_required':official_required,
+                        'official_attempt_recorded':bool(attempted),
+                        'exploration_complete':explored,
+                        'independent_groups':len(groups), 'independent_domains':len(domains),
+                    }
             elif basis == 'historical':
                 accepted = accepted and bool(item.get('applicable_at','').strip()) and (primary or expert or (planned['source_requirement']=='standard' and corroborated))
             elif basis == 'omitted':
@@ -387,7 +424,12 @@ def validate_matrix(value, plan_value, pages):
             if basis != 'omitted' and item['status'] != 'confirmed': accepted = False
         item['verified']=accepted
         if (required[item['id']]['required'] or 'priority' in required[item['id']]) and not accepted:
-            gaps.append({**required[item['id']], 'status':item['status'],'reason':item.get('reason','根拠不足')})
+            reason = item.get('reason','根拠不足')
+            issue = item.get('validation_issue')
+            if issue and issue['code'] == 'source_basis_mismatch':
+                reason = f"根拠区分の不整合：{issue['source_requirement']}に{issue['basis']}は採用できません。モデルの説明：" + reason
+            gaps.append({**required[item['id']], 'status':item['status'],'reason':reason,
+                         **({'validation_issue':issue} if issue else {})})
     for issue in value.get('coverage_issues',[]):
         if issue.get('id') not in required or not issue.get('reason','').strip() or value.get('coverage_sufficient') is True:
             raise ContentQualityError('調査全体の指摘項目が不正です。')
@@ -484,6 +526,18 @@ def retrieval_gaps(gaps, matrix, pages):
 def supplement_once(job_id, keyword, plan, gaps, api_key=None, *, matrix=None):
     """One supplemental collection per job, resumable at completed subject receipts."""
     from . import step_fact_sheet
+    # A validator/model disagreement is not missing source material. Preserve
+    # the failed matrix and stop before consuming the supplemental search slot.
+    planned = {q['id']:q for q in plan['items']}
+    conflicts = []
+    for item in (matrix or {}).get('items', []):
+        question = planned.get(item.get('id'), {})
+        if ('source_requirement' in question
+                and item.get('basis') not in allowed_source_bases(question['source_requirement'])):
+            conflicts.append(item['id'])
+    conflicts.extend(g['id'] for g in gaps if g.get('validation_issue', {}).get('code') == 'source_basis_mismatch')
+    if conflicts:
+        raise ContentQualityError('根拠区分の判定が不整合です。資料不足として追加調査しません：' + ', '.join(sorted(set(conflicts))))
     key=digest(json.dumps({'plan':plan,'gaps':gaps},ensure_ascii=False,sort_keys=True))
     old=get_optional_artifact(job_id,'research_supplement')
     if old:
@@ -562,6 +616,9 @@ def _require_matrix_strict(job_id):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
     if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
+    from .generation_context import publication_scope
+    for item in matrix['items']:
+        publication_scope(item)
     return matrix
 
 

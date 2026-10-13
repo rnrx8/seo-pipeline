@@ -1,0 +1,35 @@
+{
+  "status": "offline_preflight_complete_paid_authorization_pending",
+  "paid_calls": 0,
+  "production_changes": false,
+  "source": "existing hybrid article after the successful two-paragraph automatic repair",
+  "stages_to_reuse": [
+    "research",
+    "outline",
+    "article generation",
+    "successful two-paragraph repair"
+  ],
+  "offline_checks": {
+    "research_matrix_ready": true,
+    "whole_article_mechanical_issues": [],
+    "remaining_final_gate": "current-policy article audit",
+    "tests_passed": 529
+  },
+  "incident_fixed": "Previous presentation clarification in evidence_policy invalidated stored research signatures. Restored research policy and placed interpretation in shared reader presentation policy; saved research passes without rewriting hashes.",
+  "proposed_paid_scope": [
+    "current-policy whole-article audit",
+    "at most one normal repair if required",
+    "one whole-article re-audit after repair",
+    "unpaid final validation"
+  ],
+  "proposed_cap_jpy": 200,
+  "conversion_jpy_per_usd": 200,
+  "historical_comparable_costs_jpy": {
+    "full_audit": 66.7398,
+    "repair": 42.0656,
+    "reaudit": 65.890575
+  },
+  "historical_combined_jpy": 174.695975,
+  "estimate_caveat": "Historical comparable usage, not a current-token quote or completion guarantee. Additional evidence checks share the same cap. Stop before exceeding the cap; no new research, regeneration, automatic extra pass or production write.",
+  "scope_caveat": "Completion tail from existing generated article, not a fresh end-to-end generation run. Prior 6.47 JPY model result is retained but does not replace current-policy whole audit."
+}

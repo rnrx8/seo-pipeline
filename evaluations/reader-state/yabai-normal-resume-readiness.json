@@ -1,0 +1,62 @@
+{
+  "status": "normal_resume_prepared_not_executed",
+  "model_calls": 0,
+  "new_search_calls": 0,
+  "production_writes": false,
+  "keyword": "既婚者マッチングアプリ やばい",
+  "preset": "meetingtechnology",
+  "plan_current_and_valid": true,
+  "questions": 40,
+  "saved_sources": 26,
+  "saved_collection_slots": 5,
+  "empty_collection_slots": [],
+  "dynamic_source_retry_candidates": [],
+  "current_matrix_ready": false,
+  "supplement_completed": true,
+  "new_supplement_allowed": false,
+  "resume_stages": [
+    "research_completeness",
+    "reference_structure",
+    "content_contract",
+    "outline",
+    "structure_guard",
+    "research_validation",
+    "service_map",
+    "article",
+    "cta_inject",
+    "content_audit",
+    "final_structure_validation"
+  ],
+  "reused_stages": [
+    "serp",
+    "search_intent",
+    "research_plan",
+    "fact_sheet"
+  ],
+  "normal_recheck_scope": "All research questions under current shared policy; old cached requests are invalidated by changed policy. Scoped diagnostic outputs are not automatic whole-flow passes.",
+  "total_spent_jpy": 771.4558199999998,
+  "quality_spent_jpy": 450.09899,
+  "total_remaining_jpy": 728.5441800000002,
+  "quality_remaining_jpy": 199.90100999999999,
+  "historical_scenarios_not_quotes": {
+    "research_recheck": 124.495775,
+    "sonnet_draft": 112.8152,
+    "article_first_audit": 66.7398,
+    "article_repair": 42.0656,
+    "article_reaudit": 65.890575,
+    "quality_without_repair_excluding_outline": 191.23557499999998,
+    "quality_with_article_repair_excluding_outline": 299.19175,
+    "draft_and_quality_without_repair_excluding_outline": 304.050775
+  },
+  "unpriced_until_generated": [
+    "outline and service mapping",
+    "outline review and possible repair",
+    "actual article size and additional normal repairs"
+  ],
+  "completion_with_remaining_quality_budget": "not_established; historical no-repair research+article audit leaves about 9 JPY for outline review; one article repair exceeds remaining quality budget",
+  "next_decision": "Do not start normal full recheck silently. Resolve the quality allocation or agree a separately validated reuse path before paid resume. Total/default budgets unchanged.",
+  "proposed_trial_only_quality_cap_jpy": 850,
+  "proposed_total_cap_jpy": 1500,
+  "budget_change_applied": false,
+  "proposal_rationale": "Current remaining quality 199.90 versus historical research + first article audit 191.24 before outline checks; one repair/re-audit raises that to 299.19. Reallocation gives 399.90 quality remaining under unchanged total 728.54 remaining. Completion is not guaranteed."
+}

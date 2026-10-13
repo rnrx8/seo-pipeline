@@ -1,0 +1,46 @@
+{
+  "status": "scoped_model_check_finished_new_official_scope_defect_fixed_offline",
+  "model_calls": 1,
+  "additional_cost_jpy": 27.389000000000003,
+  "cumulative_quality_jpy": 226.428015,
+  "quality_cap_jpy": 250,
+  "remaining_quality_jpy": 23.571985000000012,
+  "source_basis_mismatch_resolved": true,
+  "original_plan_accepted_items": [],
+  "checks": [
+    {
+      "id": "q07",
+      "old_plan_verified": false,
+      "old_validation_issue": {
+        "code": "corroboration_requirements_unmet",
+        "official_check_required": true,
+        "official_attempt_recorded": false,
+        "exploration_complete": false,
+        "independent_groups": 3,
+        "independent_domains": 3
+      },
+      "candidate_general_scope_verified": true,
+      "candidate_only_not_applied": true
+    },
+    {
+      "id": "q10",
+      "old_plan_verified": false,
+      "old_validation_issue": {
+        "code": "corroboration_requirements_unmet",
+        "official_check_required": true,
+        "official_attempt_recorded": false,
+        "exploration_complete": false,
+        "independent_groups": 2,
+        "independent_domains": 2
+      },
+      "candidate_general_scope_verified": true,
+      "candidate_only_not_applied": true
+    }
+  ],
+  "free_tests_passed": 545,
+  "production_writes": false,
+  "article_completed": false,
+  "saved_plan_and_model_response_unmodified": true,
+  "policy_change": "Separate official-first applicability from evidence quality in reviewed question plan; retain official-first for legacy or commercial questions and independent-source checks for general claims.",
+  "next_step": "Review the affected saved plan under updated policy before any normal-flow resume. No automatic new generation, budget increase, or pass migration."
+}

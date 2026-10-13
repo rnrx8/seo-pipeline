@@ -1,0 +1,59 @@
+{
+  "stage": "outline_repaired_reaudit_pending_bounded_source_resolution",
+  "production_writes": false,
+  "article_generated": false,
+  "current_turn_cost_jpy": 53.1698,
+  "total_trial_jpy": 1070.41062,
+  "quality_cost_jpy": 632.36819,
+  "limits_jpy": {
+    "total": 1500,
+    "quality": 850,
+    "outline": 160
+  },
+  "outline_phase_spend_jpy": 82.343225,
+  "repair_cost_jpy": 26.6608,
+  "reaudit_cost_jpy": 26.509,
+  "free_tests_passed": 574,
+  "original_audit_findings_repaired": true,
+  "remaining_failures": [
+    {
+      "key": "evidence_support",
+      "reason": "法的線引き、慰謝料100万～300万円、既婚者クラブのミニプラン1か月8,880円・3か月総額20,640円、Healmateの料金、CuddleのBasic料金などは採用回答と一致する。一方、比較章の「Prime 1ヶ月（30日）19,980円」とCuddle個別表の「Prime 12ヶ月（360日）は月額換算13,980円・一括167,760円」は、q35の採用回答に含まれていない。q36が確認しているのは男性Prime以上でのシークレットモード利用条件であり、その料金を裏付けるものではない。また、比較表の「アプリのインストール」列はCuddleについても埋める設計だが、提示された採用回答にはCuddleの提供形態がない。料金ページで男性Primeの期間・金額・税込条件を、公式トップページでCuddleのインストール要否を照合する必要がある。要約にないだけで誤りとは確定できないため、該当箇所に限った原文確認が必要。",
+      "status": "fail",
+      "requires_source_check": true,
+      "affected_blocks": [
+        {
+          "id": "block-0100",
+          "reason": "比較表・目的別リスト・根拠欄で男性Primeの30日19,980円を使用する指定がある。比較表のCuddleのインストール要否も採用回答では未確認。"
+        },
+        {
+          "id": "block-0124",
+          "reason": "男性Primeの30日19,980円、360日の月額換算13,980円・一括167,760円を個別情報表へ掲載する指定があるが、採用回答に料金の裏付けがない。"
+        }
+      ],
+      "research_ids": [
+        "q35",
+        "q36"
+      ],
+      "source_urls": [
+        "https://www.cuddle-jp.com/pricing.html",
+        "https://www.cuddle-jp.com"
+      ]
+    }
+  ],
+  "root_cause": "Source verdicts were correctly invalidated by edited blocks, but their correction source excerpts were discarded too. Revised reviewer saw Prime pricing absent from accepted matrix and requested the same source again.",
+  "fix": "Bind raw correction excerpts to source snapshots separately from block-bound verdicts. Carry unchanged source excerpts to outline and article evidence review. No inherited pass; changed page or fetch invalidates excerpt.",
+  "remaining_live_verification": "Not complete: no new review call after this fix. Current saved audit can resume its one bounded source check rather than rerun whole audit.",
+  "next_preflight": {
+    "generation_calls": 0,
+    "request_model": "gpt-6-luna",
+    "maximum_reservation_jpy": 2.2192,
+    "source_urls": [
+      "https://www.cuddle-jp.com",
+      "https://www.cuddle-jp.com/pricing.html"
+    ],
+    "scope": "Same Cuddle Prime prices and browser-only availability; no outline regeneration or full audit repeat",
+    "requires_authorization": "One additional source-screen call; existing 2 calls used. Total and quality and phase caps unchanged."
+  },
+  "execution_adapter_note": "Before transport, isolated runner needed resolved word-count settings, explicit authorized phase allocation persisted in ledger, and job scope around direct guard call. Those adapter errors incurred no provider calls."
+}

@@ -1,0 +1,34 @@
+{
+  "status": "plan_diagnostic_completed_candidate_prepared_not_applied",
+  "model": "gpt-6.1-sol",
+  "model_calls": 1,
+  "this_check_jpy": 22.175499999999992,
+  "trial_cumulative_jpy": 720.48082,
+  "quality_cumulative_jpy": 399.12399,
+  "input_reservation_ceiling_jpy": 34.357,
+  "production_writes": false,
+  "article_generated": false,
+  "q12_general_guidance_misclassification_detected": true,
+  "scope_checks_returned": 40,
+  "changed_candidate_ids": [
+    "q01",
+    "q02",
+    "q03",
+    "q04",
+    "q05",
+    "q12",
+    "q16",
+    "q19",
+    "q24"
+  ],
+  "candidate_structurally_valid": true,
+  "priority_changes": false,
+  "original_plan_or_matrix_modified": false,
+  "remaining": [
+    "Corrected candidate not yet independently reviewed",
+    "q01 criminal/civil distinction still requested by reviewer; no evidence sufficiency established",
+    "q10 routing repaired offline; new semantic verification not run",
+    "q15 original example still unresolved"
+  ],
+  "next_scope": "Review corrected plan before any matrix resumption; no automatic third research attempt or whole-article restart."
+}

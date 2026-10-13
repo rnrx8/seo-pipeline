@@ -1,0 +1,76 @@
+{
+  "status": "one_opus_repair_complete_reaudit_failed_prose",
+  "source_job": "a401a011-bfd9-44c9-86e7-4bb9f61b2988",
+  "keyword": "マッチングアプリ 40代 既婚者",
+  "preset": "meetingtechnology",
+  "branch_only": true,
+  "configuration": {
+    "ARTICLE_WRITING_FLOW": "sonnet_opus",
+    "ARTICLE_REVIEW_PROVIDER": "tiered",
+    "QUALITY_RESEARCH_ROUTING": "focused"
+  },
+  "reuse": [
+    "accepted research and source artifacts",
+    "existing full outline",
+    "service and preset settings"
+  ],
+  "run": [
+    "normal full article generation (three Sonnet parts)",
+    "existing injection/structure stages",
+    "existing five quality roles",
+    "existing bounded local Opus correction if required",
+    "existing re-audit and final validation"
+  ],
+  "no_new_stages": true,
+  "not_part_of_this_test": [
+    "new research",
+    "new automated reader-state outline generation",
+    "production deployment",
+    "duplicate full Opus generation"
+  ],
+  "proposed_new_cap_jpy": 500,
+  "yen_per_usd_for_budget": 200,
+  "cap_is_not_cost_prediction_or_completion_guarantee": true,
+  "previous_experiment_spend_jpy": 175.9193,
+  "previous_experiment_cap_jpy": 200,
+  "draft_cost_scenario_only": {
+    "assumed_input_tokens_per_part": 63040,
+    "assumed_output_tokens_per_part": 7000,
+    "parts": 3,
+    "sonnet_uncached_jpy": 117.648,
+    "opus_uncached_jpy_same_token_usage": 235.296,
+    "notes": "Illustration using measured excerpt input size and assumed full-article per-part output, not counted normal-flow requests. Opus token usage need not equal Sonnet. Review, repair, tools and tax are excluded."
+  },
+  "completion_rules": [
+    "do not extend budget automatically",
+    "preserve partial outputs and actual charges if cap blocks completion",
+    "no fresh job restart to bypass retry limits",
+    "do not add manual prose corrections and claim normal-flow completion"
+  ],
+  "preflight_after_approval": [
+    "verify frozen artifact policy compatibility without paid recomputation",
+    "prepare actual three-part requests and count inputs",
+    "check ledger limits and existing operation limits against the new test cap",
+    "run isolated worker with branch code and a separate test job/output destination"
+  ],
+  "authorized_new_cap_jpy": 500,
+  "test_job_id": "7b3faf7b-0675-44a3-b023-d94e2381db78",
+  "compatibility": {
+    "research_items": 31,
+    "matrix_valid": true,
+    "outline_change": "Remove one obsolete reader-facing guarantee-denial instruction; retain headings, evidence and volume.",
+    "fresh_outline_audit_required": true,
+    "outline_audit_counts_inside_cap": true,
+    "free_tests_passed": 503
+  },
+  "result_file": "hybrid-full-article-result.json",
+  "authorized_repair_resume": {
+    "total_cap_jpy": 500,
+    "isolated_quality_allocation_jpy": 500,
+    "extra_role": "coverage",
+    "extra_calls": 1,
+    "production_defaults_unchanged": true,
+    "completed": true,
+    "final_acceptance": false
+  }
+}

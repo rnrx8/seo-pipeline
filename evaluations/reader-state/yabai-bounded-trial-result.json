@@ -1,0 +1,39 @@
+{
+  "status": "stopped_before_outline_and_article",
+  "keyword": "既婚者マッチングアプリ やばい",
+  "preset": "meetingtechnology",
+  "total_jpy": 520.3958449999998,
+  "category_jpy": {
+    "generation": 321.35682999999983,
+    "quality": 199.03901499999998
+  },
+  "rate_basis": "Existing rates, 200 JPY/USD; usage estimate not invoice",
+  "total_cap_jpy": 1500,
+  "quality_cap_jpy": 250,
+  "stop_reason": "Next review reservation exceeded remaining quality allowance; request not sent",
+  "source_requirement_diagnostic": [
+    {
+      "id": "q07",
+      "actual_source_requirement": "standard",
+      "model_basis": "expert",
+      "model_requested_additional_sources": false,
+      "actual_verified": false,
+      "hypothetical_expert_allowed_verified": true,
+      "hypothesis_only_not_applied": true
+    },
+    {
+      "id": "q10",
+      "actual_source_requirement": "standard",
+      "model_basis": "expert",
+      "model_requested_additional_sources": false,
+      "actual_verified": false,
+      "hypothetical_expert_allowed_verified": true,
+      "hypothesis_only_not_applied": true
+    }
+  ],
+  "code_changes": false,
+  "acceptance_criteria_changes": false,
+  "production_writes": false,
+  "automatic_budget_increase": false,
+  "next_work": "Align model evidence-basis selection and deterministic validation; distinguish policy mismatch from missing evidence before retrieval. Retain criteria; no blanket acceptance of expert sources and no automatic paid rerun."
+}

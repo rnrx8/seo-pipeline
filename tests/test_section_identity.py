@@ -74,3 +74,30 @@ class SectionPipelineIntegrationTests(unittest.TestCase):
         self.assertEqual(len(calls),2)
         self.assertIn('機能を重視',artifacts['article']['content_text'])
         self.assertEqual(artifacts['article']['meta']['section_map']['entries'][1]['id'],'section-001')
+
+class ExtraHeadingRegressionTests(unittest.TestCase):
+    def test_unplanned_headings_fail_with_and_without_binding(self):
+        for level in (2, 3, 4):
+            text=TEXT+'\n'+'#'*level+' 追加した案内\n案内です。'
+            for binding in (None, bind_sections(text, OUTLINE)):
+                issues=validate_delivery(text, OUTLINE, section_map=binding)
+                self.assertIn('unexpected_heading', [v['key'] for v in issues])
+
+    def test_explicit_repair_h4_is_distinct_from_writer_addition(self):
+        after=TEXT.replace('説明。'*25, '説明。'*25+'\n#### 条件の詳細\n説明です。')
+        carried=carry_sections(TEXT,after,OUTLINE,bind_sections(TEXT,OUTLINE),allow_h4=True)
+        self.assertEqual(validate_delivery(after,OUTLINE,section_map=carried),[])
+        self.assertIn('unexpected_heading',[v['key'] for v in validate_delivery(after,OUTLINE,section_map=bind_sections(after,OUTLINE))])
+
+    def test_unplanned_heading_stops_before_paid_audit(self):
+        import json
+        from unittest.mock import patch
+        from pipeline import step_content_audit as step
+        from pipeline.content_quality import ContentQualityError
+        article=TEXT+'\n### どの章を読むか\n案内です。'
+        artifacts={'article':{'content_text':article},'outline':{'content_text':OUTLINE},
+                   'fact_sheet':{'content_text':''},'fresh_sources':{'content_text':'[]'},
+                   'content_contract':{'content_text':'{}'}}
+        with patch.object(step,'get_job',return_value={}),patch.object(step,'get_artifact',side_effect=lambda _,k:artifacts[k]),patch.object(step,'audit') as paid:
+            with self.assertRaises(ContentQualityError):step.run('j','比較')
+            paid.assert_not_called()

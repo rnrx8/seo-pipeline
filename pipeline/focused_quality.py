@@ -4,22 +4,22 @@ from datetime import datetime, timezone
 from .ai import create_with_retry, get_step_config
 from .reader_presentation import RECOMMENDATION_REVIEW
 from .content_edits import content_blocks
-from .readability import READABILITY_POLICY, readability_issues
-from .quality_context import review_requirements, compact_enabled, review_facts
+from .readability import READABILITY_POLICY, readability_issues, long_sentence_candidates, SENTENCE_REVIEW_LIMIT
+from .quality_context import review_requirements, compact_enabled, review_facts, editorial_rules_for_role
 
 ROLES = {
-    'evidence': ('evidence_support', 'comparison_conditions', 'metric_scope', 'unsupported_guarantees'),
+    'evidence': ('evidence_support', 'comparison_conditions', 'metric_scope'),
     'coverage': ('coverage', 'unfinished_content'),
     'language': ('prose_quality',),
-    'consistency': ('conclusion_consistency', 'redundancy'),
+    'consistency': ('conclusion_consistency', 'redundancy', 'unsupported_guarantees'),
     'organization': ('prose_quality',),
 }
 ROLE_INSTRUCTIONS = {
-    'evidence': '原文との事実照合専任。具体的主張・比較条件・数値の対象/期間・安全保証を検査する。本文の表だけで根拠確認を済ませない。',
+    'evidence': '原文との事実照合専任。具体的主張・比較条件・数値の対象/期間を原文と照合する。保証表現かどうかの文脈判断は整合性担当へ渡す。本文の表だけで根拠確認を済ませない。',
     'coverage': '重要論点と記事目的の達成専任。requirements、content_contract、調査計画と本文を照合し、各重要な疑問への実質的な回答を確認する。共通提示基準「検索語・結論・推奨理由」の検索語・推薦理由・検索意図への接続を担当し、構成自体の漏れも確認する。未調査を非公表として通さない。',
     'language': '文章の自然さ専任。全段落を前後の文脈と読んで主述・指示語・不自然な語の組合せ・文の途切れ・文体/表記を検査。記事全体の重複や表示形式は他工程の担当。好みの言い換えや感情の原文例を欠陥と扱わない。',
-    'consistency': '記事全体の整合性専任。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
-    'organization': '情報整理と読みやすさ専任。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
+    'consistency': '記事全体の整合性専任。対策・手順の提案と結果の保証を本文の文脈で区別し、共通のunsupported_guarantees基準に従って表現の強さを判断する。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
+    'organization': '情報整理と読みやすさ専任。共通提示基準「章の設計と引継ぎ」に従い、見出しの回答範囲・独立章の必要性・複数論点の分け方も評価する。構成に存在することを適切さの根拠にせず、構成変更が必要なら本文の言い換えと区別して指摘する。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
 }
 
 
@@ -62,10 +62,17 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
     for role, keys in ROLES.items():
         # Source-heavy context is restricted to the roles that actually need it.
         payload = {'current_date':reference_date, 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
+        if 'editorial_rules' in payload['requirements']:
+            payload['requirements']['editorial_rules'] = editorial_rules_for_role(payload['requirements']['editorial_rules'], role)
+        if role == 'language':
+            payload['long_sentence_candidates'] = long_sentence_candidates(text)
         if role in ('evidence','coverage'):
             payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources
         system = (AUDIT_SYSTEM if role in ('evidence','coverage') else EDITORIAL_SYSTEM)
+        if role == 'language':
+            system += (f'\nlong_sentence_candidatesは既存の{SENTENCE_REVIEW_LIMIT}字超基準による実測候補であり、不合格判定ではない。'
+                       '文脈と学習済み文体ルールを照合して判断する。候補以外の全段落も主述・修飾・指示語を確認する。')
         system += ('\n【今回の担当範囲：上記の全項目出力指定より優先】\n' + ROLE_INSTRUCTIONS[role]
                    + '\n今回返すchecksは次のキーだけ、各1件：' + ', '.join(keys)
                    + '\nstatusはpass/failのみ。各checkにaffected_blocksを必ず付ける。'
@@ -87,7 +94,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         phase_model=model
         if role=='evidence' and compact_enabled():
             from .tiered_evidence import evidence_audit
-            from .review_scope import ROUTING_POLICY, validate_routes, pages_from, source_resolutions
+            from .review_scope import ROUTING_POLICY, validate_routes, pages_from, source_resolutions, source_excerpts
             from .tiered_research import checked_request
             from .quality_budget import JOB
             from types import SimpleNamespace
@@ -96,6 +103,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             brief={k:v for k,v in payload.items() if k not in ('source_documents','outline')}
             brief['source_revision']=digest(sources)
             brief['requirements']['source_resolutions']=source_resolutions('article',content_blocks(text),sources,brief['requirements'])
+            brief['source_excerpts']=source_excerpts('article',sources)
             request.update(model='gpt-6-luna',system=system+ROUTING_POLICY,
                 output_config=audit_output_config(keys,locations=True,source_routing=True),
                 messages=[{'role':'user','content':json.dumps(brief,ensure_ascii=False)}])
@@ -134,7 +142,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                          'reason':'\n'.join(c['reason'] for c in failed or results),
                          'affected_blocks':merge_block_findings(failed),
                          'research_ids':sorted({i for c in failed for i in c.get('research_ids',[])}),
-                         'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])})})
+                         'source_urls':sorted({u for c in failed for u in c.get('source_urls',[])}),
+                         **({'correction_evidence':[r for c in failed for r in c.get('correction_evidence',[])]}
+                            if any('correction_evidence' in c for c in failed) else {})})
     from .price_comparison import comparison_evidence
     from .claim_scope import scope_issues
     from .content_quality import explicit_risk_guarantees

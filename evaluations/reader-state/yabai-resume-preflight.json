@@ -1,0 +1,49 @@
+{
+  "status": "blocked_before_paid_plan_review_by_existing_quality_cap",
+  "new_model_calls": 0,
+  "production_writes": false,
+  "plan_applied": false,
+  "preflight": {
+    "model": "gpt-6.1-sol",
+    "input_token_bound": 30100,
+    "max_output_tokens": 6000,
+    "reservation_ceiling_jpy": 27.05,
+    "quality_remaining_jpy": 23.571985000000012,
+    "fits": false,
+    "model_calls": 0,
+    "production_writes": false,
+    "plan_applied": false,
+    "change_ids": [
+      "q07",
+      "q10"
+    ],
+    "review_scope": "Full saved plan and original search intent; existing plan-review helper, no new reviewer or retries."
+  },
+  "remaining_work": [
+    "Review saved plan with only q07/q10 official-first applicability relaxed for general claims; preserve other question requirements",
+    "Recheck saved research under current policy; no blanket carry-forward of accepted verdicts",
+    "Generate outline, service placement and Sonnet draft; run normal bounded article audit/repair and final validation"
+  ],
+  "historical_cost_scenarios_jpy": {
+    "research_verification_first_round": 124.495775,
+    "article_first_audit": 66.7398,
+    "article_one_repair": 42.0656,
+    "article_full_reaudit": 65.890575,
+    "plan_review_reservation": 27.05,
+    "subtotal_without_article_repair": 218.285575,
+    "subtotal_with_one_article_repair": 326.24175
+  },
+  "scenario_exclusions": [
+    "outline review/repair",
+    "new failures and any optional local prose finish",
+    "outline and article generation costs"
+  ],
+  "estimate_warning": "Historical observations from different inputs, not promised cost or completion. Review reservation is a ceiling, other rows are measured usage.",
+  "proposed_test_only_quality_cap_jpy": 650,
+  "previous_quality_cap_jpy": 250,
+  "proposed_total_cap_jpy": 1500,
+  "previous_total_cap_jpy": 1500,
+  "budget_increase_authorized": false,
+  "current_cumulative_total_jpy": 547.784845,
+  "next_authorization_scope": "Increase only this trial quality allocation by 400 JPY within unchanged total cap; never change production default. Continue bounded normal flow; preserve all costs/attempt counts and stop on further cap or unresolved terminal defect."
+}

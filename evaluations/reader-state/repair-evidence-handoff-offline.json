@@ -1,0 +1,56 @@
+{
+  "kind": "offline_handoff_contract_fixture_not_live_model_result",
+  "api_calls": 0,
+  "production_writes": false,
+  "old_payload_json_chars": 86842,
+  "new_fixture_payload_json_chars": 22155,
+  "payload_reduction_percent": 74.5,
+  "old_source_documents_json_chars": 66357,
+  "new_exact_correction_catalog_json_chars": 4730,
+  "unchanged": [
+    "target block ids",
+    "target and neighboring blocks",
+    "heading context",
+    "accepted answers",
+    "subject/plan/period/current-use and omission constraints"
+  ],
+  "known_limit": "Fixture shows transport preservation and size, not whether the model selects complete correction quotes. Live evidence handoff and whole-article completion remain untested.",
+  "legacy_report_preserved": true,
+  "paid_generation_restarted": false,
+  "free_tests_passed": 565,
+  "path_audit": [
+    {
+      "path": "outline review",
+      "state": "Whole brief uses accepted answers; unresolved named source dependencies only reach source reviewer."
+    },
+    {
+      "path": "article review",
+      "state": "Evidence, coverage, language, consistency, organization roles inspected; raw bodies restricted to source verification."
+    },
+    {
+      "path": "outline and article repairs in compact flow",
+      "state": "Shared repair packet now carries accepted answers/constraints plus deduplicated exact correction excerpts; no whole source documents."
+    },
+    {
+      "path": "non-compact legacy flow",
+      "state": "Existing legacy whole-source behavior unchanged; this repair applies to the approved tiered/focused flow."
+    },
+    {
+      "path": "old saved source failures",
+      "state": "Missing correction quotes force refresh of bounded source check, not a fabricated receipt or blanket recheck."
+    }
+  ],
+  "next_source_check_preflight": {
+    "stage": "source_excerpt_handoff_refresh_only",
+    "model": "gpt-6-luna",
+    "model_calls": 0,
+    "byte_bound_input_tokens": 139545,
+    "max_output_tokens": 6000,
+    "reservation_ceiling_jpy": 4.0886249999999995,
+    "scope": "Same bounded source check on saved outline findings; no research or outline regeneration. New correction-excerpt fields only.",
+    "subsequent_repair_cost": "Must measure actual correction packet returned by model before sending Opus; offline fixture is not a live estimate.",
+    "budget_change": false,
+    "production_writes": false,
+    "paid_execution": false
+  }
+}

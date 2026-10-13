@@ -1,0 +1,27 @@
+{
+  "status": "corrected_plan_passed_and_saved_locally",
+  "this_check_jpy": 20.82050000000004,
+  "trial_cumulative_jpy": 741.30132,
+  "quality_cumulative_jpy": 419.94449000000003,
+  "quality_remaining_jpy": 230.05550999999997,
+  "model_calls": 1,
+  "production_writes": false,
+  "article_generated": false,
+  "plan_applied_to_local_trial": true,
+  "old_plan_preserved": true,
+  "old_matrix_not_promoted": true,
+  "remaining_questions": [
+    "q01",
+    "q10",
+    "q12",
+    "q15"
+  ],
+  "next_check": {
+    "saved_source_pages": 8,
+    "generation_calls": 1,
+    "reservation_ceiling_jpy": 40.9255,
+    "new_search": false,
+    "status": "prepared_not_executed",
+    "not_a_full_article_pass": true
+  }
+}

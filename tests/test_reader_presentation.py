@@ -33,6 +33,37 @@ class ReaderPresentationTests(unittest.TestCase):
         for prompt in (content_quality.AUDIT_SYSTEM, content_quality.EDITORIAL_SYSTEM):
             self.assertIn(READER_PRESENTATION_POLICY, prompt)
 
+    def test_writer_does_not_override_shared_contextual_table_intro_policy(self):
+        # Actual composed writer prompt must defer to the same conditional rule
+        # as review; an unconditional stage instruction would recreate filler.
+        self.assertIn('既存の結論・見出しで役割が伝わる場合は、定型の案内文を重ねない', step_article.SYSTEM_PROMPT)
+        self.assertIn('表・リストの導入は共通提示基準に従う', step_article.SYSTEM_PROMPT)
+        self.assertNotIn('導入文を1文添える', step_article.SYSTEM_PROMPT)
+        self.assertNotIn('表・リストには内容を示す短い導入を置く', step_article.SYSTEM_PROMPT)
+
+    def test_body_writer_consumes_decisions_without_readopting_sources(self):
+        from pipeline.fresh_sources import WRITING_POLICY, PUBLICATION_WRITING_POLICY
+        from pipeline.evidence_policy import EVIDENCE_POLICY
+        from pipeline import step_review
+        # Actual authoring system retains scoped facts and reader criteria;
+        # independent adoption/QA still uses the entire unchanged contract.
+        self.assertIn(PUBLICATION_WRITING_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertNotIn(EVIDENCE_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertIn(READER_PRESENTATION_POLICY, step_article.SYSTEM_PROMPT)
+        self.assertIn('監視や本人確認を実施している事実を、不正利用者の完全排除', step_article.SYSTEM_PROMPT)
+        self.assertIn('未確認の数値・条件を断定しない', step_article.SYSTEM_PROMPT)
+        for prompt in (WRITING_POLICY, step_outline.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT, content_quality.AUDIT_SYSTEM):
+            self.assertIn(EVIDENCE_POLICY, prompt)
+
+    def test_guarantee_semantics_use_existing_editorial_role_without_extra_call(self):
+        # Source matching and context-sensitive effect language are separate
+        # responsibilities, but every existing check is still delivered once.
+        self.assertNotIn('unsupported_guarantees',focused_quality.ROLES['evidence'])
+        self.assertIn('unsupported_guarantees',focused_quality.ROLES['consistency'])
+        self.assertEqual(sum(keys.count('unsupported_guarantees') for keys in focused_quality.ROLES.values()),1)
+        self.assertEqual(len(focused_quality.ROLES),5)
+        self.assertIn('対策・手順の提案と結果の保証',focused_quality.ROLE_INSTRUCTIONS['consistency'])
+
     def test_cv_value_requirement_is_conditional_on_article_purpose(self):
         for purpose in ('cv', 'awareness'):
             contract = build_content_contract(keyword='スマホケース おすすめ',

@@ -35,7 +35,7 @@ def indexed_sources(pages):
     return result,index
 
 
-def span_schema(matrix_schema, question_ids=None):
+def span_schema(matrix_schema, question_ids=None, *, questions=None):
     result=copy.deepcopy(matrix_schema)
     if question_ids is not None:
         ids=list(question_ids)
@@ -54,6 +54,15 @@ def span_schema(matrix_schema, question_ids=None):
         result['format']['schema']['properties']['items']={
             'type':'object','properties':{key:copy.deepcopy(row) for key in ids},
             'required':ids,'additionalProperties':False}
+    if questions is not None:
+        from .evidence_policy import allowed_source_bases
+        planned = {q['id']:q for q in questions}
+        if question_ids is None or len(planned) != len(questions) or set(planned) != set(ids):
+            raise ValueError('Question policy must match the response IDs exactly')
+        rows = result['format']['schema']['properties']['items']['properties']
+        for key, question in planned.items():
+            if 'source_requirement' in question:
+                rows[key]['properties']['basis']['enum'] = list(allowed_source_bases(question['source_requirement']))
     return result
 
 
