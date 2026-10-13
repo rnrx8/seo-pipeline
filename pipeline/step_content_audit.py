@@ -8,7 +8,7 @@ import anthropic
 
 from .ai import create_with_retry, get_step_config, astra_review_enabled, hybrid_writing_enabled, OPUS_THINKING_ALLOWANCE
 from .article_quality import validate_delivery
-from .readability import readability_issues, READABILITY_POLICY
+from .readability import readability_issues, h3_volume_regressions, READABILITY_POLICY
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .claim_scope import scope_issues
@@ -62,7 +62,7 @@ def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
 
 
 def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
-                         word_count_setting, contract, section_map):
+                         word_count_setting, contract, section_map, cta_plan=None):
     """Validate a saved model patch with the same gates as a fresh repair."""
     if packet is not None:
         from .review_scope import validate_edits
@@ -76,6 +76,7 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
     if missed:
         raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
     unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
+    unresolved += h3_volume_regressions(text, candidate, cta_plan)
     unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
     unresolved += [v for v in validate_delivery(candidate, outline, word_count_setting, contract=contract)
                    if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
@@ -263,7 +264,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             try:
                 candidate, candidate_sections = apply_reviewed_edits(
                     text, raw, packet, report, issues, facts, outline,
-                    job.get('word_count_setting'), contract, section_map)
+                    job.get('word_count_setting'), contract, section_map,
+                    (artifact.get('meta') or {}).get('cta_placement'))
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:

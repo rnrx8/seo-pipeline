@@ -85,3 +85,48 @@ def long_sentence_candidates(text, limit=SENTENCE_REVIEW_LIMIT):
             if characters > limit:
                 candidates.append({'id': block['id'], 'sentence': sentence, 'characters': characters})
     return candidates
+
+
+def h3_volume_regressions(before, after, cta_plan=None):
+    """Protect an adequate standalone H3 from becoming thin during editing.
+
+    Existing thin chapters remain semantic-review findings. Table/list contents
+    count; formatting, code, destinations and the injected CTA do not. H4
+    children retain the agreed exception to the H3 introduction minimum.
+    """
+    from html import unescape
+    def lengths(text):
+        if cta_plan and cta_plan.get('button_text') and cta_plan.get('url'):
+            button='['+cta_plan['button_text']+']('+cta_plan['url']+')'
+            pattern=r'(?m)^---[ \t]*\n(?:>[^\n]*\n)+---[ \t]*(?:\n|$)'
+            text=re.sub(pattern,lambda m: '' if button in m[0] else m[0],text)
+        sections=[]; current=None; fenced=False
+        for line in text.splitlines():
+            stripped=line.strip()
+            if stripped.startswith(('```','~~~')):
+                fenced=not fenced;continue
+            if fenced:continue
+            heading=re.match(r'^(#{1,6})\s+(.+)',stripped)
+            if heading:
+                level=len(heading[1])
+                if level<=3:
+                    if current is not None:sections.append(current)
+                    current={'heading':heading[2],'lines':[],'h4':False} if level==3 else None
+                elif level==4 and current is not None:current['h4']=True
+                continue
+            if current is not None:
+                if not stripped or re.fullmatch(r'[|:\-\s]+',stripped):continue
+                visible=re.sub(r'!\[[^\]]*\]\([^)]*\)','',stripped)
+                visible=re.sub(r'\[([^\]]+)\]\([^)]*\)',r'\1',visible)
+                visible=re.sub(r'<[^>]*>','',visible)
+                visible=re.sub(r'^(?:>\s*|[-*+]\s+|\d+[.)]\s+)','',visible)
+                current['lines'].append(re.sub(r'[|*_`\s]','',unescape(visible)))
+        if current is not None:sections.append(current)
+        return [{**s,'characters':len(''.join(s['lines']))} for s in sections]
+    old,new=lengths(before),lengths(after)
+    # Heading identities are validated by the existing section mapping gate.
+    return [{'key':'h3_volume_regression','heading':n['heading'],
+             'before_characters':o['characters'],'characters':n['characters'],
+             'reason':'修正で配下H4のないH3の説明量が200字未満になっています。表・リストも含む節全体の必要な説明を保ってください。'}
+            for o,n in zip(old,new) if o['heading']==n['heading'] and not o['h4']
+            and not n['h4'] and o['characters']>=200>n['characters']]
