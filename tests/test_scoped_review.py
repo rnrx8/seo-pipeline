@@ -441,7 +441,7 @@ class ScopedReviewTests(unittest.TestCase):
         with budget.ledger() as ledger:
             self.assertEqual([c['review_operation']['role'] for c in ledger['calls']],['audit','repair','audit'])
 
-    def test_new_source_scope_after_repair_is_not_silently_purchased(self):
+    def test_new_source_check_after_repair_is_allowed_and_recorded(self):
         with budget.ledger() as ledger:
             ledger['calls']=[{'reserved_usd':.001,'cost_usd':.001,
                 'review_operation':{'phase':'outline','role':role,'request_sha256':role,
@@ -450,9 +450,10 @@ class ScopedReviewTests(unittest.TestCase):
         request={'messages':[{'content':json.dumps({'source_documents':self.pages[1:2],
                    'candidate_checks':[{'research_ids':['b'],'reason':'new topic'}]})}]}
         with budget.request_scope('offline-job','tiered_research_evidence_screen','new',request):
-            with self.assertRaisesRegex(ContentQualityError,'新しい照合論点'):
-                budget.reserve({'model':'gpt-6-luna','max_output_tokens':100,'input':'x'})
-        with budget.ledger() as ledger:self.assertEqual(len(ledger['calls']),2)
+            budget.reserve({'model':'gpt-6-luna','max_output_tokens':100,'input':'x'})
+        with budget.ledger() as ledger:
+            self.assertEqual(len(ledger['calls']),3)
+            self.assertEqual(ledger['calls'][-1]['review_operation']['research_ids'],['b'])
 
     def test_new_question_inside_same_paragraph_cannot_inherit_old_pass(self):
         with patch.object(research,'create_with_retry',side_effect=self.fake_provider()) as send:

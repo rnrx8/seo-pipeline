@@ -81,11 +81,11 @@ def guard_review(value,amount):
  # An old unscoped review cannot silently receive a fresh allowance on upgrade.
  legacy=[c for c in calls if not c.get('review_operation') and c.get('stage') in
          (('research_validation','outline_local_repair') if meta['phase']=='outline' else ('content_audit',))]
- if legacy:raise ContentQualityError('旧方式の確認履歴があります。通算予算・回数の移行確認前には再開しません。')
+ if spending_limits_enabled() and legacy:raise ContentQualityError('旧方式の確認履歴があります。通算予算・回数の移行確認前には再開しません。')
  policy={'version':'bounded-review-v2-shared-remainder','phase_limits_usd':REVIEW_PHASE_LIMITS,
          'outline_audits':2,'outline_repairs':1,'article_role_checks':2,'article_repairs_including_encoding':2}
  saved=value.setdefault('review_policy',policy)
- if saved!=policy:
+ if spending_limits_enabled() and saved!=policy:
   raise ContentQualityError('保存済みの確認回数・費用配分が現在の設定と異なります。自動変更しません。')
  previous=[c for c in calls if c.get('review_operation',{}).get('phase')==meta['phase']]
  # A user-authorized retry of a known credit rejection does not erase its
@@ -106,14 +106,8 @@ def guard_review(value,amount):
           and kept.get('review_operation',{}).get('phase')==c['review_operation']['phase']
           and replacement.get('retained_request_sha256')==kept.get('review_operation',{}).get('request_sha256'))
  same=[c for c in previous if c['review_operation']['role']==meta['role'] and not retry_released(c) and not superseded_duplicate(c)]
- # Article re-audits cover the whole repaired text, so their first source screen
- # may occur after repair. Source selection remains restricted to fetched pages
- # by validate_routes/scoped_packet; this guard is for research-scope expansion.
- if meta['phase']=='outline' and meta['role'] in ('screen','evidence_screen') and any(c['review_operation']['role']=='repair' for c in previous):
-  allowed_urls={u for c in same for u in c['review_operation'].get('source_urls',[])}
-  allowed_questions={q for c in same for q in c['review_operation'].get('research_ids',[])}
-  if not same or not set(meta['source_urls'])<=allowed_urls or not set(meta['research_ids'])<=allowed_questions:
-   raise ContentQualityError('修正後に新しい照合論点・資料が追加されています。範囲を確認するまで送信しません。')
+ # Source routes are validated against fetched job evidence by tiered_evidence.
+ # A repaired outline may need its first source check; history is not a scope boundary.
  def interrupted_retry_authorized(c):
   permit=c.get('retry_authorization') or {}
   interrupted=c.get('interruption') or {}
@@ -132,7 +126,7 @@ def guard_review(value,amount):
   raise ContentQualityError('同じ確認要求の送信記録があります。保存応答または未確定費用を確認するまで再送しません。')
  extension=value.get('additional_review_authorization') or {}
  extra=0
- if extension:
+ if spending_limits_enabled() and extension:
   phase=extension.get('phase')
   if (phase not in ('article','outline') or type(extension.get('extra_calls_per_role')) is not int
       or not 1<=extension['extra_calls_per_role']<=3 or not extension.get('user_message')
@@ -256,7 +250,7 @@ def reserve(payload, input_counter=None):
  model=payload['model']
  if model not in RATES:raise ContentQualityError('予算対象外のモデルへ自動変更しません。')
  size=len(json.dumps(payload,ensure_ascii=False,default=lambda v:v.model_dump(mode='json')).encode())+4096
- if size>1000000:raise ContentQualityError('確認資料が大きすぎます。資料範囲を見直してください。')
+ if spending_limits_enabled() and size>1000000:raise ContentQualityError('確認資料が大きすぎます。資料範囲を見直してください。')
  amount=(size*RATES[model][0]*(2 if size>272000 else 1)+payload['max_output_tokens']*RATES[model][1]*(1.5 if size>272000 else 1))/1e6
  with ledger() as value:
   guard_review(value,0)

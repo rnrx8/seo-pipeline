@@ -58,6 +58,29 @@ class ProductionSpendingModeTests(unittest.TestCase):
         with budget.ledger() as value:
             self.assertEqual(len(value['calls']),17)
 
+    def test_first_outline_source_check_after_repair_is_allowed(self):
+        with budget.ledger() as value:
+            value['calls'].append({'reserved_usd':.01,'cost_usd':.01,'review_operation':{'phase':'outline','role':'repair','request_sha256':'old'}})
+        request={'messages':[{'content':json.dumps({'source_documents':[{'url':'https://example.com/pricing'}],'candidate_checks':[{'research_ids':['q08']}]})}]}
+        with budget.request_scope('existing-job','tiered_research_evidence_screen','first-source-check',request):
+            index=budget.reserve({'model':'gpt-6-luna','max_output_tokens':100})
+            budget.settle(index,{'input_tokens':1,'output_tokens':1})
+            with self.assertRaisesRegex(ContentQualityError,'同じ確認要求'):
+                budget.reserve({'model':'gpt-6-luna','max_output_tokens':100})
+    def test_old_trial_policy_and_unscoped_history_do_not_block_new_production_review(self):
+        with budget.ledger() as value:
+            value['review_policy']={'version':'old-test'}
+            value['additional_review_authorization']={'old_test_format':True}
+            value['calls'].append({'reserved_usd':.01,'cost_usd':.01,'stage':'research_validation'})
+        with budget.request_scope('existing-job','tiered_audit_research','new-policy-review',{'messages':[{'content':'{}'}]}):
+            budget.reserve({'model':'gpt-6-luna','max_output_tokens':100})
+        with budget.ledger() as value:
+            self.assertEqual(value['review_policy'],{'version':'old-test'})
+            self.assertEqual(len(value['calls']),3)
+    def test_serialized_byte_trial_limit_does_not_block_production_request(self):
+        with budget.scope('existing-job','fact_sheet'):
+            budget.reserve({'model':'gpt-6-luna','max_output_tokens':100,'input':'あ'*400000})
+
     def test_explicit_bounded_trial_still_stops_on_saved_total_cap(self):
         with patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded'}):
             with self.assertRaisesRegex(ContentQualityError,'テスト全体'):
