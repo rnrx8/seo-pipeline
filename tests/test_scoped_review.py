@@ -219,15 +219,17 @@ class ScopedReviewTests(unittest.TestCase):
                     'affected_blocks':[],'claim_verdicts':rows}],[prior])
 
     def test_source_check_cannot_pass_when_one_named_finding_still_fails(self):
-        def send(job,step,request):
-            value=self.message(request)
-            check=next(c for c in value['checks'] if c['key']=='evidence_support')
-            check['claim_verdicts'][1].update(status='fail',reason='写真の対象条件が欠ける')
-            return value,NS(input_tokens=0,output_tokens=0)
-        with patch.object(research,'checked_request',side_effect=send) as calls:
-            with self.assertRaisesRegex(ContentQualityError,'個別判定と集約判定'):
-                evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
-        self.assertEqual(calls.call_count,1)
+        from pipeline.content_quality import audit_output_config
+        request={'output_config':evidence.claim_decision_schema(
+            audit_output_config(ROLES['evidence'],locations=True),self.payload['candidate_checks']),
+            'messages':[{'content':json.dumps(self.payload)}]}
+        value=self.message(request)
+        check=next(c for c in value['checks'] if c['key']=='evidence_support')
+        check['claim_verdicts'][1].update(status='fail',reason='写真の対象条件が欠ける')
+        decoded=evidence.decoded_claim_decisions(value,self.payload['candidate_checks'])
+        check=next(c for c in decoded['checks'] if c['key']=='evidence_support')
+        self.assertEqual(check['status'],'fail')
+        self.assertEqual(check['affected_blocks'],[{'id':self.summary,'reason':'写真の対象条件が欠ける'}])
         self.assertFalse(scope.source_resolutions('research',self.blocks,self.pages,self.req))
 
     def test_source_resolution_preserves_local_failure_and_overrules_other_candidate(self):
@@ -697,7 +699,8 @@ class ScopedReviewTests(unittest.TestCase):
         root=request['output_config']['format']['schema']['properties']
         self.assertEqual(set(root['review']['properties']['block_ids']['items']['enum']),{self.a,self.summary})
         self.assertEqual(root['review']['properties']['source_urls']['items']['enum'],[self.pages[0]['url']])
-        self.assertEqual(set(root['checks']['items']['properties']['affected_blocks']['items']['properties']['id']['enum']),{self.a,self.summary})
+        self.assertNotIn('affected_blocks',root['checks']['items']['properties'])
+        self.assertEqual(set(root['claim_decisions']['properties']['evidence_support']['required']),{self.a,self.summary})
 
     def test_unrelated_source_request_cannot_trigger_more_calls_or_become_pass(self):
         # Regression: target conditions are confirmed, but the reviewer asks for
