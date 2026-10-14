@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+from pipeline.article_revisions import revision_run
 from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, upsert_artifact, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 from pipeline.step_plan import build_step_plan, requires_rate_limit_delay  # noqa: E402
@@ -131,6 +132,7 @@ def _resolve_api_key(job: dict) -> str | None:
     return None
 
 
+@revision_run
 def _run_pipeline(job_id: str, keyword: str, resume_from: str | None = None) -> None:
     """Run pipeline steps for an existing job, respecting delivery_type."""
     try:

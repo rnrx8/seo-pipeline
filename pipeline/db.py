@@ -73,6 +73,9 @@ def update_job_word_count_setting(job_id: str, word_count_setting: str) -> None:
     word_count_setting カラムが未定義の場合 PostgREST が 400 を返すため
     raise_for_status() で握り潰さず検知する。
     """
+    from .article_revisions import generated_length
+    if generated_length(job_id, word_count_setting):
+        return
     resp = requests.patch(
         f"{_base()}/jobs",
         json={"word_count_setting": word_count_setting},
@@ -106,6 +109,10 @@ def upsert_artifact(
     if meta is not None:
         data["meta"] = meta
 
+    from .article_revisions import save
+    saved = save(job_id, step, data)
+    if saved is not None:
+        return saved
     resp = requests.post(
         url,
         json=data,
@@ -263,7 +270,8 @@ def get_optional_artifact(job_id: str, step: str) -> dict | None:
     )
     resp.raise_for_status()
     rows = resp.json()
-    return rows[0] if rows else None
+    from .article_revisions import observe
+    return observe(job_id, step, rows[0] if rows else None)
 
 
 def get_artifact(job_id: str, step: str) -> dict:

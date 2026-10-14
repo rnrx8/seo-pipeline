@@ -1,3 +1,4 @@
+from .article_revisions import revision_run
 import time
 from .db import insert_job, update_job_status, get_job
 from .step_plan import build_step_plan, requires_rate_limit_delay
@@ -7,6 +8,7 @@ from .ai import validate_model_credentials
 STEP_DELAY = 15
 
 
+@revision_run
 def run_pipeline(keyword: str, job_id: str | None = None) -> str:
     """Run the full SEO article generation pipeline. Returns the job_id.
 

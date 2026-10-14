@@ -24,7 +24,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
     try:
         from .research_requirements import require_matrix
-        require_matrix(job_id)
+        from .article_revisions import RUN
+        if RUN.get():
+            from .research_requirements import _require_matrix_strict
+            _require_matrix_strict(job_id)
+        else:
+            require_matrix(job_id)
     except Exception as exc:
         violations.append({'key':'research_not_ready','reason':str(exc)[:200]})
     try:
@@ -38,7 +43,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         context = dict(text=article['content_text'], facts=facts, outline=outline, contract=contract,
                        requirements=final_review_requirements(job, keyword), sources=sources)
-        require_audit(audit_report, snapshot(**context), stage="article", context=context)
+        from .article_revisions import RUN
+        if RUN.get():
+            from .content_quality import _require_audit_strict
+            _require_audit_strict(audit_report, snapshot(**context), stage="article", context=context)
+        else:
+            require_audit(audit_report, snapshot(**context), stage="article", context=context)
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {
@@ -56,5 +66,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     )
     if violations:
         raise ContentQualityError(f"Final article violates content contract: {violations}")
+    from .article_revisions import seal
+    seal(job_id)
     print("[final_validate] Final article satisfies the content contract")
     return artifact
