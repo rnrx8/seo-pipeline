@@ -369,7 +369,8 @@ class FocusedResearchTests(unittest.TestCase):
         self.assertTrue(result['items'][0]['verified'])
 
     def test_exhausted_existing_ledger_blocks_reread_before_transport(self):
-        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ,{'QUALITY_BUDGET_DIR':folder}), budget.scope('same-job'):
+        # This test exercises an opt-in evaluation cap, not production defaults.
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ,{'QUALITY_BUDGET_DIR':folder, 'QUALITY_BUDGET_MODE':'bounded'}), budget.scope('same-job'):
             with budget.ledger() as ledger:
                 ledger['calls'].append({'reserved_usd':budget.LIMIT,'cost_usd':budget.LIMIT,'category':'quality'})
             with patch.object(tiered,'get_optional_artifact',return_value=None), patch('pipeline.openai_review.requests.post') as post:
