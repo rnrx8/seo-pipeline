@@ -55,7 +55,10 @@ claim_limitsは、執筆が採用回答を広げないための指示の配列�
 出典の種別、取得成否、採用経緯、根拠の公開・更新・取得日はreason・basis・applicable_at・omission_reason等の調査記録へ分ける。調査記録は構成・本文生成へ渡さず、出典表示機能と確認処理が使う。実際の過去時点や利用条件はanswerとpublication_conditionsへ保持し、公開・更新・取得日を適用開始日や集計期間に置き換えない。体験報告・意見の発信者やアンケート調査主体など、主張の意味を限定する帰属は回答に保持する。通常の採用事実に出典種別の説明を付けない。
 JSON {"items":[{"id":"q01","status":"confirmed","answer":"条件を含む回答","evidence":[{"url":"...","quote":"..."}],"reason":"判断理由/不足の対象と項目"}]} のみ。'''
 
-PLAN_SYSTEM += EVIDENCE_POLICY
+from .reader_decisions import POLICY as DECISION_POLICY, SCHEMA as DECISION_SCHEMA
+PLAN_SYSTEM += EVIDENCE_POLICY + DECISION_POLICY + '''
+JSONにreader_decisionsを含める。reader_needsがある場合は採用された問いのidとquestionを保持し、その問いへ答える必要回答・役割・前後関係とresearch_idsを設計する。心理・場面例の細目をすべて調査質問へ変換しない。登録商品資料とproduct_contextは検証前の理解であり、資料の主張を確認済み事実として回答しない。商品が今回有用でない、またはCTAを保留する判断も保持し、CV指定で検索への問いを置き換えない。
+'''
 MATRIX_SYSTEM += EVIDENCE_POLICY + '''
 各項目にbasis(primary/guidance/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
 primaryは直接の公式/原典で、本人に帰属を限定した体験報告は本人の発信原文が該当する。guidanceは取得本文の範囲内の一般的助言。expertは有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
@@ -76,6 +79,8 @@ def _schema(properties):
 PLAN_SCHEMA = _schema({'id':{'type':'string'},'question':{'type':'string'},'required':{'type':'boolean'}})
 PLAN_SCHEMA['format']['schema']['properties'].update(candidate_services={'type':'array','items':{'type':'string'}},scope_reason={'type':'string'})
 PLAN_SCHEMA['format']['schema']['required'] += ['candidate_services','scope_reason']
+PLAN_SCHEMA['format']['schema']['properties']['reader_decisions'] = DECISION_SCHEMA
+PLAN_SCHEMA['format']['schema']['required'].append('reader_decisions')
 MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum':['confirmed','explicitly_undisclosed','unresearched','fetch_failed','searched_not_found']},
     'answer':{'type':'string'},'reason':{'type':'string'},'evidence':{'type':'array','items':{'type':'object',
     'properties':{'url':{'type':'string'},'quote':{'type':'string'}},'required':['url','quote'],'additionalProperties':False}}})
@@ -119,6 +124,12 @@ def validate_plan(value):
         if i.get('required') is not (i['priority']=='essential') or i.get('source_requirement') not in ('standard','general_guidance','expert_allowed','primary_only') or type(i.get('requires_current')) is not bool:
             raise ContentQualityError('調査計画の重要度と採用条件が矛盾しています。')
     if not any(i['required'] for i in items):raise ContentQualityError('必須質問がありません。')
+    if 'reader_decisions' in value:
+        from .reader_decisions import validate
+        validate(value['reader_decisions'], items)
+    if value.get('reader_design'):
+        from .reader_needs import validate_plan_links
+        validate_plan_links(value, {'selected':value['reader_design']['reader_needs']})
 
 
 def matrix_policy():
@@ -137,6 +148,22 @@ def load_plan(job_id):
     value = json.loads(get_artifact(job_id,'research_plan')['content_text'])
     validate_plan(value)
     if value.get('policy_sha256') != plan_policy(): raise ContentQualityError('調査方針が更新されています。計画から再実行してください。')
+    if value.get('reader_design'):
+        from .production_brief import load as load_brief, prepare, fingerprint
+        from .reader_needs import load as load_needs, editorial_context
+        from .article_revisions import RUN
+        brief = load_brief(job_id)
+        needs = load_needs(job_id, brief)
+        if not brief or not needs or value['reader_design'] != editorial_context(brief, needs):
+            raise ContentQualityError('調査計画が現在の読者理解・依頼に対応していません。計画から確認してください。')
+        key = fingerprint([brief, value['reader_design']])
+        current = RUN.get()
+        if current and current.get('job_id') != job_id: current = None
+        if not current or current.get('reader_inputs_checked') != key:
+            live_brief, _, _, _ = prepare(job_id, brief['keyword'])
+            if fingerprint(live_brief) != fingerprint(brief):
+                raise ContentQualityError('商品資料または依頼が変わっています。古い計画で再開しません。')
+            if current: current['reader_inputs_checked'] = key
     return value
 
 
@@ -145,6 +172,23 @@ def _plan_context(job_id, keyword):
     payload={'requirements':requirements_for({k:v for k,v in job.items() if k!='id'},keyword),
              'intent':get_artifact(job_id,'search_intent')['content_text'],
              'serp':get_artifact(job_id,'serp')['content_text']}
+    from .production_brief import load as load_brief
+    from .reader_needs import load as load_needs
+    brief = load_brief(job_id)
+    needs = load_needs(job_id, brief)
+    if brief:
+        if needs is None: raise ContentQualityError('採用した読者の問いがありません。分析から確認してください。')
+        if brief['keyword'] != keyword: raise ContentQualityError('制作依頼のキーワードが一致しません。')
+        from .production_brief import prepare, fingerprint, validate_product
+        current_brief, current_material, _, _ = prepare(job_id, keyword)
+        if fingerprint(current_brief) != fingerprint(brief):
+            raise ContentQualityError('商品資料または制作依頼が分析後に変わりました。分析から確認してください。')
+        product = json.loads(get_artifact(job_id,'product_context')['content_text'])
+        validate_product(product,current_material)
+        payload.update(production_brief=brief, reader_needs=needs,
+                       product_context=product,
+                       registered_companies=brief['registered_companies'], featured_service=brief['product'])
+        return payload
     service = get_service_by_id(job['service_id']) if job.get('service_id') else None
     payload['featured_service'] = {k:service.get(k) for k in ('name','url','selling_points','must_include','must_exclude')} if service else None
     payload['registered_companies'] = [{k:c.get(k) for k in ('name','recommend_level','notes')} for c in
@@ -168,6 +212,11 @@ def plan(job_id, keyword, api_key=None):
             raise ContentQualityError('調査計画の質問・IDが不正です。')
         if any('自社サービス' in i['question'] for i in items):
             raise ContentQualityError('調査対象が実名・範囲で特定されていません。')
+        from .reader_decisions import validate as validate_decisions
+        from .reader_needs import editorial_context
+        validate_decisions(value.get('reader_decisions'), items)
+        design = editorial_context(payload.get('production_brief'), payload.get('reader_needs'))
+        if design: value['reader_design'] = design
         validate_plan(value)
         upsert_artifact(job_id=job_id,step=f'research_plan_candidate_{attempt}',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
         verdict,usage=review(job_id,value,payload,attempt,api_key)
@@ -208,6 +257,10 @@ def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
     by_id={i['id']:i for i in updates}
     result={**value,'items':[by_id.get(i['id'],i) for i in value['items'] if i['id'] not in removed]+additions,
             'candidate_services':services,'scope_reason':reason}
+    if 'reader_decisions' in value:
+        result['reader_decisions'] = changes.get('reader_decisions')
+        from .reader_decisions import validate
+        validate(result['reader_decisions'], result['items'])
     remaining={i['id']:i for i in result['items']}
     for r in removals:
         replacements=r.get('replaced_by',[])
@@ -220,6 +273,17 @@ def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
     result['plan_retirements']=removals
     validate_plan(result)
     return result
+
+
+def plan_repair_schema(value):
+    props = {k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')}
+    props.update(removals={'type':'array','items':{'type':'object','properties':{
+        'id':{'type':'string'},'reason':{'type':'string'},'replaced_by':{'type':'array','items':{'type':'string'}}},
+        'required':['id','reason','replaced_by'],'additionalProperties':False}},
+        candidate_services={'type':'array','items':{'type':'string'}}, scope_reason={'type':'string'})
+    if value.get('reader_decisions'): props['reader_decisions'] = DECISION_SCHEMA
+    return {'format':{'type':'json_schema','schema':{'type':'object','properties':props,
+        'required':list(props),'additionalProperties':False}}}
 
 
 def revalidate_plan(job_id, keyword, api_key=None):
@@ -241,11 +305,7 @@ def revalidate_plan(job_id, keyword, api_key=None):
         msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
             model=model,max_tokens=budget if tiered_review_enabled() else 4000,
             system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。独立した計画確認で具体的に指摘されたIDは、AIによる必須分類が過剰であれば重要度を訂正し、不要な義務は理由付きで削除してよい。ユーザー明示の要件と検索への主要な回答は維持し、ユーザー設定と照合する。指摘対象外の必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
-            output_config={'format':{'type':'json_schema','schema':{'type':'object','properties':{
-                **{k:{'type':'array','items':PLAN_SCHEMA['format']['schema']['properties']['items']['items']} for k in ('updates','additions')},
-                'removals':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'},'replaced_by':{'type':'array','items':{'type':'string'}}},'required':['id','reason','replaced_by'],'additionalProperties':False}},
-                'candidate_services':{'type':'array','items':{'type':'string'}}, 'scope_reason':{'type':'string'}},
-                'required':['updates','additions','removals','candidate_services','scope_reason'],'additionalProperties':False}}},
+            output_config=plan_repair_schema(value),
             messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
         raw=response_text(msg)
         upsert_artifact(job_id=job_id,step='research_plan_policy_repair_response',content_type='application/json',content_text=raw,

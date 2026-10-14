@@ -2,8 +2,9 @@
 import copy
 import json
 
-POLICY_VERSION='generation-evidence-v4-publication-handoff'
+POLICY_VERSION='generation-evidence-v5-reader-handoff'
 POLICY='''以下は調査の合格後に採用された回答・条件と省略項目。回答の対象・期間・適用条件を維持する。
+reader_designの背景・感情・商品適合は設計上の仮説であり検証済み事実ではない。reader_decisionsの主回答と前後関係を保持し、問い・必要な回答・伝え方・読後の状態を構成と本文へ反映する。商品資料の主張や心理仮説から新しい事実を追加せず、確認済みdecisionsの範囲で説明する。
 本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
 引用は回答の根拠であり、引用内の別の情報を自由に追加するための資料ではない。
 省略・未確認項目は本文で断定しない。現在の結論に使用不可の情報を現在の比較に使わない。
@@ -25,7 +26,9 @@ def publication_scope(item):
 
 def outline_planning_context(plan):
     """Editorial relevance is separate from accepted facts and source bookkeeping."""
-    return {'topics': [{k: copy.deepcopy(q[k]) for k in
+    return {'reader_design':copy.deepcopy(plan.get('reader_design',{})),
+            'reader_decisions':copy.deepcopy(plan.get('reader_decisions',[])),
+            'topics': [{k: copy.deepcopy(q[k]) for k in
                        ('id', 'priority_reason') if k in q}
                        for q in plan.get('items', [])]}
 
@@ -76,7 +79,9 @@ def decision_bundle(plan, matrix, *, quotes, planning=False):
                 row['source_ids'].append(ref_ids[key])
         rows.append(row)
     bundle={'version':POLICY_VERSION,'scope':{k:v for k,v in plan.items() if k in ('candidate_services',)},
-            'decisions':rows,'sources':sources}
+            'decisions':rows,'sources':sources,
+            'reader_design':copy.deepcopy(plan.get('reader_design',{})),
+            'reader_decisions':copy.deepcopy(plan.get('reader_decisions',[]))}
     if planning:
         bundle['editorial_planning']=outline_planning_context(plan)
     return POLICY+'\n'+json.dumps(bundle,ensure_ascii=False)

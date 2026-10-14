@@ -138,6 +138,22 @@ def get_job(job_id: str) -> dict:
     return rows[0]
 
 
+def get_cached_product_context(tenant_id: str, input_sha256: str) -> dict | None:
+    """Server-only reuse, explicitly scoped through the artifact's owning job."""
+    response = requests.get(f"{_base()}/artifacts", headers=_headers(), timeout=20,
+        params={'step':'eq.product_context', 'meta->>input_sha256':f'eq.{input_sha256}',
+                'select':'content_text,meta,jobs!inner(tenant_id)', 'jobs.tenant_id':f'eq.{tenant_id}',
+                'order':'created_at.desc', 'limit':'1'})
+    response.raise_for_status()
+    rows = response.json()
+    if not rows: return None
+    row = rows[0]
+    if (row.get('jobs',{}).get('tenant_id') != tenant_id
+        or row.get('meta',{}).get('input_sha256') != input_sha256):
+        raise ValueError('Product cache ownership or material version mismatch')
+    return row
+
+
 def get_company_settings(user_id: str, category: str) -> list:
     """カテゴリに一致する企業設定を取得（レベル降順）"""
     resp = requests.get(
