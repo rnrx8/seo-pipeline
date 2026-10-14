@@ -155,6 +155,21 @@ class ScopedReviewTests(unittest.TestCase):
         self.assertEqual(set(trace[1]['reviewed_block_ids']),{self.blocks[1]['id'],self.a,self.blocks[3]['id']})
         self.assertEqual({r['id'] for r in checks[0]['claim_verdicts']},{self.a,self.summary})
 
+    def test_invalid_screener_quote_is_discarded_and_independently_rechecked(self):
+        seen=[]
+        def send(job,step,request):
+            seen.append(step)
+            value=self.message(request,fail=step.endswith('screen'))
+            if step.endswith('screen'):
+                value['checks'][0]['correction_evidence']=[{'url':self.pages[0]['url'],'quote':'This sentence is not in the original source.'}]
+            return value,NS(input_tokens=0,output_tokens=0)
+        with patch.object(research,'checked_request',side_effect=send):
+            checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
+        self.assertEqual(seen,['tiered_article_evidence_screen','tiered_article_evidence_adjudicate'])
+        self.assertEqual(checks[0]['status'],'pass')
+        self.assertEqual(trace[0]['pending_correction_quote_ids'],[self.a])
+        self.assertTrue(trace[0]['review']['needed'])
+
     def test_missing_adjudicator_quote_still_stops_before_article_repair(self):
         def send(job,step,request):
             value=self.message(request,fail=True)

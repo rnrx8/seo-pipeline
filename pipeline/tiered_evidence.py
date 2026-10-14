@@ -114,6 +114,16 @@ def validate_claim_verdicts(checks, candidates):
 
 def pending_correction_scope(checks, scope, pages):
     """A screener's unsupported repair receipt is pending, never a publishable failure."""
+    from .content_quality import ContentQualityError
+    from .repair_evidence import validate
+    for check in checks:
+        if check['status']=='fail' and check.get('correction_evidence'):
+            try:
+                validate([check],pages,unresolved=True)
+            except ContentQualityError:
+                # A screener's altered/missing source span is not repair evidence.
+                # Preserve its individual failures and ask the existing adjudicator.
+                check['correction_evidence']=[]
     missing={loc['id'] for check in checks
              if check['status']=='fail' and not check.get('correction_evidence')
              for loc in check.get('affected_blocks',[])
