@@ -45,6 +45,19 @@ class ProductionSpendingModeTests(unittest.TestCase):
             budget.settle(first,{'input_tokens':1,'output_tokens':1})
             with self.assertRaisesRegex(ContentQualityError,'同じ確認要求'):
                 budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':150000})
+    def test_production_exceeds_saved_repair_and_audit_counts_without_erasing_them(self):
+        request={'messages':[{'content':'{}'}]}
+        for step in ('outline_local_repair_response','tiered_audit_research','tiered_content_repair_1_0','tiered_prose_finish_repair'):
+            for attempt in range(4):
+                with budget.request_scope('existing-job',step,f'{step}-{attempt}',request):
+                    index=budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':100})
+                    budget.settle(index,{'input_tokens':1,'output_tokens':1})
+            with budget.request_scope('existing-job',step,f'{step}-3',request):
+                with self.assertRaisesRegex(ContentQualityError,'同じ確認要求'):
+                    budget.reserve({'model':'gpt-6.1-sol','max_output_tokens':100})
+        with budget.ledger() as value:
+            self.assertEqual(len(value['calls']),17)
+
     def test_explicit_bounded_trial_still_stops_on_saved_total_cap(self):
         with patch.dict(os.environ,{'QUALITY_BUDGET_MODE':'bounded'}):
             with self.assertRaisesRegex(ContentQualityError,'テスト全体'):

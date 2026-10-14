@@ -1,6 +1,6 @@
 """Durable cost accounting and duplicate protection for tiered review.
 
-Production records expenditure without trial spending caps. Bounded local
+Production records expenditure without trial spending or call-count caps. Bounded local
 evaluations must explicitly set QUALITY_BUDGET_MODE=bounded.
 """
 import contextvars,fcntl,hashlib,json,os,time,math
@@ -143,9 +143,9 @@ def guard_review(value,amount):
  if meta['role'] in ('prose_finish_repair','prose_finish_review'):
   extra=0 # A terminal local finish cannot be extended into another loop.
   repairs=[c for c in previous if c['review_operation']['role'] in ('repair','prose_finish_repair')]
-  if meta['role']=='prose_finish_repair' and len(repairs)>=2:
+  if spending_limits_enabled() and meta['role']=='prose_finish_repair' and len(repairs)>=2:
    raise ContentQualityError('既存の修正回数枠を使い切っています。局所修正を追加しません。')
- if len(same)>=meta['call_limit']+extra:
+ if spending_limits_enabled() and len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)
  quality_used=sum(c.get('cost_usd',c['reserved_usd']) for c in calls if c.get('category','quality')=='quality')
