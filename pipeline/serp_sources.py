@@ -118,6 +118,9 @@ def fetch_serp(keyword: str) -> tuple[dict, dict]:
                 "related_searches": raw.get("relatedSearches", []),
                 "search_parameters": {"q": raw.get("searchParameters", {}).get("q", keyword)},
                 "raw_response": raw}
+        from .competitor_context import enrichment
+        data['enrichment_status']=enrichment(raw,keyword,keys={
+            'people_also_ask':('peopleAlsoAsk',),'related_searches':('relatedSearches',)})
         if raw.get("error") or raw.get("message") and not raw.get("organic"):
             raise SerpQualityError("Serperから有効な競合情報を取得できませんでした。")
         validate_results(data, keyword)
@@ -141,6 +144,8 @@ def fetch_serp(keyword: str) -> tuple[dict, dict]:
             "検索結果の不整合を検出したため、記事生成を停止しました。"
             "Serperへの切り替え、またはブラウザで確認した競合情報の登録が必要です。"
         )
+    from .competitor_context import enrichment
+    data['enrichment_status']=enrichment(data,keyword)
     source["validation"] = "consistency_checked"
     return data, source
 
@@ -165,6 +170,8 @@ def verified_serp(snapshot: dict, keyword: str, job_id: str) -> tuple[dict, dict
             "related_questions": snapshot.get("people_also_ask", []),
             "related_searches": snapshot.get("related_searches", []),
             "search_parameters": {"q": keyword}}
+    from .competitor_context import enrichment
+    data['enrichment_status']=enrichment(snapshot,keyword,browser=True)
     validate_results(data, keyword)
     source = {"provider": "browser_verified", "query": keyword, "fetched_at": observed.isoformat(),
               "search_mode": "standard", "validation": "browser_verified", "search_url": search_url}

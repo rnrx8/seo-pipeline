@@ -430,6 +430,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
 
     serp = get_artifact(job_id, "serp")
     intent = get_artifact(job_id, "search_intent")
+    from .generation_context import authoring_intent, registered_for_authoring, authoring_serp
+    structured_intent = bool((intent.get('meta') or {}).get('reader_needs_version'))
+    intent = {**intent, 'content_text': authoring_intent(job_id, intent)}
     from .research_requirements import require_matrix, load_plan
     matrix = require_matrix(job_id)
     fact = dict(get_artifact(job_id, "fact_sheet"))
@@ -479,7 +482,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         user_id = job.get("tenant_id")
         category = job.get("category")
         if user_id and category:
-            companies = get_company_settings(user_id, category)
+            companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in get_company_settings(user_id, category)]
             restriction = job.get("company_restriction", "ai")
             company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
@@ -509,7 +512,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         extra_instructions = _build_extra_instructions(job)
         service_id = job.get("service_id")
         if service_id:
-            service = get_service_by_id(service_id)
+            service = registered_for_authoring(get_service_by_id(service_id), structured_intent=structured_intent)
             if service:
                 service_prompt = _build_service_prompt(service)
                 print(f"[outline] Loaded service: {service.get('name')}")
@@ -535,7 +538,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
                     keyword=keyword,
                     intent_text=intent["content_text"],
                     fact_text=fact["content_text"],
-                    serp_text=serp["content_text"],
+                    serp_text=authoring_serp(serp["content_text"],structured_intent=structured_intent),
                     word_count_instruction=word_count_instruction,
                 ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions,
             }

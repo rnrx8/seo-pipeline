@@ -145,3 +145,16 @@ def checked_reviews(value, decisions, *, block_ids=None):
             if not isinstance(refs,list) or any(q not in d['research_ids'] for q in refs) or (r['status']=='fail' and not refs):
                 fail('判断の不足に対応する調査が特定されていません。')
     return rows
+
+
+def research_result(value, decisions):
+    if not decisions:return value
+    rows=checked_reviews(value,decisions);result=copy.deepcopy(value)
+    for d in decisions:
+        r=rows[d['id']]
+        if r['status']=='fail' and d['role']!='supporting':
+            result['coverage_sufficient']=False
+            for q in r['research_ids']:
+                issue={'id':q,'reason':d['question']+'：'+r['reason'],'repair_kind':'editorial'}
+                if issue not in result['coverage_issues']:result['coverage_issues'].append(issue)
+    return result

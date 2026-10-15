@@ -2,7 +2,7 @@
 import json
 import re
 from urllib.parse import urlsplit
-from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION, SOURCE_BASES, allowed_source_bases
+from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION, SOURCE_BASES, allowed_source_bases, SOURCE_INTERPRETATION_POLICY
 from .fresh_sources import normalize_url
 import anthropic
 from .ai import create_with_retry, get_step_config, is_openai_model
@@ -59,7 +59,7 @@ from .reader_decisions import POLICY as DECISION_POLICY, SCHEMA as DECISION_SCHE
 PLAN_SYSTEM += EVIDENCE_POLICY + DECISION_POLICY + '''
 JSONにreader_decisionsを含める。reader_needsがある場合は採用された問いのidとquestionを保持し、その問いへ答える必要回答・役割・前後関係とresearch_idsを設計する。心理・場面例の細目をすべて調査質問へ変換しない。登録商品資料とproduct_contextは検証前の理解であり、資料の主張を確認済み事実として回答しない。商品が今回有用でない、またはCTAを保留する判断も保持し、CV指定で検索への問いを置き換えない。
 '''
-MATRIX_SYSTEM += EVIDENCE_POLICY + '''
+MATRIX_SYSTEM += EVIDENCE_POLICY + SOURCE_INTERPRETATION_POLICY + '''
 各項目にbasis(primary/guidance/expert/corroborated/historical/omitted/unresolved)、official_checked_urls、applicable_at、supports_current_conclusion、omission_reason、exploration_complete、exploration_reasonを返す。applicable_atは根拠の時点・条件を記録する互換フィールドで、適用開始日の取得を義務づけない。通常の掲載情報は確認日時点の掲載内容と記し、改定日・対象期間が明示される場合はその条件を記す。開始日を推測しない。
 primaryは直接の公式/原典で、本人に帰属を限定した体験報告は本人の発信原文が該当する。guidanceは取得本文の範囲内の一般的助言。expertは有資格者による適切な専門解説。専門家の解説を法令・判決の原典と扱わない。corroboratedは独立した第三者本文2件以上。historicalは適用時点の明確な過去情報。各evidenceにsource_kind(primary/secondary)とindependence_group(同じ転載/引用元は同じ値)を付ける。
 expert採用時は、使用する各専門解説のevidenceにexpert_name、expert_qualification_quote（同じ取得本文にある氏名・資格・執筆/監修の関与を示す連続した原文）、expert_scope_reason（専門分野と回答範囲が適合する理由）を記録する。それ以外は空文字。専門解説のsource_kindはsecondaryのまま。名前だけの登場や資格不明のメディア解説では不可。
@@ -81,6 +81,10 @@ PLAN_SCHEMA['format']['schema']['properties'].update(candidate_services={'type':
 PLAN_SCHEMA['format']['schema']['required'] += ['candidate_services','scope_reason']
 PLAN_SCHEMA['format']['schema']['properties']['reader_decisions'] = DECISION_SCHEMA
 PLAN_SCHEMA['format']['schema']['required'].append('reader_decisions')
+from .competitor_context import GAP_SCHEMA, GAP_POLICY
+PLAN_SCHEMA['format']['schema']['properties']['content_gaps']=GAP_SCHEMA
+PLAN_SCHEMA['format']['schema']['required'].append('content_gaps')
+PLAN_SYSTEM += GAP_POLICY
 MATRIX_SCHEMA = _schema({'id':{'type':'string'},'status':{'type':'string','enum':['confirmed','explicitly_undisclosed','unresearched','fetch_failed','searched_not_found']},
     'answer':{'type':'string'},'reason':{'type':'string'},'evidence':{'type':'array','items':{'type':'object',
     'properties':{'url':{'type':'string'},'quote':{'type':'string'}},'required':['url','quote'],'additionalProperties':False}}})
@@ -105,6 +109,9 @@ ep['properties'].update({k:{'type':'string'} for k in ('expert_name','expert_qua
 ep['required'] = list(ep['properties'])
 MATRIX_SCHEMA['format']['schema']['properties'].update(coverage_sufficient={'type':'boolean'},coverage_reason={'type':'string'})
 MATRIX_SCHEMA['format']['schema']['required'] += ['coverage_sufficient','coverage_reason']
+from .claim_evidence import POLICY as CLAIM_POLICY, response_schema as claim_response_schema
+MATRIX_SYSTEM += CLAIM_POLICY
+MATRIX_SCHEMA = claim_response_schema(MATRIX_SCHEMA)
 
 
 def plan_policy():
@@ -164,6 +171,11 @@ def load_plan(job_id):
             if fingerprint(live_brief) != fingerprint(brief):
                 raise ContentQualityError('商品資料または依頼が変わっています。古い計画で再開しません。')
             if current: current['reader_inputs_checked'] = key
+    if value.get('competitor_context',{}).get('source_sha256'):
+        saved=get_optional_artifact(job_id,'competitor_evidence')
+        actual=digest(json.dumps(json.loads(saved['content_text']),ensure_ascii=False,sort_keys=True)) if saved else None
+        if actual!=value['competitor_context']['source_sha256']:
+            raise ContentQualityError('競合本文が計画の確認後に変わっています。計画から確認してください。')
     return value
 
 
@@ -176,6 +188,9 @@ def _plan_context(job_id, keyword):
     from .reader_needs import load as load_needs
     brief = load_brief(job_id)
     needs = load_needs(job_id, brief)
+    from .competitor_context import project
+    evidence=get_optional_artifact(job_id,'competitor_evidence')
+    payload['competitor_context']=project(json.loads(evidence['content_text']) if evidence else None,keyword,needs)
     if brief:
         if needs is None: raise ContentQualityError('採用した読者の問いがありません。分析から確認してください。')
         if brief['keyword'] != keyword: raise ContentQualityError('制作依頼のキーワードが一致しません。')
@@ -218,6 +233,10 @@ def plan(job_id, keyword, api_key=None):
         design = editorial_context(payload.get('production_brief'), payload.get('reader_needs'))
         if design: value['reader_design'] = design
         validate_plan(value)
+        from .competitor_context import validate_gaps
+        validate_gaps(value,payload)
+        if payload.get('competitor_context'):
+            value['competitor_context']=payload['competitor_context']
         upsert_artifact(job_id=job_id,step=f'research_plan_candidate_{attempt}',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
         verdict,usage=review(job_id,value,payload,attempt,api_key)
         inputs+=msg.usage.input_tokens+usage.input_tokens;outputs+=msg.usage.output_tokens+usage.output_tokens
@@ -261,6 +280,11 @@ def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
         result['reader_decisions'] = changes.get('reader_decisions')
         from .reader_decisions import validate
         validate(result['reader_decisions'], result['items'])
+    if 'content_gaps' in value:
+        result['content_gaps']=changes.get('content_gaps')
+        from .competitor_context import validate_gaps
+        validate_gaps(result,{'reader_needs':{'selected':value.get('reader_design',{}).get('reader_needs',[])},
+                              'competitor_context':value.get('competitor_context',{})})
     remaining={i['id']:i for i in result['items']}
     for r in removals:
         replacements=r.get('replaced_by',[])
@@ -282,6 +306,7 @@ def plan_repair_schema(value):
         'required':['id','reason','replaced_by'],'additionalProperties':False}},
         candidate_services={'type':'array','items':{'type':'string'}}, scope_reason={'type':'string'})
     if value.get('reader_decisions'): props['reader_decisions'] = DECISION_SCHEMA
+    if 'content_gaps' in value: props['content_gaps'] = GAP_SCHEMA
     return {'format':{'type':'json_schema','schema':{'type':'object','properties':props,
         'required':list(props),'additionalProperties':False}}}
 
@@ -407,6 +432,10 @@ def validate_matrix(value, plan_value, pages):
     if not isinstance(value,dict) or not isinstance(value.get('items'),list):
         raise ContentQualityError('調査確認の形式が不正です。')
     items=value['items'];required={i['id']:i for i in plan_value['items']}
+    from .claim_evidence import assess
+    for item in items:
+        if isinstance(item,dict) and item.get('id') in required:
+            assess(item,required[item['id']],pages)
     if any(not isinstance(i,dict) or not isinstance(i.get('answer'),str) or not isinstance(i.get('evidence'),list) for i in items):
         raise ContentQualityError('調査確認の回答・根拠の形式が不正です。')
     if any(not isinstance(r,dict) or not isinstance(r.get('url'),str) or not isinstance(r.get('quote'),str) for i in items for r in i['evidence']):
@@ -425,7 +454,17 @@ def validate_matrix(value, plan_value, pages):
             raise ContentQualityError('調査確認の状態が不正です。')
         accepted=item['status'] in ('confirmed','explicitly_undisclosed')
         refs=item.get('evidence',[])
-        if accepted and (not item.get('answer','').strip() or not refs): accepted=False
+        kind=item.get('answer_type','sourced')
+        if kind not in ('sourced','proposal','inference'):
+            raise ContentQualityError('回答の事実・提案・推論の区分が不正です。')
+        planned=required[item['id']]
+        proposal=(kind=='proposal' and planned.get('source_requirement')=='general_guidance'
+                  and item.get('basis')=='guidance' and planned.get('official_check_required') is False
+                  and not planned.get('requires_current') and bool(item.get('reason','').strip()))
+        if accepted and (not item.get('answer','').strip() or (not refs and not proposal)): accepted=False
+        if kind=='proposal' and not proposal:accepted=False
+        if kind=='inference' and (planned.get('source_requirement') not in ('standard','general_guidance')
+                                  or not item.get('reason','').strip()):accepted=False
         if accepted and any(not ref.get('quote','').strip() or ref.get('url') not in bodies or normalize(ref['quote']) not in bodies[ref['url']] for ref in refs):
             accepted=False
             item['reason']='回答の引用と直接取得本文が一致しません。' + item.get('reason','')
@@ -482,9 +521,11 @@ def validate_matrix(value, plan_value, pages):
             else: accepted = False
             if basis != 'omitted' and planned.get('requires_current') and item.get('supports_current_conclusion') is not True: accepted = False
             if basis != 'omitted' and item['status'] != 'confirmed': accepted = False
+        if item.get('claim_policy_issues'):
+            accepted=False;item['validation_issue']=item['claim_policy_issues'][0]
         item['verified']=accepted
         if (required[item['id']]['required'] or 'priority' in required[item['id']]) and not accepted:
-            reason = item.get('reason','根拠不足')
+            reason = item.get('claim_validation_issue') or item.get('reason','根拠不足')
             issue = item.get('validation_issue')
             if issue and issue['code'] == 'source_basis_mismatch':
                 reason = f"根拠区分の不整合：{issue['source_requirement']}に{issue['basis']}は採用できません。モデルの説明：" + reason
@@ -493,13 +534,18 @@ def validate_matrix(value, plan_value, pages):
     for issue in value.get('coverage_issues',[]):
         if issue.get('id') not in required or not issue.get('reason','').strip() or value.get('coverage_sufficient') is True:
             raise ContentQualityError('調査全体の指摘項目が不正です。')
+        repair_kind=issue.get('repair_kind','source')
+        if repair_kind not in ('source','handoff','editorial'):
+            raise ContentQualityError('調査確認の修正先が不正です。')
         existing=next((g for g in gaps if g['id']==issue['id']),None)
         if existing is not None:
             existing['reason'] += '\n全体確認：' + issue['reason']
         else:
-            gaps.append({**required[issue['id']], 'status':'unresearched','reason':'全体確認：'+issue['reason']})
+            gaps.append({**required[issue['id']], 'status':'unresearched','reason':'全体確認：'+issue['reason'], 'repair_kind':repair_kind})
     if not gaps and any('priority' in i for i in required.values()) and (value.get('coverage_sufficient') is not True or not value.get('coverage_reason','').strip()):
         gaps.append({'id':'overall','question':'省略を含めた記事全体の重要論点の網羅','required':True,'reason':value.get('coverage_reason','網羅性未確認')})
+    from .claim_evidence import ledger
+    if any('claims' in i for i in items): value['evidence_ledger']=ledger(value,pages)
     return gaps
 
 
@@ -516,7 +562,8 @@ def accepted_facts(value, plan_value):
         refs='\n'.join('出典：'+r['url']+'｜確認箇所：'+json.dumps(r['quote'],ensure_ascii=False) for r in i['evidence'])
         blocks.append('### '+title+'\n'+' '.join(i['answer'].splitlines())+'\n根拠の時点・条件：'+date+'\n採用根拠：'+i.get('basis','primary')+
             ('（現在の比較結論には使用不可）' if i.get('supports_current_conclusion') is False else '')+
-            '\n'+refs+'\n確認日：'+current_check_date()+'｜[confirmed]')
+            ('\n掲載する実条件：'+'／'.join(i['publication_conditions']) if i.get('publication_conditions') else '')+
+            '\n'+refs+'\n確認日：'+(i['claims_checked_at'] if i.get('claims_checked_at') else current_check_date())+'｜'+{'proposal':'[editorial_proposal]','inference':'[editorial_inference]'}.get(i.get('answer_type'),'[confirmed]'))
     return '\n\n'.join(blocks)
 
 
@@ -571,6 +618,7 @@ def retrieval_gaps(gaps, matrix, pages):
             if p.get('status','success')=='success'}
     result=[]
     for gap in gaps:
+        if gap.get('repair_kind') in ('handoff','editorial'):continue
         item=items.get(gap.get('id'),{})
         candidates=[item]+[item[k] for k in ('omission_candidate_from','unresolved_candidate')
                            if isinstance(item.get(k),dict)]
@@ -676,6 +724,10 @@ def _require_matrix_strict(job_id):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
     if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
+    if plan_value.get('reader_decisions'):
+        from .reader_decisions import research_result
+        if not research_result(matrix,plan_value['reader_decisions'])['coverage_sufficient']:
+            raise ContentQualityError('主要な読者判断への回答が不足しています。')
     from .generation_context import publication_scope
     for item in matrix['items']:
         publication_scope(item)

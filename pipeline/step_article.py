@@ -618,6 +618,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print("[article] Generating article (3 parts)...")
 
     intent = get_artifact(job_id, "search_intent")
+    from .generation_context import authoring_intent, registered_for_authoring
+    structured_intent = bool((intent.get('meta') or {}).get('reader_needs_version'))
+    intent = {**intent, 'content_text': authoring_intent(job_id, intent)}
     outline = get_artifact(job_id, "outline")
     from .outline_policy import require_current_outline
     require_current_outline(outline)
@@ -669,7 +672,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         user_id = job.get("tenant_id")
         category = job.get("category")
         if user_id and category:
-            companies = get_company_settings(user_id, category)
+            companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in get_company_settings(user_id, category)]
             restriction = job.get("company_restriction", "ai")
             company_prompt = _build_company_prompt(companies, restriction)
             if company_prompt:
@@ -677,7 +680,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         extra_instructions = _build_extra_instructions(job)
         service_id = job.get("service_id")
         if service_id:
-            service = get_service_by_id(service_id)
+            service = registered_for_authoring(get_service_by_id(service_id), structured_intent=structured_intent)
             if service:
                 service_prompt = _build_service_prompt(service)
                 print(f"[article] Loaded service: {service.get('name')}")

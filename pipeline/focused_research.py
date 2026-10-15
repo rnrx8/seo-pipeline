@@ -168,7 +168,9 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
     # the existing bounded audit instead of erasing the answer as an omission.
     pending = [i for i in value['items'] if i.get('basis') != 'omitted'
                and ((i.get('verified') and needs_adjudication(i, planned[i['id']]))
-                    or (not i.get('verified') and i.get('answer','').strip() and i.get('evidence')))]
+                    or (not i.get('verified') and (
+                        i.get('answer','').strip() and i.get('evidence')
+                        or any(c.get('evidence') or c.get('conflicting_evidence') for c in i.get('claim_states',[])))))]
     if pending:
         # Preserve each already-visible page in full, including neighboring spans.
         pending_ids = {i['id'] for i in pending}

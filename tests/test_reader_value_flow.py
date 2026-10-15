@@ -48,7 +48,7 @@ def plan_fixture():
     item=dict(id='q1',question='探す手段ごとの特徴と向く状況',subject='共通',priority='essential',
               priority_reason='直接回答の比較',required=True,source_requirement='general_guidance',
               requires_current=False,official_check_required=False)
-    plan={'items':[item],'candidate_services':[],'scope_reason':'まず手段を判断する',
+    plan={'items':[item],'candidate_services':[],'scope_reason':'まず手段を判断する','content_gaps':[dict(need_id='i01',question=value['selected'][0]['question'],status='not_assessed',reason='競合本文は未取得',opportunity='手段の差を調べる',research_ids=['q1'],evidence=[])],
           'reader_decisions':[dict(id='i01',question=value['selected'][0]['question'],role='primary',scope='手段選択',
                                    depends_on=[],research_ids=['q1'],answer_requirements=value['selected'][0]['answer_requirements'])],
           'reader_design':rn.editorial_context(brief,needs)}
@@ -161,7 +161,7 @@ class ReaderValueFlowTests(unittest.TestCase):
     def test_repair_updates_research_links_and_preserves_intent_ids(self):
         plan=plan_fixture();updates=copy.deepcopy(plan['items']);updates[0]['question']='手段の違いと向く状況'
         changes={'updates':updates,'additions':[],'removals':[],'candidate_services':[],'scope_reason':'維持',
-                 'reader_decisions':copy.deepcopy(plan['reader_decisions'])}
+                 'reader_decisions':copy.deepcopy(plan['reader_decisions']),'content_gaps':copy.deepcopy(plan['content_gaps'])}
         result=req.apply_plan_repair(plan,changes)
         self.assertEqual(result['reader_decisions'][0]['id'],'i01')
         changes['reader_decisions'][0]['research_ids']=['deleted-q']
@@ -205,6 +205,7 @@ class ReaderValueFlowTests(unittest.TestCase):
         records['serp']={'content_text':sources['serp']}
         with patch.object(req,'get_job',return_value={'tenant_id':'owner'}),\
              patch.object(req,'get_artifact',side_effect=lambda j,s:records[s]),\
+             patch.object(req,'get_optional_artifact',side_effect=lambda j,s:records.get(s)),\
              patch.object(db,'get_artifact',side_effect=lambda j,s:records[s]),\
              patch.object(db,'get_optional_artifact',side_effect=lambda j,s:records.get(s)),\
              patch.object(pb,'prepare',return_value=(brief,material,None,'miss')),\

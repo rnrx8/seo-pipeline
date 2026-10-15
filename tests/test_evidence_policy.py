@@ -372,7 +372,7 @@ class EvidencePolicyTests(unittest.TestCase):
         response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(plan))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
         saved={}
         def save(**kw):saved[kw['step']]=kw;return kw
-        with patch('pipeline.production_brief.load',return_value=None),patch('pipeline.reader_needs.load',return_value=None),patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
+        with patch('pipeline.production_brief.load',return_value=None),patch('pipeline.reader_needs.load',return_value=None),patch.object(r,'get_optional_artifact',return_value=None),patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
              patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',return_value=response) as generate, \
              patch.object(r,'upsert_artifact',side_effect=save), \
              patch('pipeline.research_plan_review.review',return_value=({'valid':False,'issues':[{'id':'q1','reason':'補助条件を必須へ抱き合わせている'}]},response.usage)):
@@ -388,7 +388,7 @@ class EvidencePolicyTests(unittest.TestCase):
         plan['reader_decisions']=[dict(id='i01',question='料金はいくらか',role='primary',scope='必要料金',
             depends_on=[],research_ids=['q1'],answer_requirements=['料金と期間を示す'])]
         response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(plan))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
-        with patch('pipeline.production_brief.load',return_value=None),patch('pipeline.reader_needs.load',return_value=None),patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
+        with patch('pipeline.production_brief.load',return_value=None),patch('pipeline.reader_needs.load',return_value=None),patch.object(r,'get_optional_artifact',return_value=None),patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
              patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',return_value=response), \
              patch.object(r,'upsert_artifact',side_effect=lambda **kw:kw), \
              patch('pipeline.research_plan_review.review',return_value=({'valid':True,'issues':[]},response.usage)):

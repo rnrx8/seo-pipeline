@@ -3,12 +3,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime, timezone
 
 from .db import get_job, get_optional_artifact, upsert_artifact
 from .browser_fetch import check_reference_url, fetch_rendered_page
 from .fetch_status import classify_failure, unverified_message
 from .serp_sources import fetch_serp, validate_results, verified_serp
 from .public_fetch import get_public_page
+from .competitor_context import enrichment, capture
+from .content_quality import digest
 
 
 FETCH_TIMEOUT = 5  # seconds per URL
@@ -50,7 +53,8 @@ def _fetch_headings(item: dict, high_accuracy: bool = False, blocked=()) -> dict
             if tag.get_text(strip=True)
         ]
         body = soup.find("body")
-        body_text = body.get_text() if body else soup.get_text()
+        root=soup.find('main') or soup.find('article') or body or soup
+        body_text = root.get_text('\n',strip=True)
         char_count = len([c for c in body_text if not c.isspace()])
         if char_count < 100:
             base['failure_code'] = 'dynamic_content' if has_scripts else 'empty_body'
@@ -62,6 +66,10 @@ def _fetch_headings(item: dict, high_accuracy: bool = False, blocked=()) -> dict
             "word_count": char_count,
             "fetch_status": "success",
             "fetch_method": "http",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "body_excerpt": body_text[:24000],
+            "body_sha256": digest(body_text),
+            "body_truncated": len(body_text)>24000,
         }
     except Exception as exc:
         base.setdefault('failure_code', classify_failure(exc))
@@ -73,7 +81,10 @@ def _fetch_headings(item: dict, high_accuracy: bool = False, blocked=()) -> dict
                 headings = rendered.get('headings', [])
                 return {**base, 'fetch_status': 'success', 'fetch_method': 'browser',
                         'headings': headings, 'heading_count': len(headings),
-                        'word_count': rendered['word_count'], 'fetched_at': rendered['fetched_at']}
+                        'word_count': rendered['word_count'], 'fetched_at': rendered['fetched_at'],
+                        'body_excerpt': rendered.get('text','')[:24000],
+                        'body_sha256': digest(rendered.get('text','')),
+                        'body_truncated': len(rendered.get('text',''))>24000}
             base['browser_failure_code'] = rendered.get('reason_code')
         base['failure_message'] = unverified_message(base['failure_code'], base['browser_attempted'])
         return base
@@ -94,19 +105,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         data, source = fetch_serp(keyword)
     organic = validate_results(data, keyword)
 
-    # related_searches: [{"query": "..."}] → ["..."]
+    states=data.get('enrichment_status') or enrichment(data,keyword,browser=source.get('provider')=='browser_verified')
+    # Preserve section availability before normalizing the display arrays.
     related = [
         r.get("query", "")
-        for r in data.get("related_searches", [])
+        for r in states['related_searches']['items'] if isinstance(r,dict)
         if r.get("query")
     ]
 
     # people_also_ask / related_questions: question + snippet のみ抽出
-    paa_raw = data.get("people_also_ask") or data.get("related_questions") or []
+    paa_raw = states['people_also_ask']['items']
     print(f"[serp] PAA raw count from API: {len(paa_raw)}")
     paa = [
         {"question": r.get("question", ""), "snippet": r.get("snippet", "")}
-        for r in paa_raw
+        for r in paa_raw if isinstance(r,dict)
         if r.get("question")
     ]
 
@@ -126,6 +138,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     success = sum(1 for h in competitor_headings if h and h["fetch_status"] == "success")
     print(f"[serp] Headings fetched: {success}/{len(organic)} succeeded")
+    upsert_artifact(job_id=job_id,step='competitor_evidence',content_type='application/json',
+        content_text=json.dumps(capture(competitor_headings,keyword,source),ensure_ascii=False))
 
     structured = {
         "source": source,
@@ -141,7 +155,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         ],
         "related_searches":    related,
         "people_also_ask":     paa,
-        "competitor_headings": competitor_headings,
+        "competitor_headings": [{k:v for k,v in h.items() if k not in ('body_excerpt','body_sha256','body_truncated')} if h else None for h in competitor_headings],
+        "enrichment_status": {k:{a:b for a,b in v.items() if a!='items'} for k,v in states.items()},
     }
 
     artifact = upsert_artifact(

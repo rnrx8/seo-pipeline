@@ -5,7 +5,7 @@ SPAN_POLICY = '''
 【今回の出典指定形式：quoteを文字列で返す指示より優先】
 sources.excerptsに原文とsource_refがある。evidenceにはsource_refを返す。URLもシステムが対応する原文から取得する。
 source_refは今回の要求内だけで有効なID。別要求のIDを流用しない。条件や文章が隣の抜粋へ続く場合は隣接抜粋も読み、必要なら複数IDを選ぶ。
-主張を直接支える原文のIDを選ぶ。IDは内容を確認せず選んではいけない。
+sourcedは主張を直接支える原文、inferenceは確認する前提を支える原文のIDを選ぶ。proposalは同じ提案の原文を要求しない。IDは内容を確認せず選んではいけない。claims.evidence_indicesはこの質問のevidence配列の0始まり番号でありsource_refとは別。
 引用文はシステムが原文から取り出すため、quoteを自分で書き直さない。
 専門家の氏名・資格・関与の根拠もexpert_source_refで同じURLの原文IDを指定する。不要なら空文字。
 段落・表の前後や対象・列見出しは、同じページの隣接抜粋を読んで条件を確認する。
@@ -62,7 +62,9 @@ def span_schema(matrix_schema, question_ids=None, *, questions=None):
         rows = result['format']['schema']['properties']['items']['properties']
         for key, question in planned.items():
             if 'source_requirement' in question:
-                rows[key]['properties']['basis']['enum'] = list(allowed_source_bases(question['source_requirement']))
+                props=rows[key]['properties']
+                basis=props.get('basis') or props['claims']['items']['properties']['basis']
+                basis['enum'] = list(allowed_source_bases(question['source_requirement']))
     return result
 
 

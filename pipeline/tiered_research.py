@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls, normalize_url
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v5-publication-scope'
+VERSION='tiered-research-v6-claim-scope'
 POLICY='''
 previous_findingsは前回の全体確認で指摘された具体的な不足。previous_candidates・omission_candidate_from・unresolved_candidateは未採用の参考情報であり、確認済み事実ではない。資料から再確認し、根拠のある部分と未確認部分を分ける。参考情報だけで合格にしない。
 related_verified_answersは他の対象で確認できた回答と条件。横断質問では該当例をこの情報と提示原文で照合し、回答範囲を限定する。別の質問へ合格を自動転記せず、出典は今回のsourcesから選ぶ。
@@ -45,7 +45,11 @@ def packed_sources(pages,hints,*,prioritize_referenced=False):
  return result
 
 def needs_adjudication(item,question):
+ critical=[r for r in item.get('claim_states',[]) if r['required_for_answer']]
+ complex_claims=(len(critical)>1 or any(r['answer_type']=='inference' or r['conflict']['status']!='none'
+     or len({c['dimension'] for c in r['conditions']})>=2 for r in critical))
  return (not item.get('verified') or item.get('basis') in ('corroborated','expert','historical')
+         or complex_claims
          or question.get('source_requirement') not in ('standard','general_guidance')
          or any(word in question['question'] for word in ('唯一','最多','最安','No.1'))
          or int(digest(question['id'])[:8],16)%10==0)
@@ -91,12 +95,38 @@ def checked_request(job_id,step,request,*,client=None):
 def validate_visible_matrix(value,plan,pages):
  from .research_requirements import validate_matrix
  validate_matrix(value,plan,pages)
+ visible={p['url']:''.join(p.get('text','').split()) for p in pages if p.get('status','success')=='success'}
  # A subsequent check against full documents must not promote citations the
  # model could not see. Only a new response may resolve this failed assertion.
  for item in value['items']:
+  if item.get('claim_states'):
+   failed=set(item.get('claim_visibility_failed',[]))
+   for row in item['claim_states']:
+    refs=row['evidence']+row['conflicting_evidence']
+    if any(not r.get('quote','').strip() or r.get('url') not in visible
+           or ''.join(r['quote'].split()) not in visible[r['url']] for r in refs):
+     failed.add(row['id'])
+   if failed:item['claim_visibility_failed']=sorted(failed)
   if not item.get('verified') and item.get('status')=='confirmed':
    item['status']='unresearched'
  return value
+
+
+def compact_editorial_plan(plan):
+ result={k:copy.deepcopy(plan[k]) for k in ('candidate_services','scope_reason','reader_decisions') if k in plan}
+ result['items']=[{k:copy.deepcopy(q[k]) for k in ('id','subject','question','priority')} for q in plan['items']]
+ if plan.get('reader_design'):
+  result['article_request']={k:plan['reader_design'].get('request',{}).get(k) for k in ('article_purpose','target_audience')}
+ return result
+
+
+def coverage_decision(item):
+ result={k:item.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at',
+  'publication_conditions','claim_limits','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')}
+ result['claims']=[{k:copy.deepcopy(c[k]) for k in ('id','text','subject','operation','conditions','answer_type',
+   'publishable','required_for_answer','conflict','evidence','conflicting_evidence')} for c in item.get('claim_states',[])
+   if c['required_for_answer'] or c['conflict']['status']!='none']
+ return result
 
 
 def audit_matrix(job_id,plan,pages,facts,intent_context):
@@ -113,8 +143,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
  for q in plan['items']:grouped.setdefault(q['subject'],[]).append(q)
  # Reviewers need editorial scope, not policy hashes or past repair bookkeeping.
  scope={k:plan[k] for k in ('candidate_services','scope_reason') if k in plan}
- compact_plan=dict(scope)
- compact_plan['items']=[{k:q[k] for k in ('id','subject','question','priority')} for q in plan['items']]
+ compact_plan=compact_editorial_plan(plan)
  items=[];inputs=outputs=0
  for index,(subject,questions) in sorted(enumerate(grouped.items(),1),key=lambda entry:entry[1][0]=='共通'):
   notes=[r for r in records if r and r.get('meta',{}).get('subject')==subject]
@@ -128,6 +157,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
                    {'evidence':[{k:r.get(k) for k in ('url','source_kind')} for r in i.get('evidence',[])]}
                    for i in items if subject=='共通' and i['id'] in related and i.get('verified') and i.get('basis')!='omitted']
   evidence_hints=[row for h in hints for row in (h,h.get('omission_candidate_from'),h.get('unresolved_candidate')) if isinstance(row,dict)]
+  evidence_hints += [{**h,'evidence':h['claim_evidence']} for h in hints if h.get('claim_evidence')]
   for h in evidence_hints:
    urls.update(r['url'] for r in h.get('evidence',[]));urls.update(h.get('official_checked_urls',[]))
   issue_ids={i.get('id') for i in previous_issues}
@@ -191,14 +221,16 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
 def review_coverage(job_id,plan,pages,items,intent_context):
  from .research_requirements import propose_optional_omissions,validate_matrix
  from .research_verification import COVERAGE_SYSTEM
- compact_plan={k:plan[k] for k in ('candidate_services','scope_reason') if k in plan}
- compact_plan['items']=[{k:q[k] for k in ('id','subject','question','priority')} for q in plan['items']]
+ compact_plan=compact_editorial_plan(plan)
  schema={'format':{'type':'json_schema','schema':{'type':'object','properties':{
-  'coverage_sufficient':{'type':'boolean'},'coverage_reason':{'type':'string'},'coverage_issues':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},'required':['coverage_sufficient','coverage_reason','coverage_issues'],'additionalProperties':False}}}
+  'coverage_sufficient':{'type':'boolean'},'coverage_reason':{'type':'string'},'coverage_issues':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'reason':{'type':'string'},'repair_kind':{'type':'string','enum':['source','handoff','editorial']}},'required':['id','reason','repair_kind'],'additionalProperties':False}}},'required':['coverage_sufficient','coverage_reason','coverage_issues'],'additionalProperties':False}}}
  propose_optional_omissions(items,plan,pages)
  # Recompute item status before coverage reads it, including omission candidates.
  validate_matrix({'items':items,'coverage_sufficient':True,'coverage_reason':'item validation only'},plan,pages)
- decisions=[{k:i.get(k) for k in ('id','answer','verified','basis','reason','validation_issue','applicable_at','publication_conditions','claim_limits','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')} for i in items]
+ from .reader_decisions import review_schema,research_result
+ schema=review_schema(schema,plan.get('reader_decisions',[]))
+ decisions=[coverage_decision(i) for i in items]
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
   messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
- return checked_request(job_id,'tiered_coverage',request)
+ result,usage=checked_request(job_id,'tiered_coverage',request)
+ return research_result(result,plan.get('reader_decisions',[])),usage

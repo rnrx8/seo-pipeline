@@ -20,13 +20,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     print("[content_contract] Building job-specific structure requirements...")
     job = get_job(job_id)
     intent = get_artifact(job_id, "search_intent")
+    from .generation_context import authoring_intent,registered_for_authoring
+    structured_intent=bool((intent.get('meta') or {}).get('reader_needs_version'))
+    intent={**intent,'content_text':authoring_intent(job_id,intent)}
     fact = get_artifact(job_id, "fact_sheet")
     attrs = _optional_artifact(job_id, "query_attrs")
     reference_artifact = _optional_artifact(job_id, "reference_structure")
 
     service = None
     if job.get("service_id"):
-        service = get_service_by_id(job["service_id"])
+        service = registered_for_authoring(get_service_by_id(job["service_id"]),structured_intent=structured_intent)
 
     reference = {}
     if reference_artifact:

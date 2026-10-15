@@ -148,6 +148,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .outline_policy import require_current_outline
     require_current_outline(outline)
     outline_text = outline["content_text"]
+    from .generation_context import registered_for_authoring
+    try:
+        intent=get_artifact(job_id,'search_intent')
+        structured_intent=bool((intent.get('meta') or {}).get('reader_needs_version'))
+    except (KeyError,ValueError):
+        structured_intent=False  # Legacy saved outlines may predate structured reader design.
 
     service: dict | None = None
     cta: dict | None = None
@@ -161,7 +167,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
         service_id = job.get("service_id")
         if service_id:
-            service = get_service_by_id(service_id)
+            service = registered_for_authoring(get_service_by_id(service_id),structured_intent=structured_intent)
             if service:
                 service_info = _format_service_info(service)
                 print(f"[service_map] Service: {service.get('name')}")

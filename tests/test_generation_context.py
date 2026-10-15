@@ -114,7 +114,7 @@ class GenerationContextTests(unittest.TestCase):
         plan,_,matrix=self.data()
         for provider in ('astra','sonnet','tiered'):
             with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
-                self.assertIn('generation-evidence-v5-reader-handoff',generation_evidence('job','facts','sources'))
+                self.assertIn('generation-evidence-v6-claim-handoff',generation_evidence('job','facts','sources'))
 
     def test_canonical_facts_can_reference_decisions_but_extra_facts_are_retained(self):
         facts='男性のみ、2025年価格。\n出典：https://source.example｜確認箇所："原文"'
@@ -278,6 +278,8 @@ class GenerationContextTests(unittest.TestCase):
         plan,_,_=self.data()
         schema=span_schema(MATRIX_SCHEMA,['q1'],questions=plan['items'])
         row=schema['format']['schema']['properties']['items']['properties']['q1']
-        for field in ('publication_conditions','claim_limits'):
-            self.assertIn(field,row['required'])
-            self.assertEqual(row['properties'][field],{'type':'array','items':{'type':'string'}})
+        self.assertIn('claim_limits',row['required'])
+        claim=row['properties']['claims']['items']
+        self.assertIn('conditions',claim['required'])
+        self.assertIn('dimension',claim['properties']['conditions']['items']['required'])
+        self.assertIn('value',claim['properties']['conditions']['items']['required'])
