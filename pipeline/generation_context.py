@@ -37,6 +37,8 @@ def outline_planning_context(plan):
 
 def publication_design(design):
     result=copy.deepcopy(design)
+    # Adoption/research instructions stay in the reviewed plan, not writing data.
+    result.pop('answer_scope_policy',None)
     for need in result.get('reader_needs',[]):
         for field in ('support','confidence_reason','adoption_reason'):need.pop(field,None)
     if result.get('product_fit'):

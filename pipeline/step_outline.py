@@ -471,10 +471,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             + '\n分量指定: ' + word_count_instruction
             + '\n制作資料（事実と設計仮説は区別）:\n' + json.dumps(blueprint_context, ensure_ascii=False)
             + structure_prompts + company_prompt + service_prompt + cta_prompt + extra_instructions)
-        prompt += '\n登録商材の紹介指示は読者判断に従属する。商品を主回答に置き換えない。product_fitがnot_useful/noneの場合は推薦を強制しない。'
-        # CTA roles are part of the reader design, and override generic placement.
+        prompt += '\n制作依頼の記事目的と、計画QAで確認した読者判断・商材適合を構成へ反映する。推薦の方向と主回答の扱いは共通の「比較から選ぶ判断と推薦」に従う。'
+        # Carry the plan-reviewed CTA decision; readiness QA checks its rationale.
         if blueprint_context['reader_design'].get('product_fit',{}).get('cta_role') in ('omit','defer'):
-            prompt += '\n今回のCTAは省略または保留。一般的なCTA配置指示よりこの判断を優先する。'
+            prompt += '\n計画QAで確認した今回のCTAは省略または保留。構成生成ではその採否を維持し、配置を作らない。'
     else:
         prompt = USER_TEMPLATE.format(keyword=keyword,intent_text=intent['content_text'],
             fact_text=fact['content_text'],serp_text=authoring_serp(serp['content_text'],structured_intent=False),

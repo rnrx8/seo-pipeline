@@ -344,6 +344,24 @@ class AnswerScopeHandoffTests(unittest.TestCase):
         self.assertIn('書き換え',context['answer_scope_policy'])
         self.assertIn('必要な回答を落とした場合',context['answer_scope_policy'])
 
+    def test_authoring_and_repair_exclude_plan_rules_but_keep_original_request(self):
+        from pipeline.generation_context import publication_design,bundle_data,repair_requirements
+        brief,_,_,value=fixtures()
+        brief['request']['custom_prompt']='記事目的に沿って推奨する'
+        value['selected'][0]['tone']='中立的というAI由来の候補'
+        context=rn.editorial_context(brief,value);original=copy.deepcopy(context)
+        plan=plan_fixture();plan['reader_design']=context
+        matrix={'valid':True,'policy_sha256':req.matrix_policy(),'items':[dict(id='q1',verified=True,status='confirmed',
+            basis='guidance',answer='方法の違い',publication_conditions=[],claim_limits=[],evidence=[])]}
+        variants=[publication_design(context),bundle_data(plan,matrix,quotes=False,planning=True)['reader_design'],
+                  repair_requirements({'research_plan':plan})['reader_design']]
+        for projected in variants:
+            self.assertNotIn('answer_scope_policy',projected)
+            self.assertEqual(projected['request'],brief['request'])
+            self.assertEqual(projected['reader_needs'][0]['tone'],value['selected'][0]['tone'])
+        self.assertEqual(context,original)
+        self.assertEqual(context['answer_scope_policy'],rn.ANSWER_SCOPE_POLICY)
+
     def test_shared_scope_policy_change_invalidates_plan_acceptance(self):
         before=req.plan_policy()
         with patch.object(review,'PLAN_REVIEW_SYSTEM',review.PLAN_REVIEW_SYSTEM+'scope changed'):
