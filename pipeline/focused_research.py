@@ -4,15 +4,15 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v11-feedback-handoff'
+VERSION = 'focused-research-v12-feedback-routing'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
 答えがなお不明なら未確認を維持する。資料一覧のタイトルやURLは証拠にしない。
 '''
 FOCUS_POLICY = '''
-この段階は回答文と根拠の照合を担当する。候補回答を原文で独立確認し、根拠が揃う記述に範囲を限定する。
-confirmedはその限定したanswerの全主張・対象・期間・条件を根拠で確認できたことを表す。質問文の全細目が完了したことや記事全体の合格を意味しない。
+この段階は回答文と根拠の照合を担当する。sourcedは主張を原文で独立確認し、inferenceは確認した前提と説明のつながり、proposalは文脈・実行可能性・既知の事実との整合を共通基準で確認する。
+confirmedは採用するanswerの各主張が種別に応じた共通基準を満たし、必要な対象・期間・条件を保持していることを表す。質問文の全細目が完了したことや記事全体の合格を意味しない。
 未回答の細目とその理由はreason・omission_reasonに残し、その不足で検索意図への回答が成立しないかは後続の全体網羅性判定に委ねる。必須論点の削除や重要度の変更はしない。
 資料は引用先・確認済みURLを優先提示している。source_catalogには本文を今回提示していない資料も含む。
 additional_sources_neededは採用するanswerの事実・条件・反証を照合するために資料がさらに必要かを表す。記載しない細目が不明という理由だけでtrueにしない。
@@ -104,7 +104,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
                 row['properties']['additional_sources_needed']={'type':'boolean'}
                 row['required'].append('additional_sources_needed')
         payload = {'plan':{**scope, 'items':[q for q in questions if q['id'] in ids]},
-                   'article_scope':{**scope,'other_question_ids':[q['id'] for q in compact_plan['items'] if q['id'] not in ids]},
+                   'article_scope':{**compact_plan,'items':[q for q in compact_plan['items'] if q['id'] not in ids],
+                                    'other_question_ids':[q['id'] for q in compact_plan['items'] if q['id'] not in ids]},
                    'candidate_answers':candidates, 'related_verified_answers':related_answers or [],
                    'sources':sources, 'source_catalog':catalog,
                    'source_revision':source_revision, 'sources_complete':complete, 'searches':searches}
@@ -176,8 +177,9 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
     # A reread may find a supported partial answer but label the whole question
     # unknown because another detail is missing. Resolve that disagreement in
     # the existing bounded audit instead of erasing the answer as an omission.
-    pending = [i for i in value['items'] if i.get('basis') != 'omitted'
-               and ((i.get('verified') and needs_adjudication(i, planned[i['id']]))
+    feedback_ids={f.get('id') for f in previous_findings or []}
+    pending = [i for i in value['items'] if (i.get('basis') != 'omitted' or i['id'] in feedback_ids)
+               and (i['id'] in feedback_ids or (i.get('verified') and needs_adjudication(i, planned[i['id']]))
                     or (not i.get('verified') and (
                         i.get('answer','').strip() and i.get('evidence')
                         or any(c.get('evidence') or c.get('conflicting_evidence') for c in i.get('claim_states',[])))))]

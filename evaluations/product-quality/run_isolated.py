@@ -168,7 +168,8 @@ def main():
         special_recovery='--resume-after-api-contract-fix' in sys.argv
         handoff_recovery='--resume-after-feedback-handoff-fix' in sys.argv
         recorder_hash_recovery='--resume-after-recorder-hash-fix' in sys.argv
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
+        feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
@@ -230,11 +231,28 @@ def main():
             # Rewind only the incomplete local evaluation journal. Its immutable
             # history and every paid/source receipt remain; no verdict is changed.
             (artifacts/'research_finding_resolution.json').rename(root/'research-finding-resolution-recorder-stop.json')
+        if feedback_routing_recovery:
+            if special_recovery or handoff_recovery or recorder_hash_recovery or resume_from!='research_completeness' or previous['error_type']!='ContentQualityError' or previous['error']!='調査確認が未合格、または調査資料が変更されています。':
+                raise RuntimeError('Unexpected final feedback recovery stop')
+            from pipeline.research_requirements import matrix_policy
+            matrix=json.loads(get(job['id'],'research_matrix')['content_text'])
+            if matrix.get('valid') is not False or matrix.get('attempt')!=3 or matrix.get('policy_sha256')==matrix_policy():
+                raise RuntimeError('Fresh routing policy required; unchanged failure cannot replay')
+            calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text()).get('calls',[])]
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            diagnosis=json.loads((root/'api-contract-recovery.json').read_text())
+            if len(uncertain)!=2 or any(c['status']!='unknown_cost_reserved' for c in uncertain) or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9:
+                raise RuntimeError('New unknown requests prevent routing recovery')
+            dump(root/'feedback-routing-recovery.json',{'previous':previous,
+                'reason':'Route coverage-flagged verified claims to independent review, retain adopted article scope and claim types; collect only newly named source question',
+                'previous_matrix_sha256':sha(matrix),'old_policy':matrix['policy_sha256'],'new_policy':matrix_policy(),
+                'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
+                'in_flight_requests':0,'no_prior_verdict_promoted':True})
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
-        marker='resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
+        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
+        marker='resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown

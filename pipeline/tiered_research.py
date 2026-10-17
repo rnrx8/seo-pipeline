@@ -187,7 +187,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   value=expand_references(value,source_index)
   validate_visible_matrix(value,{'items':questions},packed)
   planned={q['id']:q for q in questions}
-  pending=[i for i in value['items'] if needs_adjudication(i,planned[i['id']])]
+  pending=[i for i in value['items'] if i['id'] in issue_ids or needs_adjudication(i,planned[i['id']])]
   if pending:
    pending_ids={i['id'] for i in pending}
    payload['plan']={**scope,'items':[q for q in questions if q['id'] in pending_ids]}

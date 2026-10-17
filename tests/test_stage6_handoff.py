@@ -38,6 +38,18 @@ class ResearchFindingResolutionTests(unittest.TestCase):
         receipt=json.loads(self.saves[-1]['content_text'])
         self.assertEqual(receipt['acceptance'],'requires_fresh_full_verification')
 
+    def test_new_source_question_can_be_fetched_without_repeating_previous_question(self):
+        req.resolve_current_findings('j','kw',self.plan,self.matrix)
+        self.matrix['coverage_issues']=[{'id':'q1','repair_kind':'source','reason':'new concrete source need'},
+                                         {'id':'q2','repair_kind':'source','reason':'previous need'}]
+        self.assertTrue(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+        self.assertEqual(self.fetch.call_args.kwargs['research_question_ids'],['q1'])
+        state=json.loads(self.saves[-1]['content_text'])
+        self.assertEqual(state['source_question_ids_attempted'],['q1','q2'])
+        self.assertEqual(len(state['history']),1)
+        self.assertFalse(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+        self.assertEqual(self.fetch.call_count,2)
+
     def test_editorial_feedback_does_not_trigger_source_collection(self):
         self.matrix['coverage_issues']=self.matrix['coverage_issues'][:1]
         self.assertTrue(req.resolve_current_findings('j','kw',self.plan,self.matrix))
@@ -120,10 +132,33 @@ class BlueprintProvenanceTests(unittest.TestCase):
 
 class FocusedFeedbackHandoffTests(focused_tests.FocusedResearchTests):
     # Reuse only the request-generating harness, not inherited tests.
+    def test_verified_fact_with_coverage_feedback_still_reaches_independent_review(self):
+        self.plan['reader_design']={'request':{'article_purpose':'inform comparison','target_audience':'readers comparing methods'}}
+        self.pages[0]['text']='2025年1月の月額料金は2,000円です。'
+        self.answer['items'][0].update(basis='primary',evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text'],'source_kind':'primary','independence_group':'official'}])
+        issue={'id':self.plan['items'][0]['id'],'repair_kind':'editorial','reason':'answer the comparison question using confirmed features'}
+        self.saved['research_matrix_2']={'content_text':json.dumps({'coverage_issues':[issue]})}
+        def respond(request,payload):
+            if 'decisions' in payload:return dict(coverage_sufficient=True,coverage_reason='fixture',coverage_issues=[])
+            return {**copy.deepcopy(self.answer),'needs_more_sources':False}
+        self.run_flow(respond)
+        audits=[(r,p) for r,p in self.calls if 'candidate_answers' in p and r['model']=='gpt-6.1-sol']
+        self.assertEqual(len(audits),1)
+        self.assertEqual(audits[0][1]['previous_findings'],[issue])
+        self.assertIn('items',audits[0][1]['article_scope'])
+        self.assertIn('article_request',audits[0][1]['article_scope'])
+
     def test_focused_review_receives_relevant_previous_findings(self):
         issue={'id':self.plan['items'][0]['id'],'repair_kind':'editorial','reason':'use already verified comparison facts'}
         self.saved['research_matrix_2']={'content_text':json.dumps({'coverage_issues':[issue,{'id':'other','repair_kind':'source','reason':'other'}]})}
-        self.run_flow(self.responder)
+        def respond(request,payload):
+            if 'candidate_answers' in payload and request['model']=='gpt-6.1-sol':
+                visible={p['url'] for p in payload['sources']}
+                if not {r['url'] for r in self.answer['items'][0]['evidence']}<=visible:
+                    value=self.unknown();value['items'][0].update(additional_sources_needed=True)
+                    return {**value,'needs_more_sources':True}
+            return self.responder(request,payload)
+        self.run_flow(respond)
         focused=[p for r,p in self.calls if 'candidate_answers' in p]
         self.assertTrue(focused)
         self.assertTrue(all(p['previous_findings']==[issue] for p in focused))

@@ -67,7 +67,7 @@ official_checked_urlsはsources内で実際に取得を試みた関連公式資�
 exploration_completeは対象・論点に関連する取得済み資料を合理的に確認し終えたことを指す。回答が質問の全細目を満たすかとは別であり、確認後も残る未回答部分はomission_reasonに記録して全体網羅性判定へ渡す。ウェブ全体の探索完了や、各補助項目専用の追加検索を要求しない。同じ対象の料金・FAQ等の関連本文は複数質問の探索記録に利用できる。関連資料が未取得・未確認なのに探索済みとはしない。記事で使わない補助情報を省略できるか判断するためだけに際限なく調査を追加しない。
 essentialは非公表でも自動合格にしない。important/supportingは省略理由と検索への回答・比較・結論が維持される条件をomission_reasonへ明記。
 全項目の省略を合わせても記事の重要論点を網羅できるかcoverage_sufficientとcoverage_reasonで判定。
-調査計画の重要度は変更しない。保存するanswerは引用が直接支える範囲のみ。複数の条件・断定を引用1件でまとめて保証しない。
+調査計画の重要度は変更しない。保存するsourced主張は引用が直接支える範囲に限る。inferenceは確認した前提からのつながり、proposalは実行可能な提案として共通基準を満たすこと。同じ助言・比較の結論が出典に一文で載ることを一律に要求しない。複数の条件・断定を引用1件でまとめて保証しない。
 '''
 
 MATRIX_SYSTEM += '\n質問のsource_requirementごとに許されるbasisは次の通り。各basisの根拠要件も満たすこと。区分に合わない出典をprimary等へ付け替えて通さず、満たせない場合はunresolvedと理由を返す。\n' + json.dumps(SOURCE_BASES, ensure_ascii=False)
@@ -674,7 +674,7 @@ def supplement_once(job_id, keyword, plan, gaps, api_key=None, *, matrix=None):
 
 
 def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
-    """One routed resolution: repair existing answers, fetch only named source gaps."""
+    """Route findings; collect each named source question at most once per plan."""
     findings=matrix.get('coverage_issues',[])
     planned={q['id'] for q in plan['items']}
     relevant=[f for f in findings if f.get('id') in planned and f.get('repair_kind') in ('source','editorial','handoff')]
@@ -682,13 +682,20 @@ def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
     plan_hash=digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))
     if matrix.get('plan_sha256')!=plan_hash:return False
     old=get_optional_artifact(job_id,'research_finding_resolution')
+    attempted=set();history=[]
+    requested={f['id'] for f in relevant if f['repair_kind']=='source'}
     if old:
-        state=json.loads(old['content_text'])
-        if state.get('plan_sha256')!=plan_hash:raise ContentQualityError('回答修正の対象計画が変わっています。古い回復処理を再利用しません。')
-        if state.get('status')=='running':raise ContentQualityError('回答修正の実行記録が未完了です。未確定要求を再送しません。')
-        return False
-    ids=sorted({f['id'] for f in relevant if f['repair_kind']=='source'})
+        prior=json.loads(old['content_text'])
+        if prior.get('plan_sha256')!=plan_hash:raise ContentQualityError('回答修正の対象計画が変わっています。古い回復処理を再利用しません。')
+        if prior.get('status')=='running':raise ContentQualityError('回答修正の実行記録が未完了です。未確定要求を再送しません。')
+        attempted=set(prior.get('source_question_ids_attempted',prior.get('source_question_ids',[])))
+        # New concrete source findings can arise during full verification. Fetch
+        # each planned question at most once, never replay an unresolved query.
+        if not requested-attempted:return False
+        history=prior.get('history',[])+[{k:prior.get(k) for k in ('status','source_question_ids','findings')}]
+    ids=sorted(requested-attempted)
     state={'status':'running','plan_sha256':plan_hash,'source_question_ids':ids,
+           'source_question_ids_attempted':sorted(attempted|set(ids)),'history':history,
            'findings':relevant,'acceptance':'requires_fresh_full_verification'}
     def save():
         upsert_artifact(job_id=job_id,step='research_finding_resolution',content_type='application/json',content_text=json.dumps(state,ensure_ascii=False),meta={'valid':False})
