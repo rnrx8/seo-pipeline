@@ -6,22 +6,25 @@ import hashlib
 import json
 import re
 
-VERSION = 'editorial-blueprint-v1'
+VERSION = 'editorial-blueprint-v2-reader-progression'
 POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
 sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
-各節のquestion/conclusion/answer_elements/after_readingに、具体的な問い・結論・説明事項・読後に判断/実行できることを記す。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
+各節のquestion/conclusion/answer_elementsに問い・結論・説明事項を記し、reader_progressionに章の前後の変化を設計する。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
 need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
-読者心理reader_state・具体例example・次への接続transitionは役立つ節だけ記入し、不要なら空文字。全H3へ感情や同じテンプレを強制しない。exampleは説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
+H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
+H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し、親と重複する場合はnull。親の開始状態・読後状態を子節すべてへ複製しない。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
+マーケティング目的に沿って認識・感情・行動の変化を意図してよい。潜在課題/願望への気づき、懸念の重要性の認識、新しい選択肢、利用後の変化のイメージ、期待・共感・安心・納得、比較・相談・登録への誘導、問いかけや価値の予告を設計できる。marketingは必要な章だけ指定し、不要ならnull。次の行動は認知・理解が目的なら空文字でもよい。全章にCTAや同じ感情を要求しない。脅迫、虚偽の恐怖/効果/緊急性、判断に重要な条件の隠蔽は行わない。商品の適合条件と確認済み事実を保ち、心理は仮説、感情変化は狙いであって実測効果や全員の感情として断定しない。合理的な助言や価値説明に効果率・同一文章の引用を一律要求しない。
+具体例exampleは役立つ節だけ記入し、不要なら空文字。説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
 主回答の概要から必要な詳細まで連続して説明し、その後に商品選択や補足へ進む。必要な前提は先に置ける。方法選びが問いなら各方法の違いと向く状況に答え、商品名一覧をその代わりにしない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで下位の推薦へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
 omissionsには省くimportant論点と読者判断を損なわない理由を記録する。essential/requiredは省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
 リード方針は今回の読者設計と既存の執筆基準を引き継ぎ、完成リードは作らない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
 REVIEW_POLICY = '''【編集設計の個別確認】
-blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/after_readingと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
+blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
-section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは主回答の詳細を終える前の推薦・不要な補足による中断、depends_onとの不整合、子節と親の問いの不一致を確認する。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。モデルから全体validは返さず、個別結果からコードで集計する。
+section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは主回答の詳細を終える前の推薦・不要な補足による中断、depends_onとの不整合、子節と親の問いの不一致を確認する。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsの各節を個別に確認する。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
 '''
 
 
@@ -41,12 +44,26 @@ def obj(properties):
 STRING = {'type':'string'}
 STRINGS = {'type':'array','items':STRING}
 BUDGET_SCHEMA = obj({'chars':{'type':'integer','minimum':0},'importance':{'type':'integer','minimum':0,'maximum':5},'reason':STRING})
+
+
+def nullable(schema):
+    return {'anyOf':[schema,{'type':'null'}]}
+
+
+PROGRESSION_SCHEMA = obj({
+    'before':obj({'understanding':STRING,'open_questions':STRINGS,'emotion':STRING}),
+    'after':obj({'resolved_questions':STRINGS,'understanding':STRING,'decision':STRING,'action':STRING,'emotion':STRING}),
+    'next_questions':{'type':'array','items':obj({'question':STRING,'reason':STRING,
+        'handling':{'type':'string','enum':['same_section','next_section','related','out_of_scope']},'target_section_id':STRING})},
+    'marketing':nullable(obj({'role':STRING,'mechanism':STRING,'next_action':STRING}))})
+
+
 SECTION_SCHEMA = obj({
     'id':STRING,'parent_id':STRING,'level':{'type':'integer','enum':[2,3,4]},'title':STRING,
     'need_ids':STRINGS,'decision_ids':STRINGS,'research_ids':STRINGS,
     'question':STRING,'conclusion':STRING,
     'answer_elements':{'type':'array','minItems':1,'items':obj({'instruction':STRING,'claim_ids':STRINGS})},
-    'after_reading':STRING,'reader_state':STRING,'example':STRING,'transition':STRING,
+    'reader_progression':nullable(PROGRESSION_SCHEMA),'example':STRING,
     'format':{'type':'string','enum':['文章','箇条書き','番号付きリスト','比較表','データ表']},
     'items':STRINGS,'cta':STRING,'budget':BUDGET_SCHEMA})
 SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},'lead_direction':STRING,
@@ -74,7 +91,18 @@ def context(plan, matrix):
 
 
 def validate_shape(value, schema):
+    if 'anyOf' in schema:
+        from .content_quality import ContentQualityError
+        for branch in schema['anyOf']:
+            try:
+                validate_shape(value,branch)
+                return
+            except ContentQualityError:
+                pass
+        fail('編集設計の任意項目が不正です。')
     kind=schema['type']
+    if kind=='null':
+        if value is not None:fail('編集設計の未指定項目が不正です。')
     if kind=='object':
         if not isinstance(value,dict) or set(value)!=set(schema['properties']):fail('編集設計の項目が不足・不明です。')
         for k,v in value.items():validate_shape(v,schema['properties'][k])
@@ -98,9 +126,9 @@ def validate(value, ctx):
     for s in sections:
         sid=s['id'];level=s['level']
         if not re.fullmatch(r's\d+',sid) or sid in seen:fail('編集設計の節IDが不正・重複しています。')
-        for key in ('title','question','conclusion','after_reading'):
+        for key in ('title','question','conclusion'):
             if not s[key].strip() or '\n' in s[key]:fail('編集設計の問い・結論・読後状態が不足または複数行です。')
-        for key in ('reader_state','example','transition','cta','budget'):
+        for key in ('example','cta','budget'):
             if key!='budget' and '\n' in s[key]:fail('編集設計の任意指示は1行にしてください。')
         if level==2:
             if s['parent_id'] or s['title'] in h2_titles:fail('章の親ID・タイトルが重複または不正です。')
@@ -133,6 +161,7 @@ def validate(value, ctx):
         elif q.get('priority')=='important' and qid not in assigned and qid not in omitted:fail('重要論点の省略理由がありません: '+qid)
     for did,d in decisions.items():
         if d['role']!='supporting' and did not in assigned_decisions:fail('重要な読者判断が構成へ割り当てられていません: '+did)
+    validate_progression(value)
     if not all(t.strip() and '\n' not in t for t in value['titles']) or not value['lead_direction'].strip():fail('タイトル・リード方針が不足しています。')
     return value
 
@@ -142,7 +171,9 @@ def trace(value, ctx):
     return [{'section_id':s['id'],'need_ids':s['need_ids'],'decision_ids':s['decision_ids'],
         'research_ids':s['research_ids'],
         'claim_ids':list(dict.fromkeys(c for e in s['answer_elements'] for c in e['claim_ids'])),
-        'after_reading':s['after_reading']} for s in value['sections']]
+        'reader_outcome':copy.deepcopy(s['reader_progression']['after']) if s['reader_progression'] else None,
+        'next_section_ids':list(dict.fromkeys(q['target_section_id'] for q in (s['reader_progression'] or {}).get('next_questions',[]) if q['handling']=='next_section'))}
+        for s in value['sections']]
 
 
 def render(value, ctx):
@@ -163,9 +194,23 @@ def render(value, ctx):
         for e in s['answer_elements']:
             lines.append('  - '+e['instruction']+('（'+', '.join(e['claim_ids'])+'）' if e['claim_ids'] else ''))
             used += e['claim_ids']
-        field('読後の状態',s['after_reading'])
-        for name,key in [('この時点の読者心理','reader_state'),('説明用の仮の具体例','example'),('次への接続','transition')]:
-            if s[key]:field(name,s[key])
+        progression=s['reader_progression']
+        if progression:
+            before,after=progression['before'],progression['after']
+            if before['understanding']:field('読む前の理解',before['understanding'])
+            if before['open_questions']:field('この時点の未解決の問い','／'.join(before['open_questions']))
+            if before['emotion']:field('読む前の心理（仮説）',before['emotion'])
+            field('この章で解消する疑問','／'.join(after['resolved_questions']))
+            for name,key in [('読後に理解できること','understanding'),('読後に判断できること','decision'),('読後に実行できること','action'),('狙う感情の変化','emotion')]:
+                if after[key]:field(name,after[key])
+            for q in progression['next_questions']:
+                handling={'same_section':'この節で解消','next_section':'後続の節へ','related':'関連情報へ案内','out_of_scope':'記事の範囲外'}[q['handling']]
+                field('次の問い',q['question']+'（'+q['reason']+'／'+handling+('：'+q['target_section_id'] if q['target_section_id'] else '')+'）')
+            marketing=progression['marketing']
+            if marketing:
+                field('記事目的への役割',marketing['role']);field('変化を生む説明・導線',marketing['mechanism'])
+                if marketing['next_action']:field('導きたい次の行動',marketing['next_action'])
+        if s['example']:field('説明用の仮の具体例',s['example'])
         field('表現形式',s['format']);field('掲載項目','／'.join(s['items']) or 'なし')
         field('使用する根拠','' if used else '該当資料なし（一般的助言は事実と区別する）')
         for cid in dict.fromkeys(used):
@@ -216,6 +261,9 @@ def review_config(config, ctx):
         entries[d['id']]=obj({'requirements':obj(checks),'order':obj({
             'status':{'type':'string','enum':['pass','fail']},'reason':STRING,'section_ids':refs})})
     root['properties']['blueprint_reviews']=obj(entries);root['required'].append('blueprint_reviews')
+    progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING})
+    root['properties']['reader_progression_reviews']=obj({sid:copy.deepcopy(progression_check) for sid in ctx.get('progression_section_ids',[])})
+    root['required'].append('reader_progression_reviews')
     return result
 
 
@@ -234,12 +282,13 @@ def checked_review(value, ctx):
             if r['status'] not in ('pass','omitted') and (d['role']!='supporting' or index=='order'):
                 issues.append({'decision_id':d['id'],'requirement_index':index,'section_ids':refs,
                     'reason':r['reason'],'repair_kind':'source' if r['status']=='evidence_missing' else 'editorial'})
+    issues.extend(checked_progression_reviews(value,ctx))
     return issues
 
 
 def apply_review(report, value, ctx):
     issues=checked_review(value,ctx)
-    report['blueprint_reviews']=copy.deepcopy(value['blueprint_reviews']);report['blueprint_issues']=issues
+    report['blueprint_reviews']=copy.deepcopy(value['blueprint_reviews']);report['reader_progression_reviews']=copy.deepcopy(value['reader_progression_reviews']);report['blueprint_issues']=issues
     if issues:
         report['valid']=False
         coverage=next(c for c in report['checks'] if c['key']=='coverage')
@@ -286,6 +335,7 @@ def review_context(artifact):
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
     return {'version':VERSION,'section_ids':[s['id'] for s in value['sections']],
+        'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}
 
@@ -320,7 +370,14 @@ def repair_targets(artifact, report):
     # Unlocalized legacy audit checks explicitly scope to the current design,
     # not an unrelated prose block; unrelated sections remain read-only by policy.
     if not targets:targets={s['id'] for s in value['sections']}
-    return sorted(targets)
+    # A changed/deleted destination can require a corresponding change to the
+    # incoming question; expose the directly connected sections, not the graph.
+    related=set()
+    for section in value['sections']:
+        destinations={q['target_section_id'] for q in (section['reader_progression'] or {}).get('next_questions',[]) if q['target_section_id']}
+        if section['id'] in targets:related.update(destinations)
+        if destinations & targets:related.add(section['id'])
+    return sorted(targets | related)
 
 
 def repair(job_id, keyword, report, artifact, client):
@@ -394,3 +451,52 @@ def placement(artifact):
         'per_section_instructions':instructions,'cta_after_h2':targets,'reasoning':'承認対象の編集設計から描画',
         'blueprint_version':VERSION,'blueprint_inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],
         'blueprint_sha256':fingerprint(value)}
+
+
+def validate_progression(value):
+    """Check shape and link integrity; explanatory/marketing merit is reviewed."""
+    sections=value['sections'];positions={s['id']:i for i,s in enumerate(sections)}
+    def single_line(text):
+        if '\n' in text or '\r' in text:fail('章ごとの読者の変化は項目ごとに1行で指定してください。')
+    for s in sections:
+        progression=s['reader_progression']
+        if progression is None:
+            if s['level']==2:fail('章全体の読者の変化が未設計です。')
+            continue
+        before,after=progression['before'],progression['after']
+        for row in (before,after):
+            for val in row.values():
+                if isinstance(val,str):single_line(val)
+                else:
+                    if len(set(val))!=len(val) or any(not item.strip() for item in val):fail('解消する疑問・未解決の問いが空または重複しています。')
+                    for item in val:single_line(item)
+        if s['level']==2 and not (before['understanding'].strip() or before['open_questions']):fail('章を読む前の理解・問いが不足しています。')
+        if not after['resolved_questions'] or not any(after[k].strip() for k in ('understanding','decision','action','emotion')):
+            fail('この章が解消する疑問・読後の変化が不足しています。')
+        marketing=progression['marketing']
+        if marketing is not None:
+            if not marketing['role'].strip() or not marketing['mechanism'].strip():fail('記事目的への役割と変化を生む説明が不足しています。')
+            for text in marketing.values():single_line(text)
+        seen=set()
+        for q in progression['next_questions']:
+            for text in q.values():single_line(text)
+            if not q['question'].strip() or not q['reason'].strip() or q['question'] in seen:fail('次の問いと、その問いが生まれる理由が不足・重複しています。')
+            seen.add(q['question']);target=q['target_section_id']
+            if q['handling']=='same_section':
+                if target!=s['id']:fail('この節で解消する問いの参照先が一致しません。')
+            elif q['handling']=='next_section':
+                if target not in positions or positions[target]<=positions[s['id']]:fail('次の問いの引継ぎ先が存在しないか、後続の節ではありません。')
+            elif target:fail('関連情報・範囲外の問いに記事内の引継ぎ先を混在できません。')
+
+
+def checked_progression_reviews(value, ctx):
+    ids=ctx.get('progression_section_ids',[]);rows=value.get('reader_progression_reviews');issues=[]
+    if not isinstance(rows,dict) or set(rows)!=set(ids):fail('章ごとの読者の変化・導線の確認が不足しています。')
+    for sid,row in rows.items():
+        if (not isinstance(row,dict) or set(row)!={'status','reason'}
+            or row['status'] not in ('pass','answer_missing','evidence_missing')
+            or not isinstance(row['reason'],str) or not row['reason'].strip()):fail('章ごとの変化・導線の確認結果が不正です。')
+        if row['status']!='pass':
+            issues.append({'section_id':sid,'section_ids':[sid],'requirement_index':'reader_progression',
+                'reason':row['reason'],'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
+    return issues

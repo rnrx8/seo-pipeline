@@ -27,7 +27,9 @@ def fixture():
     section=dict(id='s01',parent_id='',level=2,title='閲覧と送信の利用条件',need_ids=['i01'],decision_ids=['i01'],research_ids=['q1'],
         question='閲覧と送信にはどのプランが必要か',conclusion='見る用途と送る用途で必要プランを分けて判断する',
         answer_elements=[{'instruction':'閲覧と送信の適用プランを比較し、利用したい動作から選ぶ','claim_ids':['q1.c01','q1.c02']}],
-        after_reading='自分の用途に必要なプランを選べる',reader_state='',example='',transition='',
+        reader_progression={'before':{'understanding':'利用したい動作は決まっている','open_questions':['どのプランが必要か'],'emotion':''},
+            'after':{'resolved_questions':['閲覧と送信にはどのプランが必要か'],'understanding':'閲覧と送信で適用条件が異なる',
+                'decision':'自分の用途に必要なプランを選べる','action':'','emotion':''},'next_questions':[],'marketing':None},example='',
         format='比較表',items=['利用したい動作','適用プラン'],cta='',budget={'chars':600,'importance':5,'reason':'二つの動作と条件を比較する'})
     value={'titles':['閲覧と送信の利用条件を比較'],'lead_direction':'知りたい条件と記事で分かることを簡潔に示す',
            'sections':[section],'omissions':[]}
@@ -44,7 +46,7 @@ def verdict(ctx, *, missing=None,kind='answer_missing'):
         rows[d['id']]={'requirements':{str(i):{'status':kind if missing==i else 'pass','reason':'動作と実条件を照合した具体的説明',
             'section_ids':['s01']} for i in range(len(d['answer_requirements']))},
             'order':{'status':'pass','reason':'用途の回答が商品紹介に先行','section_ids':['s01']}}
-    return {'blueprint_reviews':rows}
+    return {'blueprint_reviews':rows,'reader_progression_reviews':{sid:{'status':'pass','reason':'この章の回答範囲・変化・接続を合成入力で照合'} for sid in ctx.get('progression_section_ids',[])}}
 
 
 class BlueprintTests(unittest.TestCase):
@@ -85,7 +87,7 @@ class BlueprintTests(unittest.TestCase):
 
     def test_no_mandatory_emotion_example_or_transition_for_every_h3(self):
         _,_,_,ctx,v=fixture();child=copy.deepcopy(v['sections'][0]);child.update(id='s02',parent_id='s01',level=3,
-            title='動作からプランを選ぶ',format='文章',items=[],budget={'chars':0,'importance':0,'reason':''})
+            title='動作からプランを選ぶ',reader_progression=None,format='文章',items=[],budget={'chars':0,'importance':0,'reason':''})
         v['sections'].append(child);bp.validate(v,ctx)
         self.assertNotIn('この時点の読者心理',bp.render(v,ctx))
 
@@ -101,7 +103,7 @@ class BlueprintTests(unittest.TestCase):
 
     def test_empty_specific_design_fields_fail(self):
         _,_,_,ctx,v=fixture()
-        for field in ('question','conclusion','after_reading'):
+        for field in ('question','conclusion'):
             changed=copy.deepcopy(v);changed['sections'][0][field]=''
             with self.assertRaises(cq.ContentQualityError):bp.validate(changed,ctx)
 
@@ -189,7 +191,7 @@ class BlueprintTests(unittest.TestCase):
 
     def test_local_edit_preserves_other_sections_and_revalidates_projection(self):
         _,_,_,ctx,v=fixture();v['sections'].append({**copy.deepcopy(v['sections'][0]),'id':'s02','title':'判断のまとめ'})
-        edit=copy.deepcopy(v['sections'][0]);edit['after_reading']='閲覧と送信を分けて判断できる'
+        edit=copy.deepcopy(v['sections'][0]);edit['reader_progression']['after']['decision']='閲覧と送信を分けて判断できる'
         changed=bp.apply_edits(v,{'edits':[{'id':'s01','section':edit}],'delete_ids':[],'section_order':[]},ctx,structural=False,targets=['s01'])
         self.assertEqual(changed['sections'][1],v['sections'][1]);bp.require_projection(artifact(changed,ctx),ctx)
 
@@ -320,9 +322,9 @@ class BlueprintTests(unittest.TestCase):
             writer=stack.enter_context(patch.object(step_article,'_call',side_effect=Captured()))
             with self.assertRaises(Captured):step_article.run('job','条件')
             sent=json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)
-            self.assertIn('読後の状態',sent);self.assertIn('q1.c02',sent);self.assertIn('プレミアム',sent)
+            self.assertIn('この章で解消する疑問',sent);self.assertIn('q1.c02',sent);self.assertIn('プレミアム',sent)
             # A later change to the canonical design cannot reuse that readiness.
-            changed=copy.deepcopy(v);changed['sections'][0]['after_reading']='変更した到達点'
+            changed=copy.deepcopy(v);changed['sections'][0]['reader_progression']['after']['decision']='変更した到達点'
             artifacts['outline']=artifact(changed,ctx)
             with self.assertRaises(cq.ContentQualityError):step_article.run('job','条件')
             self.assertEqual(writer.call_count,1)
@@ -346,7 +348,8 @@ class BlueprintTests(unittest.TestCase):
 
     def test_method_comparison_assignment_alone_does_not_complete_choice(self):
         _,_,_,ctx,v=fixture();ctx['reader_decisions'][0].update(question='どの方法が自分に合うか',answer_requirements=['方法ごとの違いを示す','状況による選び分けを説明する'])
-        v['sections'][0].update(question='どんな方法があるか',conclusion='方法Aと方法Bがある',after_reading='方法の名前が分かる')
+        v['sections'][0].update(question='どんな方法があるか',conclusion='方法Aと方法Bがある')
+        v['sections'][0]['reader_progression']['after'].update(understanding='方法の名前が分かる',decision='')
         v['sections'][0]['answer_elements']=[{'instruction':'方法名を並べる','claim_ids':[]}]
         bp.validate(v,ctx)  # Structural validity is deliberately not semantic acceptance.
         rctx=bp.review_context(artifact(v,ctx));report={'valid':True,'checks':[{'key':'coverage','status':'pass','reason':'IDは割当て済み'}]}
