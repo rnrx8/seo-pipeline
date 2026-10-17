@@ -79,14 +79,6 @@ def model_output_config(schema):
     value=copy.deepcopy(schema)
     def visit(node):
         if not isinstance(node,dict):return
-        props=node.get('properties',{})
-        if props.get('level',{}).get('enum')==[2,3,4] and 'reader_progression' in props:
-            chapter=copy.deepcopy(node);child=copy.deepcopy(node)
-            chapter['properties']['level']['enum']=[2]
-            chapter['properties']['reader_progression']=copy.deepcopy(next(
-                branch for branch in props['reader_progression']['anyOf'] if branch.get('type')=='object'))
-            child['properties']['level']['enum']=[3,4]
-            node.clear();node['anyOf']=[chapter,child]
         constraints={k:node.pop(k) for k in ('minimum','maximum','multipleOf','minLength','maxLength','maxItems','uniqueItems') if k in node}
         if node.get('minItems') not in (None,0,1):constraints['minItems']=node.pop('minItems')
         if constraints:

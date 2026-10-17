@@ -118,7 +118,7 @@ def main():
     def measured(*args,**kwargs):
         request_counter[0]+=1;ident=f'{request_counter[0]:04d}'
         fingerprint=sha(kwargs)
-        for name in ('api-contract-recovery.json','reread-capacity-recovery.json'):
+        for name in ('api-contract-recovery.json','reread-capacity-recovery.json','grammar-recovery.json'):
             blocked=root/name
             if blocked.exists() and fingerprint in json.loads(blocked.read_text()).get('blocked_original_request_hashes',[]):
                 raise RuntimeError('Original failed request cannot be resent unchanged')
@@ -171,8 +171,9 @@ def main():
         recorder_hash_recovery='--resume-after-recorder-hash-fix' in sys.argv
         claim_type_recovery='--resume-after-claim-type-fix' in sys.argv
         reread_recovery='--resume-after-reread-capacity-fix' in sys.argv
+        grammar_recovery='--resume-after-grammar-fix' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
@@ -257,11 +258,28 @@ def main():
                 'previous_matrix_sha256':sha(matrix),'old_policy':matrix['policy_sha256'],'new_policy':matrix_policy(),
                 'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
                 'in_flight_requests':0,'no_prior_verdict_promoted':True})
+        if resume_from=='outline' and not grammar_recovery:raise RuntimeError('Outline resume requires the diagnosed grammar recovery')
+        if grammar_recovery:
+            if resume_from!='outline' or previous['error_type']!='BadRequestError':raise RuntimeError('Unexpected grammar recovery stop')
+            failure=json.loads(get(job['id'],'pipeline_failure')['content_text'])
+            if 'compiled grammar is too large' not in failure.get('detail',''):raise RuntimeError('Unexpected API rejection')
+            from pipeline.research_requirements import _require_matrix_strict
+            _require_matrix_strict(job['id'])
+            calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text()).get('calls',[])]
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            if len(uncertain)!=3 or any(c['status']!='unknown_cost_reserved' for c in uncertain):raise RuntimeError('Unknown requests differ from the three terminal failures')
+            original=json.loads((root/'requests/0069.json').read_text())
+            if original['model']!='claude-opus-5-5' or 'anyOf' not in original['output_config']['format']['schema']['properties']['sections']['items']:
+                raise RuntimeError('Expected rejected conditional blueprint grammar')
+            dump(root/'grammar-recovery.json',{'previous':previous,'blocked_original_request_hashes':[sha(original)],
+                'reason':'Return to compact supported schema; enforce chapter design in application validation; do not rerun accepted research',
+                'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
+                'in_flight_requests':0,'research_verdict_promoted':False})
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'reread-capacity-resume.json' if reread_recovery else 'claim-type-resume.json' if claim_type_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
-        marker='resume-reread-capacity.json' if reread_recovery else 'resume-claim-type.json' if claim_type_recovery else 'resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
+        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'grammar-resume.json' if grammar_recovery else 'reread-capacity-resume.json' if reread_recovery else 'claim-type-resume.json' if claim_type_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
+        marker='resume-grammar.json' if grammar_recovery else 'resume-reread-capacity.json' if reread_recovery else 'resume-claim-type.json' if claim_type_recovery else 'resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown

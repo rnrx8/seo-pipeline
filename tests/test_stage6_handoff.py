@@ -134,9 +134,10 @@ class BlueprintProvenanceTests(unittest.TestCase):
         bp.validate(value,ctx)
         self.assertEqual(ctx['reader_decisions'][0]['research_ids'],['q1'])
 
-    def test_api_requires_chapter_progression_but_allows_child_inheritance(self):
+    def test_application_requires_chapter_progression_but_allows_child_inheritance(self):
         _,_,_,ctx,value=fixture();value['sections'][0]['reader_progression']=None
-        with self.assertRaises(req.ContentQualityError):bp.validate_shape(value,bp.OUTPUT_CONFIG['format']['schema'])
+        bp.validate_shape(value,bp.OUTPUT_CONFIG['format']['schema'])
+        with self.assertRaises(req.ContentQualityError):bp.validate(value,ctx)
         _,_,_,ctx,value=fixture();child=copy.deepcopy(value['sections'][0]);child.update(id='s02',level=3,parent_id='s01',reader_progression=None,budget={'chars':0,'importance':0,'reason':''})
         value['sections'].append(child)
         bp.validate_shape(value,bp.OUTPUT_CONFIG['format']['schema']);bp.validate(value,ctx)

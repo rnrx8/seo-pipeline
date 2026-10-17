@@ -65,11 +65,30 @@ def cached_result(job_id,step,request):
   return json.loads(saved['content_text'])
  return None
 
+def stable_review_request(request):
+ # Internal receipt time is not a source date or an applicability condition.
+ # Preserve every semantic field and the source revision in the cache identity.
+ payload=json.loads(request['messages'][0]['content'])
+ candidates=payload.get('candidate_answers',[])
+ if not any('claims_checked_at' in c for c in candidates):return request
+ for candidate in candidates:candidate.pop('claims_checked_at',None)
+ result=copy.deepcopy(request)
+ result['messages'][0]['content']=json.dumps(payload,ensure_ascii=False)
+ return result
+
+
 def checked_request(job_id,step,request,*,client=None):
  old=cached_result(job_id,step,request)
  if old is not None:
   print('[tiered] Reuse '+step,flush=True)
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
+ if step.startswith('tiered_focused_'):
+  stable=stable_review_request(request)
+  if stable is not request:
+   request=stable;old=cached_result(job_id,step,request)
+   if old is not None:
+    print('[tiered] Reuse '+step,flush=True)
+    return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  if step.startswith('tiered_focused_') and request.get('model') in ('gpt-6-luna','gpt-6.1-sol'):
   from .focused_research import review_output_limit
   data=json.loads(request['messages'][0]['content'])
