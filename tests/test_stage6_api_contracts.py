@@ -10,6 +10,32 @@ from pipeline import content_quality as cq, openai_review as oa, quality_budget 
 
 
 class Stage6ApiContractTests(unittest.TestCase):
+    def blueprint_review_request(self):
+        ctx={'section_ids':['s'+str(i) for i in range(22)],'progression_section_ids':['s'+str(i) for i in range(7)],
+             'reader_decisions':[{'id':'i'+str(i),'answer_requirements':['answer']*n} for i,n in enumerate([5,3,4,4])]}
+        return {'model':'gpt-6.1-sol','max_tokens':6000,'system':'unchanged criteria',
+                'messages':[{'role':'user','content':'unchanged design'}],
+                'output_config':bp.review_config(cq.audit_output_config(cq.CHECKS),ctx)}
+
+    def test_blueprint_review_capacity_covers_each_required_verdict(self):
+        request=self.blueprint_review_request()
+        self.assertEqual(tr.structured_review_output_limit(request),14800)
+        self.assertEqual(request['max_tokens'],6000)
+        self.assertEqual(tr.structured_review_output_limit({**request,'max_tokens':24000}),24000)
+        ordinary={**request,'output_config':cq.audit_output_config(cq.CHECKS)}
+        self.assertEqual(tr.structured_review_output_limit(ordinary),6000)
+
+    def test_blueprint_capacity_keeps_completed_cache_and_changes_only_unsent_capacity(self):
+        request=self.blueprint_review_request()
+        with patch.object(tr,'cached_result',return_value={'completed':True}),patch.object(tr,'create_with_retry') as send:
+            result,_=tr.checked_request('j','tiered_audit_research',request)
+        self.assertTrue(result['completed']);send.assert_not_called()
+        response=NS(stop_reason='end_turn',content=[NS(type='text',text='{}')],usage=NS(input_tokens=1,output_tokens=1))
+        with patch.object(tr,'cached_result',return_value=None),patch.object(tr,'get_optional_artifact',return_value=None),patch.object(tr,'create_with_retry',return_value=response) as send,patch.object(tr,'upsert_artifact'):
+            tr.checked_request('j','tiered_audit_research',request)
+        expected={**request,'max_tokens':14800}
+        self.assertEqual(send.call_args.kwargs,expected)
+
     def test_api_schema_uses_supported_bounds_and_keeps_literal_enums(self):
         raw=copy.deepcopy(bp.SCHEMA)
         sent=bp.OUTPUT_CONFIG['format']['schema']

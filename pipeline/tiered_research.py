@@ -77,6 +77,18 @@ def stable_review_request(request):
  return result
 
 
+def structured_review_output_limit(request):
+ """Reserve space for every required blueprint verdict, including reasoning."""
+ original=request['max_tokens']
+ if request.get('model') not in ('gpt-6-luna','gpt-6.1-sol'):return original
+ props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
+ rows=props.get('blueprint_reviews',{}).get('properties',{})
+ if not rows:return original
+ verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())
+ verdicts+=len(props.get('reader_progression_reviews',{}).get('properties',{}))
+ return max(original,min(32000,4000+400*verdicts))
+
+
 def checked_request(job_id,step,request,*,client=None):
  old=cached_result(job_id,step,request)
  if old is not None:
@@ -99,6 +111,13 @@ def checked_request(job_id,step,request,*,client=None):
    if old is not None:
     print('[tiered] Reuse '+step,flush=True)
     return old,SimpleNamespace(input_tokens=0,output_tokens=0)
+ limit=structured_review_output_limit(request)
+ if limit!=request['max_tokens']:
+  request={**request,'max_tokens':limit}
+  old=cached_result(job_id,step,request)
+  if old is not None:
+   print('[tiered] Reuse '+step,flush=True)
+   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
