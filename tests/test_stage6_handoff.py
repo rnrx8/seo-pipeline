@@ -260,3 +260,17 @@ class MixedClaimTypeTests(unittest.TestCase):
         self.assertIn('guidance',basis)
         c=value['items'][0]['claims'][0];c.update(basis='guidance')
         self.assertTrue(req.validate_matrix(value,plan,pages))
+
+
+class BlueprintRepairReceiptTests(unittest.TestCase):
+    def test_blueprint_local_repair_has_existing_outline_role_and_exact_targets(self):
+        from pipeline import quality_budget as budget
+        self.assertEqual(budget.review_operation('outline_blueprint_local_repair_response'),('outline','repair',1))
+        request={'messages':[{'content':json.dumps({'target_section_ids':['s03'],
+            'blueprint':{'sections':[{'id':'s01'},{'id':'s03'}]},'failed_checks':[{'key':'evidence_support','reason':'unsupported ranking','research_ids':['q06']}]})}]}
+        with budget.request_scope('j','outline_blueprint_local_repair_response','request-hash',request):
+            receipt=copy.deepcopy(budget.REQUEST.get())
+        self.assertEqual(receipt['target_section_ids'],['s03'])
+        self.assertEqual(receipt['shown_section_ids'],['s01','s03'])
+        self.assertEqual(receipt['research_ids'],['q06'])
+        self.assertEqual(receipt['role'],'repair')

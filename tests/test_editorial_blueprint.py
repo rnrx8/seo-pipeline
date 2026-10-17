@@ -297,7 +297,7 @@ class BlueprintTests(unittest.TestCase):
 
     @patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'})
     def test_guard_review_reaches_actual_writer_with_same_snapshot_and_no_paid_call(self):
-        plan,pages,matrix,ctx,v=fixture();a=artifact(v,ctx);contract={'required_sections':[]};job={'id':'job'}
+        plan,pages,matrix,ctx,v=fixture();v['sections'][0]['title']='閲覧と送信｜利用条件の比較';a=artifact(v,ctx);contract={'required_sections':[]};job={'id':'job'}
         base_requirements={'research_plan':plan,'research_decisions':matrix,'keyword':'条件'}
         rctx=bp.review_context(a);checks=[{'key':k,'status':'not_applicable' if k in ('prose_quality','redundancy','comparison_conditions','metric_scope') else 'pass','reason':'合成試験で回答を確認'} for k in cq.CHECKS]
         artifacts={'outline':a,'fact_sheet':{'content_text':req.accepted_facts(matrix,plan)},
@@ -323,7 +323,18 @@ class BlueprintTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article,'intent_review_requirements',return_value=copy.deepcopy(base_requirements)))
             stack.enter_context(patch('pipeline.generation_context.authoring_intent',return_value='reader design'))
             writer=stack.enter_context(patch.object(step_article,'_call',side_effect=Captured()))
+            stack.enter_context(patch.object(step_article,'_parse_volume_design',side_effect=AssertionError('Canonical blueprint budgets must not be reparsed from Markdown')))
             with self.assertRaises(Captured):step_article.run('job','条件')
+            # Reader mapping can pass while a separate factual QA check fails.
+            # Warn-and-continue must not start another paid writer for new designs.
+            saved_readiness=copy.deepcopy(artifacts['research_validation'])
+            failed=json.loads(saved_readiness['content_text']);failed['valid']=False
+            next(c for c in failed['checks'] if c['key']=='evidence_support').update(status='fail',reason='unsupported ranking')
+            artifacts['research_validation']={**saved_readiness,'content_text':json.dumps(failed)}
+            with patch('pipeline.quality_warnings.enabled',return_value=True):
+                with self.assertRaises(cq.ContentQualityError):step_article.run('job','条件')
+            self.assertEqual(writer.call_count,1)
+            artifacts['research_validation']=saved_readiness
             sent=json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)
             self.assertIn('この章で解消する疑問',sent);self.assertIn('q1.c02',sent);self.assertIn('プレミアム',sent)
             # A later change to the canonical design cannot reuse that readiness.

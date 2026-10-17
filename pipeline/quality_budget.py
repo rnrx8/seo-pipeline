@@ -40,7 +40,7 @@ def review_operation(step):
  if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
  if step=='tiered_prose_finish_review':return 'article','prose_finish_review',1
  if step=='tiered_audit_research':return 'outline','audit',2
- if step=='outline_local_repair_response':return 'outline','repair',1
+ if step in ('outline_local_repair_response','outline_blueprint_local_repair_response'):return 'outline','repair',1
  if step.startswith('tiered_research_evidence_'):return 'outline',step.removeprefix('tiered_research_evidence_'),2
  if step.startswith('tiered_article_'):return 'article',step.removeprefix('tiered_article_'),2
  if step.startswith('tiered_content_repair_'):return 'article','repair',2
@@ -59,6 +59,8 @@ def request_scope(job_id,step,fingerprint,request):
  phase,role,limit=operation
  meta={'phase':phase,'role':role,'call_limit':limit,'step':step,'request_sha256':fingerprint,
        'target_block_ids':data.get('target_block_ids',[]),
+       'target_section_ids':data.get('target_section_ids',[]),
+       'shown_section_ids':[s['id'] for s in data.get('blueprint',{}).get('sections',[])],
        'shown_block_ids':[b['id'] for b in data.get('article_blocks',data.get('outline_blocks',[]))],
        'research_ids':sorted({q for c in data.get('candidate_checks',data.get('failed_checks',[])) for q in c.get('research_ids',[])}),
        'source_urls':[p['url'] for p in data.get('source_documents',[]) if isinstance(p,dict) and 'url' in p],

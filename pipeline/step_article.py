@@ -565,8 +565,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     design=review_context(outline)
     if design:readiness_requirements['editorial_design']=design
     require_review(readiness,outline)
-    require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                     contract, readiness_requirements, sources), stage="research")
+    audit_gate=require_audit
+    if design:
+        # New designs must finish all readiness checks, including source claims.
+        # A general warn-and-continue mode must not bypass an actual failed QA.
+        from .content_quality import _require_audit_strict
+        audit_gate=_require_audit_strict
+    audit_gate(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
+                                  contract, readiness_requirements, sources), stage="research")
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
@@ -598,13 +604,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import require_projection, context
         from .research_requirements import load_plan
-        require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
+        blueprint_value=require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
         outline_text=outline['content_text']
+        volume_sections=[(s['title'],s['budget']['importance'],s['budget']['chars']) for s in blueprint_value['sections'] if s['level']==2]
     else:
         outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting, reference_only=(outline.get('meta') or {}).get('length_origin') == 'reference')
+        volume_sections = _parse_volume_design(outline_text)
     if outline_text != outline['content_text']:
         warn('構成の見出し表記または文字数配分を正規化して執筆を継続します。')
-    volume_sections = _parse_volume_design(outline_text)
     if not volume_sections:
         raise ContentQualityError('章別の文字数配分がありません。構成から再生成してください。')
     service_map: dict | None = None
