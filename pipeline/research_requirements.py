@@ -1,3 +1,4 @@
+import copy
 """Question-level research planning and evidence readiness before outlining."""
 import json
 import re
