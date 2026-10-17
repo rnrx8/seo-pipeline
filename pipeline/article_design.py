@@ -5,10 +5,12 @@ from .editorial_blueprint import require_projection,fingerprint
 from .content_edits import content_blocks
 from .section_identity import bind_sections
 
-VERSION='article-reader-design-v1'
+VERSION='article-reader-design-v2-lead-review'
 REVIEW_POLICY='''本文のdecision_reviewsでは、article_designの読者判断ごとに必要回答の実現を個別に確認する。
-構成・reader_correspondenceは設計と位置対応であり、実際の回答の証明ではない。本文の具体的記述をreasonに示し、比較・選び分け・手順・判断に必要な説明が実在するか確認する。設計した感情の文言そのものや、毎章の共感・CTA文は要求しない。章の役割に応じた理解・判断・説明を確認し、商材への誘導があること自体を不合格にしない。
+構成・reader_correspondenceは設計と位置対応であり、実際の回答の証明ではない。本文の具体的記述をreasonに示し、比較・選び分け・手順・判断に必要な説明が実在するか確認する。lead_directionは設計指示であり、実際のリードの主題・対象・読む動機を照合する資料。原設計の弱さをそのまま合格基準にせず、共通の対象・選ぶ結論・章の約束の確認も行う。設計した感情の文言そのものや、毎章の共感・CTA文は要求しない。章の役割に応じた理解・判断・説明を確認し、商材への誘導があること自体を不合格にしない。
 不足はmissing_requirementsと、補うべき実在する段落IDのaffected_blocksへ記録する。全体coverageがpassでも主要な必要回答の不足を相殺しない。'''
+from .lead_review import POLICY as LEAD_REVIEW_POLICY
+REVIEW_POLICY+='\n'+LEAD_REVIEW_POLICY
 
 
 def design_context(artifact):
@@ -16,7 +18,7 @@ def design_context(artifact):
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
     fields=('id','parent_id','level','title','need_ids','decision_ids','research_ids','question','conclusion','answer_elements','reader_progression','cta')
-    return {'version':VERSION,'blueprint_sha256':fingerprint(value),
+    return {'version':VERSION,'blueprint_sha256':fingerprint(value),'lead_direction':value['lead_direction'],
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'sections':[{k:copy.deepcopy(s[k]) for k in fields} for s in value['sections']]}
 
@@ -49,7 +51,11 @@ def correspondence(text, outline, design, binding=None):
 
 def review_config(config, design):
     from .reader_decisions import review_schema
-    return review_schema(config,design['reader_decisions'],locations=True)
+    result=review_schema(config,design['reader_decisions'],locations=True)
+    if 'lead_direction' in design:
+        from .lead_review import output_config
+        result=output_config(result)
+    return result
 
 
 def checked_result(checks, value, design, text):
@@ -68,4 +74,12 @@ def checked_result(checks, value, design, text):
         for loc in row['affected_blocks']:
             if loc not in coverage['affected_blocks']:coverage['affected_blocks'].append(copy.deepcopy(loc))
         coverage['research_ids']=sorted(set(coverage.get('research_ids',[]))|set(decision['research_ids']))
+    if 'lead_direction' in design:
+        from .lead_review import checked,article_block_ids,LABELS
+        for key,row in checked(value,article_block_ids(text)).items():
+            if row['status']!='fail':continue
+            coverage['status']='fail';addition=LABELS[key]+'：'+row['reason']
+            if addition not in coverage['reason']:coverage['reason']+='\n'+addition
+            for loc in row['affected_blocks']:
+                if loc not in coverage['affected_blocks']:coverage['affected_blocks'].append(copy.deepcopy(loc))
     return result

@@ -69,4 +69,13 @@ def decision_findings(value, design):
             # A missing answer alone cannot establish which upstream step caused it.
             'stage_to_fix': 'investigate', 'decision_id': decision['id'],
             'origin': 'individual_decision_review'})
+    if 'lead_direction' in design:
+        from .lead_review import LABELS
+        for key,row in value.get('lead_review',{}).items():
+            if row['status']!='fail':continue
+            result.append({'check_key':'coverage','severity':'blocking',
+                'block_ids':list(dict.fromkeys(loc['id'] for loc in row['affected_blocks'])),
+                'problem':row['reason'],'reader_impact':LABELS[key]+'が成立せず、この記事を読む意味を判断しにくい。',
+                'required_change':'本文の実際の回答に沿って'+LABELS[key]+'を明確にする。固定の共感文や無関係な情報は追加しない。',
+                'stage_to_fix':'article','origin':'individual_lead_review','lead_check':key})
     return result

@@ -153,6 +153,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
             phase['decision_reviews']=decision_response['decision_reviews']
+            if 'lead_direction' in design:phase['lead_review']=decision_response['lead_review']
             phase['reader_correspondence']=payload['reader_correspondence']
         if editorial is not None:
             phase.update(editorial_findings=editorial, findings_version=findings.VERSION)

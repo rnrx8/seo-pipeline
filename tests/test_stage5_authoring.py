@@ -25,10 +25,14 @@ def body(value):
 
 def decision_result(design, text, missing=None):
     blocks=cq.content_blocks(text);target=next(b['id'] for b in blocks if '候補を見て' in b['text'])
-    return {'decision_reviews':{d['id']:{'status':'fail' if missing is not None else 'pass',
+    result={'decision_reviews':{d['id']:{'status':'fail' if missing is not None else 'pass',
         'reason':'本文は適用プランを示すが用途で選ぶ説明が不足' if missing is not None else '本文の「閲覧だけを使うか、送信まで使うか」で用途の選び分けを説明',
         'missing_requirements':[missing] if missing is not None else [],
         'affected_blocks':[{'id':target,'reason':'用途による選び分けを補う'}] if missing is not None else []} for d in design['reader_decisions']}}
+    if 'lead_direction' in design:
+        from pipeline.lead_review import KEYS
+        result['lead_review']={key:{'status':'pass','reason':'合成したリード確認結果','affected_blocks':[]} for key in KEYS}
+    return result
 
 
 class Stage5AuthoringTests(unittest.TestCase):

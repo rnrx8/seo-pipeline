@@ -39,10 +39,10 @@ def controls():
     return values
 
 
-def capture(text, decision, selected):
-    from pipeline import content_quality as cq, focused_quality as fq
-    design = {'version':'article-reader-design-v1','blueprint_sha256':'scoped-evaluation-only',
-        'reader_decisions':[decision], 'sections':[]}
+def capture(text, decision, selected, *, facts=None, extra_requirements=None, design=None, outline='## 回答'):
+    from pipeline import content_quality as cq, focused_quality as fq, article_design as ad, lead_review as lr
+    design = copy.deepcopy(design) if design is not None else {'version':ad.VERSION,'blueprint_sha256':'scoped-evaluation-only',
+        'reader_decisions':[decision], 'sections':[], 'lead_direction':'この抜粋にリードがある場合、主題と読む理由、読後の判断を明確にする'}
     requests = {}
     def fake(job, step, request, **kwargs):
         role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_')
@@ -50,15 +50,20 @@ def capture(text, decision, selected):
         value={'checks':[{'key':key,'status':'pass','reason':'request capture only','affected_blocks':[],
             **({'requires_source_check':False,'research_ids':[],'source_urls':[]} if role in ('evidence','coverage') else {})} for key in fq.ROLES[role]]}
         if role!='evidence':value['editorial_findings']=[]
-        if role=='coverage':value['decision_reviews']={decision['id']:{'status':'pass','reason':'request capture only','missing_requirements':[],'affected_blocks':[]}}
+        if role=='coverage':
+            value['decision_reviews']={d['id']:{'status':'pass','reason':'request capture only','missing_requirements':[],'affected_blocks':[]} for d in design['reader_decisions']}
+            if 'lead_direction' in design:
+                value['lead_review']={key:{'status':'pass' if lr.article_block_ids(text) else 'not_applicable','reason':'request capture only','affected_blocks':[]} for key in lr.KEYS}
         return value, NS(input_tokens=0,output_tokens=0)
-    facts='[confirmed] 試験用の架空サービス：Aは写真中心、Bは動画と補足説明に対応。機能Xは上位プラン月額3,000円だけで利用でき、通常プラン1,000円では利用できない。'
-    if decision['question']=='サービスAとBのどちらがよいか':
-        facts='[confirmed] 架空条件：Aは条件を自分で選ぶ使い方、Bは候補の提案から選ぶ使い方。Aは税込月額2,000円、Bは税込月額3,000円、いずれも1か月契約。両者の無料範囲で操作を試せる。'
+    if facts is None:
+        facts='[confirmed] 試験用の架空サービス：Aは写真中心、Bは動画と補足説明に対応。機能Xは上位プラン月額3,000円だけで利用でき、通常プラン1,000円では利用できない。'
+        if decision['question']=='サービスAとBのどちらがよいか':
+            facts='[confirmed] 架空条件：Aは条件を自分で選ぶ使い方、Bは候補の提案から選ぶ使い方。Aは税込月額2,000円、Bは税込月額3,000円、いずれも1か月契約。両者の無料範囲で操作を試せる。'
     with patch('pipeline.tiered_research.checked_request',side_effect=fake):
-        fq.audit_article(None,text=text,facts=facts,outline='## 回答',contract={},
-            requirements={'keyword':decision['question'],'article_design':design,
-                'evaluation_scope':'この抜粋内の問いへの充足だけを検査。架空条件を与えた対照試験で、実在サービスや全記事の合格ではない。'},sources='[]')
+        fq.audit_article(None,text=text,facts=facts,outline=outline,contract={},
+            requirements={'keyword':decision['question'],
+                'evaluation_scope':'この抜粋内の問いへの充足だけを検査。架空条件を与えた対照試験で、実在サービスや全記事の合格ではない。',
+                **(extra_requirements or {}),'article_design':design},sources='[]')
     return requests[selected], design
 
 

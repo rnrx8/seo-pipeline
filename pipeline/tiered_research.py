@@ -86,6 +86,7 @@ def structured_review_output_limit(request):
  if not rows:return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())
  verdicts+=len(props.get('reader_progression_reviews',{}).get('properties',{}))
+ verdicts+=len(props.get('lead_review',{}).get('properties',{}))
  return max(original,min(32000,4000+400*verdicts))
 
 

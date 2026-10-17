@@ -16,16 +16,18 @@ H2はreader_progressionでbefore（理解済みのこと・未解決の問い・
 H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し、親と重複する場合はnull。親の開始状態・読後状態を子節すべてへ複製しない。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
 マーケティング目的に沿って認識・感情・行動の変化を意図してよい。潜在課題/願望への気づき、懸念の重要性の認識、新しい選択肢、利用後の変化のイメージ、期待・共感・安心・納得、比較・相談・登録への誘導、問いかけや価値の予告を設計できる。marketingは必要な章だけ指定し、不要ならnull。次の行動は認知・理解が目的なら空文字でもよい。全章にCTAや同じ感情を要求しない。脅迫、虚偽の恐怖/効果/緊急性、判断に重要な条件の隠蔽は行わない。商品の適合条件と確認済み事実を保ち、心理は仮説、感情変化は狙いであって実測効果や全員の感情として断定しない。合理的な助言や価値説明に効果率・同一文章の引用を一律要求しない。
 具体例exampleは役立つ節だけ記入し、不要なら空文字。説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
-主回答の概要から必要な詳細まで連続して説明し、その後に商品選択や補足へ進む。必要な前提は先に置ける。方法選びが問いなら各方法の違いと向く状況に答え、商品名一覧をその代わりにしない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで下位の推薦へ進まない。
+主回答の概要から必要な詳細まで連続して説明し、その後に個別の商品選択や補足へ進む。方法選びが問いなら、概要に条件に合う方法の短い推奨と理由を示し、比較と各方法で確かめられる設計にする。この推奨は主回答であり、下位の商品紹介による置き換えと混同しない。必要な前提は先に置ける。商品名一覧で方法の違いと向く状況の回答を代替しない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで個別商品の長い推薦・登録誘導へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
 omissionsには省く内容と読者判断を損なわない理由を記録する。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
-リード方針は今回の読者設計と既存の執筆基準を引き継ぎ、完成リードは作らない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
+リード方針は、冒頭で分かる主題と対象読者、背景を使う場合の選択へのつなぎ、読後にできる判断を具体的な設計指示にする。完成リードや共感テンプレートは作らない。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
 REVIEW_POLICY = '''【編集設計の個別確認】
 blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
-section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは主回答の詳細を終える前の推薦・不要な補足による中断、depends_onとの不整合、子節と親の問いの不一致を確認する。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsの各節を個別に確認する。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
+section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは、主回答の詳細を説明せずに個別商品の長い推薦・不要な補足で中断すること、depends_onとの不整合、子節と親の問いの不一致を確認する。概要の条件付きの方法推奨は主回答なので、それ自体を順序違反にしない。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsの各節を個別に確認する。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
 '''
+from .lead_review import POLICY as LEAD_REVIEW_POLICY
+REVIEW_POLICY+='\n'+LEAD_REVIEW_POLICY
 
 
 def fail(message):
@@ -302,6 +304,9 @@ def review_config(config, ctx):
     progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING})
     root['properties']['reader_progression_reviews']=obj({sid:copy.deepcopy(progression_check) for sid in ctx.get('progression_section_ids',[])})
     root['required'].append('reader_progression_reviews')
+    if 'lead_direction' in ctx:
+        from .lead_review import output_config
+        result=output_config(result)
     return result
 
 
@@ -321,23 +326,40 @@ def checked_review(value, ctx):
                 issues.append({'decision_id':d['id'],'requirement_index':index,'section_ids':refs,
                     'reason':r['reason'],'repair_kind':'source' if r['status']=='evidence_missing' else 'editorial'})
     issues.extend(checked_progression_reviews(value,ctx))
+    if 'lead_direction' in ctx:
+        from .lead_review import checked
+        for key,row in checked(value,ctx['lead_block_ids']).items():
+            if row['status']=='fail':
+                issues.append({'decision_id':'','requirement_index':'lead.'+key,'section_ids':[],
+                    'affected_blocks':row['affected_blocks'],'reason':row['reason'],'repair_kind':'editorial'})
     return issues
 
 
 def apply_review(report, value, ctx):
     issues=checked_review(value,ctx)
     report['blueprint_reviews']=copy.deepcopy(value['blueprint_reviews']);report['reader_progression_reviews']=copy.deepcopy(value['reader_progression_reviews']);report['blueprint_issues']=issues
+    if 'lead_direction' in ctx:report['lead_review']=copy.deepcopy(value['lead_review'])
     if issues:
         report['valid']=False
         coverage=next(c for c in report['checks'] if c['key']=='coverage')
         coverage.update(status='fail',reason=coverage['reason']+'\n編集設計: '+json.dumps(issues,ensure_ascii=False))
+        coverage.setdefault('affected_blocks',[])
+        for issue in issues:
+            for loc in issue.get('affected_blocks',[]):
+                if loc not in coverage['affected_blocks']:coverage['affected_blocks'].append(copy.deepcopy(loc))
         if any(i['repair_kind']=='source' for i in issues):report['evidence_pending']=True
     return report
 
 
-def apply_edits(value, response, ctx, *, structural, targets):
+def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
-    if set(response)!={'edits','delete_ids','section_order'}:fail('編集設計の局所修正形式が不正です。')
+    expected={'edits','delete_ids','section_order'}|({'lead_direction'} if allow_lead else set())
+    if set(response)!=expected:fail('編集設計の局所修正形式が不正です。')
+    if allow_lead:
+        lead=response['lead_direction']
+        if not isinstance(lead,str) or not lead.strip() or lead==value['lead_direction']:
+            fail('指摘されたリード設計が未修正または空です。')
+        candidate['lead_direction']=lead
     for edit in response['edits']:
         sid=edit['id'];s=edit['section']
         if sid in seen or sid!=s['id'] or (sid not in targets and (not structural or sid in by_id)):fail('対象外・重複の節を修正できません。')
@@ -362,17 +384,19 @@ def apply_edits(value, response, ctx, *, structural, targets):
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_config():
-    return model_output_config(obj({
+def repair_config(*, allow_lead=False):
+    fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
-        'delete_ids':STRINGS,'section_order':STRINGS}))
+        'delete_ids':STRINGS,'section_order':STRINGS}
+    if allow_lead:fields['lead_direction']=STRING
+    return model_output_config(obj(fields))
 
 
 def review_context(artifact):
     value=require_projection(artifact)
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
-    return {'version':VERSION,'section_ids':[s['id'] for s in value['sections']],
+    return {'version':VERSION,'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
         'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}
@@ -383,6 +407,26 @@ def require_review(report, artifact):
     if ctx is None:return
     if report.get('blueprint_review_context')!=ctx or checked_review(report,ctx):
         fail('現在の編集設計に対する個別の回答・順序確認が未合格です。')
+
+
+def lead_block_ids(artifact):
+    """Exact projection addresses, shared by lead QA and local repair."""
+    from .content_edits import content_blocks
+    value=require_projection(artifact);text=artifact['content_text']
+    lead=value['lead_direction']
+    if not lead.strip():return []
+    start=text.index(lead,text.index('### リード文の設計方針'))
+    end=start+len(lead);cursor=0;ids=set()
+    for block in content_blocks(text):
+        a=text.index(block['text'],cursor);cursor=a+len(block['text'])
+        if a<end and cursor>start:ids.add(block['id'])
+    return sorted(ids)
+
+
+def lead_repair_allowed(artifact, report):
+    """Grant lead edits only for exact reviewed blocks in the rendered lead."""
+    ids=set(lead_block_ids(artifact))
+    return any(loc['id'] in ids for check in report['checks'] if check['status']=='fail' for loc in check.get('affected_blocks',[]))
 
 
 def repair_targets(artifact, report):
@@ -407,7 +451,13 @@ def repair_targets(artifact, report):
         targets.update(s['id'] for s in value['sections'] if s['title']==title)
     # Unlocalized legacy audit checks explicitly scope to the current design,
     # not an unrelated prose block; unrelated sections remain read-only by policy.
-    if not targets:targets={s['id'] for s in value['sections']}
+    if not targets and not lead_repair_allowed(artifact,report):targets={s['id'] for s in value['sections']}
+    structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
+    if structural:
+        # Changing a chapter's question can require reparenting its children.
+        # Adjacent unrelated chapters are not made writable by this expansion.
+        for section in value['sections']:
+            if section['parent_id'] in targets:targets.add(section['id'])
     # A changed/deleted destination can require a corresponding change to the
     # incoming question; expose the directly connected sections, not the graph.
     related=set()
@@ -428,20 +478,23 @@ def repair(job_id, keyword, report, artifact, client):
         fail('資料不足を構成の書換えで解決できません。確認結果を保持します。')
     job=get_job(job_id)
     targets=repair_targets(artifact,report)
+    allow_lead=lead_repair_allowed(artifact,report)
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     from .evidence_policy import REVIEW_RESOLUTION_POLICY
     from .reader_presentation import READER_PRESENTATION_POLICY
     from .generation_context import POLICY as EVIDENCE_POLICY
     model,limit=get_step_config('content_repair')
-    request=dict(model=model,max_tokens=min(limit,6000),output_config=repair_config(),
+    output=repair_config(allow_lead=allow_lead)
+    request=dict(model=model,max_tokens=min(limit,6000),output_config=output,
         system=REVIEW_RESOLUTION_POLICY+READER_PRESENTATION_POLICY+EVIDENCE_POLICY+POLICY+'''
 今回は局所修正。editsには指摘箇所と同じ誤りを直す節だけを全フィールドで返す。全文再出力は禁止。
-既存節のうちtarget_section_ids以外は読取専用。タイトル案・リード・省略理由は維持する。
+既存節のうちtarget_section_ids以外は読取専用。タイトル案・省略理由は維持する。
+lead_edit_allowed=trueの場合だけlead_directionに指摘を解決する導入方針を返す。それ以外はリードを変更せず、lead_directionキーも返さない。リードだけの修正ならeditsは空配列でよい。
 structural=trueのときだけ関連節の追加・削除・順序・階層変更を許可する。新しい節には未使用IDを付ける。
 section_orderは追加・移動・削除が必要なときのみ修正後全IDを順に返し、変更不要なら空配列。delete_idsも不要なら空配列。
 主回答の説明と根拠・条件・必須論点を維持し、文字数合わせの水増し・追加調査・未確認の断定をしない。''',
         messages=[{'role':'user','content':json.dumps({'keyword':keyword,'blueprint':value,'accepted_context':ctx,
-            'target_section_ids':targets,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
+            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'blueprint_issues':report.get('blueprint_issues',[]),'structural_issues':report.get('structural_issues',[])},ensure_ascii=False)}])
     if tiered_review_enabled():
         from .tiered_research import checked_request
@@ -450,8 +503,8 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
         msg=create_with_retry(client,**request)
         if getattr(msg,'stop_reason',None)!='end_turn':fail('編集設計の局所修正が途中で中断しました。未適用です。')
         response=json.loads(message_text(msg))
-    validate_shape(response,repair_config()['format']['schema'])
-    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets)
+    validate_shape(response,output['format']['schema'])
+    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
     issues=validate_structure(text,contract,outline=True)+budget_issues(candidate,job.get('word_count_setting'))
     if issues:fail('編集設計の修正後も必須構造が不足しています: '+json.dumps(issues,ensure_ascii=False))

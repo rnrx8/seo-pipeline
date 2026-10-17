@@ -46,7 +46,11 @@ def verdict(ctx, *, missing=None,kind='answer_missing'):
         rows[d['id']]={'requirements':{str(i):{'status':kind if missing==i else 'pass','reason':'動作と実条件を照合した具体的説明',
             'section_ids':['s01']} for i in range(len(d['answer_requirements']))},
             'order':{'status':'pass','reason':'用途の回答が商品紹介に先行','section_ids':['s01']}}
-    return {'blueprint_reviews':rows,'reader_progression_reviews':{sid:{'status':'pass','reason':'この章の回答範囲・変化・接続を合成入力で照合'} for sid in ctx.get('progression_section_ids',[])}}
+    result={'blueprint_reviews':rows,'reader_progression_reviews':{sid:{'status':'pass','reason':'この章の回答範囲・変化・接続を合成入力で照合'} for sid in ctx.get('progression_section_ids',[])}}
+    if 'lead_direction' in ctx:
+        from pipeline.lead_review import KEYS
+        result['lead_review']={key:{'status':'pass','reason':'合成したリード確認結果','affected_blocks':[]} for key in KEYS}
+    return result
 
 
 class BlueprintTests(unittest.TestCase):
