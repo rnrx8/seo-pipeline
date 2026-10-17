@@ -65,6 +65,10 @@ def span_schema(matrix_schema, question_ids=None, *, questions=None):
                 props=rows[key]['properties']
                 basis=props.get('basis') or props['claims']['items']['properties']['basis']
                 basis['enum'] = list(allowed_source_bases(question['source_requirement']))
+                if 'claims' in props and question['source_requirement']=='standard':
+                    # Mixed questions can contain nonfactual editorial proposals.
+                    # The runtime still rejects sourced/inference guidance here.
+                    basis['enum'].append('guidance')
     return result
 
 

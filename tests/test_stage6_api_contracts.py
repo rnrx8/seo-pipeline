@@ -15,11 +15,11 @@ class Stage6ApiContractTests(unittest.TestCase):
         sent=bp.OUTPUT_CONFIG['format']['schema']
         self.assertNotIn('maxItems',sent['properties']['titles'])
         self.assertEqual(raw,bp.SCHEMA)
-        section=sent['properties']['sections']['items']['properties']
+        section=sent['properties']['sections']['items']['anyOf'][0]['properties']
         self.assertNotIn('maximum',section['budget']['properties']['importance'])
         self.assertIn('maximum',section['budget']['properties']['importance']['description'])
-        self.assertEqual(section['level']['enum'],bp.SECTION_SCHEMA['properties']['level']['enum'])
-        repair=bp.repair_config()['format']['schema']['properties']['edits']['items']['properties']['section']['properties']
+        self.assertEqual(sorted(n for branch in sent['properties']['sections']['items']['anyOf'] for n in branch['properties']['level']['enum']),bp.SECTION_SCHEMA['properties']['level']['enum'])
+        repair=bp.repair_config()['format']['schema']['properties']['edits']['items']['properties']['section']['anyOf'][0]['properties']
         self.assertNotIn('maximum',repair['budget']['properties']['importance'])
 
     def test_app_validation_keeps_title_and_budget_bounds_after_api_projection(self):

@@ -32,7 +32,7 @@ class SourceBasisContractTests(unittest.TestCase):
         schema=span_schema(req.MATRIX_SCHEMA,[q['id'] for q in questions],questions=questions)
         rows=schema['format']['schema']['properties']['items']['properties']
         for name in SOURCE_BASES:
-            self.assertEqual(rows[name]['properties']['claims']['items']['properties']['basis']['enum'],list(SOURCE_BASES[name]))
+            self.assertEqual(rows[name]['properties']['claims']['items']['properties']['basis']['enum'],list(SOURCE_BASES[name])+(['guidance'] if name=='standard' else []))
         self.assertNotIn('expert',rows['standard']['properties']['claims']['items']['properties']['basis']['enum'])
         self.assertNotIn('corroborated',rows['primary_only']['properties']['claims']['items']['properties']['basis']['enum'])
         self.assertNotIn('guidance',rows['expert_allowed']['properties']['claims']['items']['properties']['basis']['enum'])

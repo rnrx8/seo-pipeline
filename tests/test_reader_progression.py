@@ -242,7 +242,7 @@ class ReaderProgressionTests(unittest.TestCase):
             stack.enter_context(patch.object(step_outline,'upsert_artifact',side_effect=lambda **kw:{'id':'saved',**kw}))
             result=step_outline.run('job','条件')
         request=send.call_args.kwargs
-        self.assertIn('reader_progression',request['output_config']['format']['schema']['properties']['sections']['items']['properties'])
+        self.assertIn('reader_progression',request['output_config']['format']['schema']['properties']['sections']['items']['anyOf'][0]['properties'])
         self.assertIn('マーケティング目的',request['messages'][0]['content'])
         bp.require_projection(result,ctx);self.assertIn('次の問い',result['content_text']);self.assertIn('記事目的への役割',result['content_text'])
 

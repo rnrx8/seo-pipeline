@@ -113,6 +113,41 @@ class BlueprintProvenanceTests(unittest.TestCase):
         self.assertEqual(normalized['sections'][0]['research_ids'],['q1'])
         self.assertEqual(value,original)
 
+    def test_section_can_touch_additional_need_without_completing_that_decision(self):
+        _,_,_,ctx,value=fixture()
+        related=copy.deepcopy(ctx['reader_design']['reader_needs'][0]);related['id']='i02'
+        ctx['reader_design']['reader_needs'].append(related)
+        value['sections'][0]['need_ids'].append('i02')
+        # A related concern is not a claim that its whole decision is complete.
+        bp.validate(value,ctx)
+        self.assertEqual(value['sections'][0]['decision_ids'],['i01'])
+        value['sections'][0]['need_ids']=['i02']
+        with self.assertRaises(req.ContentQualityError):bp.validate(value,ctx)
+
+    def test_accepted_claim_can_support_another_decision_without_changing_plan_links(self):
+        _,_,_,ctx,value=fixture()
+        ctx['topics'].append({'id':'q2','priority':'supporting'})
+        ctx['accepted_claims']['q2.c01']={**copy.deepcopy(ctx['accepted_claims']['q1.c01']),'id':'q2.c01','research_id':'q2'}
+        section=copy.deepcopy(value['sections'][0]);section.update(id='s02',title='追加の利用場面',research_ids=['q2'])
+        section['answer_elements'][0]['claim_ids']=['q2.c01'];value['sections'].append(section)
+        # Plan links select research to do, not an exclusive ban on reusing facts.
+        bp.validate(value,ctx)
+        self.assertEqual(ctx['reader_decisions'][0]['research_ids'],['q1'])
+
+    def test_api_requires_chapter_progression_but_allows_child_inheritance(self):
+        _,_,_,ctx,value=fixture();value['sections'][0]['reader_progression']=None
+        with self.assertRaises(req.ContentQualityError):bp.validate_shape(value,bp.OUTPUT_CONFIG['format']['schema'])
+        _,_,_,ctx,value=fixture();child=copy.deepcopy(value['sections'][0]);child.update(id='s02',level=3,parent_id='s01',reader_progression=None,budget={'chars':0,'importance':0,'reason':''})
+        value['sections'].append(child)
+        bp.validate_shape(value,bp.OUTPUT_CONFIG['format']['schema']);bp.validate(value,ctx)
+
+    def test_partial_omission_keeps_the_adopted_part_and_essential_answer(self):
+        _,_,_,ctx,value=fixture()
+        value['omissions']=[{'research_id':'q1','reason':'採用済みの閲覧・送信条件は使い、未確認の補助番号は省く'}]
+        bp.validate(value,ctx)
+        value['sections'][0].update(research_ids=[],decision_ids=[],need_ids=[],answer_elements=[])
+        with self.assertRaises(req.ContentQualityError):bp.validate(value,ctx)
+
     def test_unknown_claim_or_unknown_declared_research_stays_invalid(self):
         _,_,_,ctx,value=fixture()
         value['sections'][0]['answer_elements'][0]['claim_ids']=['withheld.c01']
@@ -178,3 +213,49 @@ class FocusedFeedbackHandoffTests(focused_tests.FocusedResearchTests):
 # Avoid running the reused harness's inherited cases a second time.
 for _name in tuple(vars(focused_tests.FocusedResearchTests)):
     if _name.startswith('test_'):setattr(FocusedFeedbackHandoffTests,_name,None)
+
+class MixedClaimTypeTests(unittest.TestCase):
+    def test_standard_fact_question_can_include_a_separate_confirmation_proposal(self):
+        from test_claim_evidence import fixture as claims_fixture
+        plan,pages,value=claims_fixture();plan['items'][0]['requires_current']=True
+        item=value['items'][0];proposal=copy.deepcopy(item['claims'][0])
+        proposal.update(answer_type='proposal',basis='guidance',evidence_indices=[],conditions=[],
+            text='登録前に利用対象と利用条件を確認してください。',operation='確認手順を提案')
+        item['claims'].append(proposal)
+        self.assertFalse(req.validate_matrix(value,plan,pages))
+        self.assertEqual([r['answer_type'] for r in value['evidence_ledger']['claims']],['sourced','proposal'])
+        self.assertEqual(value['evidence_ledger']['claims'][1]['evidence'],[])
+        # The same worded instruction is not a sourced fact without evidence.
+        item['claims'][1]['answer_type']='sourced'
+        self.assertTrue(req.validate_matrix(value,plan,pages))
+
+    def test_repeated_failed_claim_validation_does_not_nest_old_error_text(self):
+        from test_claim_evidence import fixture as claims_fixture
+        plan,pages,value=claims_fixture();value['items'][0]['claims'][0]['evidence_indices']=[]
+        reasons=[]
+        for _ in range(4):
+            req.validate_matrix(value,plan,pages)
+            reasons.append(value['items'][0]['claim_validation_issue'])
+        self.assertEqual(len(set(reasons)),1)
+
+    def test_proposal_alone_does_not_require_evidence_of_a_current_commercial_fact(self):
+        from test_claim_evidence import fixture as claims_fixture
+        plan,pages,value=claims_fixture();plan['items'][0]['requires_current']=True
+        c=value['items'][0]['claims'][0]
+        c.update(answer_type='proposal',basis='guidance',evidence_indices=[],conditions=[],
+            text='利用規約の対象条件を確認してください。',operation='条件確認を提案')
+        self.assertFalse(req.validate_matrix(value,plan,pages))
+        self.assertIn('条件を確認',value['items'][0]['answer'])
+        for source_requirement in ('expert_allowed','primary_only'):
+            changed=copy.deepcopy(plan);changed['items'][0]['source_requirement']=source_requirement
+            self.assertTrue(req.validate_matrix(copy.deepcopy(value),changed,pages))
+
+    def test_schema_allows_proposal_basis_but_runtime_rejects_guidance_as_a_commercial_fact(self):
+        from pipeline.source_spans import span_schema
+        from test_claim_evidence import fixture as claims_fixture
+        plan,pages,value=claims_fixture()
+        schema=span_schema(req.MATRIX_SCHEMA,['q1'],questions=plan['items'])
+        basis=schema['format']['schema']['properties']['items']['properties']['q1']['properties']['claims']['items']['properties']['basis']['enum']
+        self.assertIn('guidance',basis)
+        c=value['items'][0]['claims'][0];c.update(basis='guidance')
+        self.assertTrue(req.validate_matrix(value,plan,pages))

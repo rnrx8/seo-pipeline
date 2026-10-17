@@ -12,7 +12,7 @@ conditionsは読者が利用判断に必要な実条件だけ。出典の取得�
 evidence_indicesは同じ質問のevidence配列の0始まり番号。主張そのもの（inferenceは前提）を支える資料だけを対応させる。異なるページの条件を合成するときは対象・プラン・時点を照合する。
 conflictはnone/resolved/unresolved。食い違う取得資料があればevidence_indicesとresolutionへ記録し、対象・条件・時点の違いを説明できるときだけresolvedにする。ページ種別が概要やFAQという理由だけで一方を優先せず、矛盾が残る主張はwithholdとする。非公表と取得失敗・未探索を混同しない。
 dispositionはpublish/qualified/withhold/omit。qualifiedは適用条件を限定した説明であり、未解決の主張に「かもしれない」を付けて掲載することではない。required_for_answerには主回答・結論に不可欠かを指定する。補助的な番号の矛盾だけで、確認できた運営者・機能全体を失わせない。
-sourced/proposal/inferenceの区別と出典基準は共通方針に従う。すべてを出典の事実として扱わず、提案を商業条件や専門判断の抜け道にしない。claim_limitsは質問全体に対する内部の執筆境界。本文用の免責文ではない。
+sourced/proposal/inferenceの区別と出典基準は共通方針に従う。proposalのbasisはguidanceとし、質問に商業情報が含まれていても日常的な確認手順・判断の提案は区別する。未確認の仕様・料金・現行規約・専門判断を提案に付け替えない。すべてを出典の事実として扱わず、提案を商業条件や専門判断の抜け道にしない。claim_limitsは質問全体に対する内部の執筆境界。本文用の免責文ではない。
 '''
 
 
@@ -85,7 +85,8 @@ def assess(item, question, pages):
         refs=[copy.deepcopy(evidence[i]) for i in claim['evidence_indices']]
         # No claims field in this mini-record: the legacy source validator is the leaf.
         mini={k:copy.deepcopy(v) for k,v in item.items() if k not in (
-            'claims','claim_states','claim_evidence','coverage_issues','claims_checked_at','claim_policy_issues')}
+            'claims','claim_states','claim_evidence','coverage_issues','claims_checked_at','claim_policy_issues',
+            'claim_validation_issue','validation_issue','verified')}
         mini.update(id=question['id'],answer=claim['text'],answer_type=claim['answer_type'],basis=claim['basis'],
                     status='confirmed',evidence=refs,publication_conditions=[c['value'] for c in scope],
                     supports_current_conclusion=claim['supports_current_conclusion'],

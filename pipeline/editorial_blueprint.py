@@ -11,14 +11,14 @@ POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
 sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
 各節のquestion/conclusion/answer_elementsに問い・結論・説明事項を記し、reader_progressionに章の前後の変化を設計する。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
-need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
+need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。need_idsには部分的に扱う関連ニーズも含められ、そのすべての判断をこの節で完了させる必要はない。decision_idsに対応する分析IDは保持する。計画のresearch_idsは調査の案内であり、他の質問の採用済み主張を関連する判断へ再利用してよい。関連性と回答の十分さは独立確認で評価する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
 H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
 H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し、親と重複する場合はnull。親の開始状態・読後状態を子節すべてへ複製しない。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
 マーケティング目的に沿って認識・感情・行動の変化を意図してよい。潜在課題/願望への気づき、懸念の重要性の認識、新しい選択肢、利用後の変化のイメージ、期待・共感・安心・納得、比較・相談・登録への誘導、問いかけや価値の予告を設計できる。marketingは必要な章だけ指定し、不要ならnull。次の行動は認知・理解が目的なら空文字でもよい。全章にCTAや同じ感情を要求しない。脅迫、虚偽の恐怖/効果/緊急性、判断に重要な条件の隠蔽は行わない。商品の適合条件と確認済み事実を保ち、心理は仮説、感情変化は狙いであって実測効果や全員の感情として断定しない。合理的な助言や価値説明に効果率・同一文章の引用を一律要求しない。
 具体例exampleは役立つ節だけ記入し、不要なら空文字。説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
 主回答の概要から必要な詳細まで連続して説明し、その後に商品選択や補足へ進む。必要な前提は先に置ける。方法選びが問いなら各方法の違いと向く状況に答え、商品名一覧をその代わりにしない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで下位の推薦へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
-omissionsには省くimportant論点と読者判断を損なわない理由を記録する。essential/requiredは省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
+omissionsには省く内容と読者判断を損なわない理由を記録する。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
 リード方針は今回の読者設計と既存の執筆基準を引き継ぎ、完成リードは作らない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
 REVIEW_POLICY = '''【編集設計の個別確認】
@@ -79,6 +79,14 @@ def model_output_config(schema):
     value=copy.deepcopy(schema)
     def visit(node):
         if not isinstance(node,dict):return
+        props=node.get('properties',{})
+        if props.get('level',{}).get('enum')==[2,3,4] and 'reader_progression' in props:
+            chapter=copy.deepcopy(node);child=copy.deepcopy(node)
+            chapter['properties']['level']['enum']=[2]
+            chapter['properties']['reader_progression']=copy.deepcopy(next(
+                branch for branch in props['reader_progression']['anyOf'] if branch.get('type')=='object'))
+            child['properties']['level']['enum']=[3,4]
+            node.clear();node['anyOf']=[chapter,child]
         constraints={k:node.pop(k) for k in ('minimum','maximum','multipleOf','minLength','maxLength','maxItems','uniqueItems') if k in node}
         if node.get('minItems') not in (None,0,1):constraints['minItems']=node.pop('minItems')
         if constraints:
@@ -177,9 +185,9 @@ def validate(value, ctx):
         stack={k:v for k,v in stack.items() if k<level};stack[level]=sid;seen[sid]=s
         for key,allowed in [('need_ids',needs),('decision_ids',decisions),('research_ids',questions)]:
             if len(set(s[key]))!=len(s[key]) or any(i not in allowed for i in s[key]):fail('編集設計の参照IDが不明・重複しています: '+key)
-        for did in s['decision_ids']:
-            if not set(s['research_ids']) & set(decisions[did]['research_ids']):fail('読者判断と調査質問の対応が切れています。')
-        if set(s['need_ids'])!=set(s['decision_ids']) & needs:fail('分析と判断の対応IDが一致しません。')
+        # Planned question links guide collection; they are not exclusive
+        # evidence ownership. Relevance is checked in independent section QA.
+        if not (set(s['decision_ids']) & needs)<=set(s['need_ids']):fail('分析と判断の対応IDが一致しません。')
         for element in s['answer_elements']:
             if not element['instruction'].strip() or '\n' in element['instruction']:fail('具体的な回答要素が不足しています。')
             refs=element['claim_ids']
@@ -191,7 +199,7 @@ def validate(value, ctx):
     omitted={}
     for omission in value['omissions']:
         qid=omission['research_id']
-        if qid not in questions or qid in omitted or qid in assigned or not omission['reason'].strip():fail('省略論点のID・理由が不正です。')
+        if qid not in questions or qid in omitted or not omission['reason'].strip():fail('省略論点のID・理由が不正です。')
         omitted[qid]=omission['reason']
     for qid,q in questions.items():
         if q.get('required') or q.get('priority')=='essential':

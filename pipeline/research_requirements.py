@@ -465,9 +465,13 @@ def validate_matrix(value, plan_value, pages):
         if kind not in ('sourced','proposal','inference'):
             raise ContentQualityError('回答の事実・提案・推論の区分が不正です。')
         planned=required[item['id']]
-        proposal=(kind=='proposal' and planned.get('source_requirement')=='general_guidance'
-                  and item.get('basis')=='guidance' and planned.get('official_check_required') is False
-                  and not planned.get('requires_current') and bool(item.get('reason','').strip()))
+        proposal=(kind=='proposal' and planned.get('source_requirement') in ('standard','general_guidance')
+                  and item.get('basis')=='guidance' and bool(item.get('reason','').strip()))
+        # A question may mix commercial facts with ordinary editorial advice.
+        # Source rules apply to factual claims; an explicit proposal does not
+        # assert that a price, feature or eligibility condition is confirmed.
+        if proposal:
+            planned={**planned,'source_requirement':'general_guidance','official_check_required':False,'requires_current':False}
         if accepted and (not item.get('answer','').strip() or (not refs and not proposal)): accepted=False
         if kind=='proposal' and not proposal:accepted=False
         if kind=='inference' and (planned.get('source_requirement') not in ('standard','general_guidance')
@@ -475,7 +479,6 @@ def validate_matrix(value, plan_value, pages):
         if accepted and any(not ref.get('quote','').strip() or ref.get('url') not in bodies or normalize(ref['quote']) not in bodies[ref['url']] for ref in refs):
             accepted=False
             item['reason']='回答の引用と直接取得本文が一致しません。' + item.get('reason','')
-        planned = required[item['id']]
         if 'priority' in planned:
             basis = item.get('basis')
             item.pop('validation_issue', None)
