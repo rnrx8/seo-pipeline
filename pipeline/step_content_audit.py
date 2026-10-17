@@ -121,6 +121,8 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
         if (requirements.get('intent_analysis') and
                 any(c['key']=='coverage' and c['status']=='fail' for c in report['checks'])):
             packet['requirements']['intent_analysis'] = requirements['intent_analysis']
+        if requirements.get('article_design') and any(c['key']=='coverage' and c['status']=='fail' for c in report['checks']):
+            packet['requirements']['article_design']=requirements['article_design']
         repair_data=packet
     else:
         from .generation_context import generation_evidence, repair_requirements

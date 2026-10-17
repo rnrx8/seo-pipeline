@@ -19,7 +19,8 @@ def bind_sections(text, outline, contract=None):
         outline_index = matches[0] if len(matches) == 1 else None
         if outline_index is not None:
             used.add(outline_index)
-        entries.append({'id': f'section-{outline_index:03d}' if outline_index is not None else f'extra-{index:03d}',
+        blueprint_id=_blueprint_id(outline,expected[outline_index]) if outline_index is not None else None
+        entries.append({**({'blueprint_id':blueprint_id} if blueprint_id else {}),'id': f'section-{outline_index:03d}' if outline_index is not None else f'extra-{index:03d}',
                         'outline_index': outline_index, 'level': section['level'], 'title': section['title'],
                         'parent': section['parent']})
     return {'version': 1, 'outline_sha256': _hash(outline), 'entries': entries}
@@ -38,6 +39,8 @@ def valid_binding(text, outline, binding):
     indices = [e.get('outline_index') for e in entries if e.get('outline_index') is not None]
     expected = outline_sections(outline)
     if len(indices) != len(set(indices)) or any(type(i) is not int or not 0 <= i < len(expected) for i in indices):
+        return False
+    if any(e.get('blueprint_id') is not None and (e.get('outline_index') is None or e['blueprint_id']!=_blueprint_id(outline,expected[e['outline_index']])) for e in entries):
         return False
     return all(all(e.get(k) == a[k] for k in ('level', 'title', 'parent'))
                and (e.get('outline_index') is None or e['level'] == expected[e['outline_index']]['level'])
@@ -86,3 +89,10 @@ def carry_sections(before, after, outline, binding, *, allow_h4=False):
 def unchanged_heading_binding(before, after, binding):
     keys = lambda text: [(s['level'], s['title'], s['parent']) for s in article_sections(text)]
     return binding if keys(before) == keys(after) else None
+
+
+def _blueprint_id(outline, section):
+    from .outline_design import _design_field
+    import re
+    value=_design_field(outline[section['start']:section['end']], 'セクションID')
+    return value if re.fullmatch(r's\d+',value) else None

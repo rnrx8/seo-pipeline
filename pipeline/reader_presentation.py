@@ -85,3 +85,6 @@ reader_designがある場合、採用された問い・必要回答・説明順�
 商品理解のvalue_connectionsは登録資料に関連づいた検証前の候補。reader_designのproduct_fitを参考に、商品が役立つ条件と必要な制約を確認済みの回答から説明する。not_usefulやCTAのdefer/omitをCV指定だけで有用・必須へ変換しない。心理・仮説のラベルや採用経緯を記事本文へ転記しない。
 '''
 READER_PRESENTATION_POLICY += READER_DESIGN_POLICY
+
+from .authoring_policy import LEAD_POLICY, PROGRESSION_WRITING_POLICY, CTA_WRITING_POLICY
+READER_PRESENTATION_POLICY += LEAD_POLICY + PROGRESSION_WRITING_POLICY + CTA_WRITING_POLICY

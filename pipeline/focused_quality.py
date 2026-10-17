@@ -86,8 +86,16 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             system += RECOMMENDATION_REVIEW
             system += ('\nrequirementsのintent_value_context、なければintent_analysisを読み、'
                        '共通提示基準「検索語・結論・推奨理由」に照らして本文の具体的な該当箇所を照合する。')
+        output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled())
+        design=payload['requirements'].get('article_design') if role=='coverage' else None
+        if design:
+            from .article_design import correspondence,review_config,REVIEW_POLICY
+            from .reader_decisions import REVIEW_POLICY as DECISION_REVIEW_POLICY
+            payload['reader_correspondence']=correspondence(text,outline,design)
+            system+='\n'+DECISION_REVIEW_POLICY+'\n'+REVIEW_POLICY
+            output_config=review_config(output_config,design)
         request = dict(model=model, max_tokens=budget, system=system,
-                       output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled()),
+                       output_config=output_config,
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
         from .ai import tiered_review_enabled
         trace=[]
@@ -129,8 +137,15 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if role=='coverage' and compact_enabled():
             from .review_scope import validate_routes, pages_from
             validate_routes(checks,content_blocks(text),payload['requirements'],pages_from(sources),())
+        if design:
+            from .article_design import checked_result
+            decision_response=json.loads(raw)
+            checks=checked_result(checks,decision_response,design,text)
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
+        if design:
+            phase['decision_reviews']=decision_response['decision_reviews']
+            phase['reader_correspondence']=payload['reader_correspondence']
         if trace:phase['evidence_routing']=trace
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)

@@ -267,7 +267,7 @@ class ReaderProgressionTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article.anthropic,'Anthropic'))
             writer=stack.enter_context(patch.object(step_article,'_call',side_effect=Captured()))
             with self.assertRaises(Captured):step_article.run('job','条件')
-        messages=json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)
+        messages=step_article.SYSTEM_PROMPT+json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)
         for term in ('この章で解消する疑問','狙う感情の変化','次の問い','記事目的への役割','潜在課題','選択の迷い'):
             self.assertIn(term,messages)
         self.assertEqual(writer.call_count,1)

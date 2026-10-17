@@ -14,7 +14,7 @@ from .content_contract import contract_prompt, reference_prompt
 from .quality_warnings import warn
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
-from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY
+from .readability import READABILITY_POLICY, SENTENCE_STYLE_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -28,7 +28,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 
 ▼ 文体
 - 本文はです・ます調に統一（見出し・表・リストは除く）
-- 一文は最大60文字。超える場合は文を分割する（感情表現・共感表現は例外として残す）
+""" + SENTENCE_STYLE_POLICY + """
 - 不要な修飾語・接続詞は削除する（ただし「削っても意味が通じ、かつ読んだ時の温度感が変わらないもの」だけ削る）
 
 ▼ H1（タイトル）
@@ -38,23 +38,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
   例:「30代におすすめの転職エージェント…」（◯）／「転職エージェントおすすめ30代…」（×・禁止）
 
 ▼ リード文
-- 構成は3パートで書く（共感→背景→解決の骨格は維持）：
-  ①冒頭1〜2文：読者が置かれた具体的な状況・事実・数字を描写して入る。
-    感情を抽象的に代弁するだけで終わらせず、その感情を生む状況を具体的に描き、
-    読者に自分で当てはめさせる（例：「修理費5万円は一人暮らしの食費2ヶ月分に
-    あたります」）。共感・問いかけ（代弁）は使ってよいが、下記の一文目ルールに従う。
-  ②中間1文：その状況が生まれる理由や背景を補強する
-  ③末尾1文：この記事で何が解決するかを示す
-- 全体200字以内 / 一文の目安は60字（感情表現は例外として残してよい）
-- 一文目の「型」を毎回変える。特に「『〜』と〜ていませんか／感じていませんか」
-  （引用＋同意要求の問いかけ）を既定の書き出しにしない。
-  一文目は ①状況・事実の言い切り ②数字・データ ③情景描写 ④短い断片の列挙 など
-  から、キーワードごとに選ぶ。代弁・問いかけはリード文の2〜3文目で使ってよい。
-- 本筋と無関係な市場規模・背景の数値的な前置きは書かない。
-  ただし読者の状況を察させる具体的な事実・数字は冒頭で使ってよい。
-- concrete_phrase は原文のまま活かす（具体ワードで共感を作る方向と整合）。
-  ただし含まれる数値・サービスの事実・安全性や成果の主張は確認済み情報と一致させる。
-  検索意図の仮説を実際の読者の発言や検証済みデータとして扱わない。
+- 共通提示基準「記事タイプに合うリード」に従い、今回の構成の導入方針を実現する。
 
 ▼ 見出し
 - 構成で確定したH2/H3/H4の表記・順序・階層・数を維持する。見出しの問い方や分割は構成段階で決め、本文生成では追加しない。
@@ -87,27 +71,13 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 - 数値・統計が複数並ぶ箇所は必ず表にまとめ、
   本文はその表から「何が言えるか」を1〜2文で要約するだけにする
 
-▼ H2末尾の感情補完文
-- 少し砕けた口調でよい
-- 「〜でしょう」「〜と言えます」より「〜ですよね」「〜のはずです」程度のトーンが望ましい
-- 読者の不安・焦り・期待に直接語りかける形にする
-  例：「自分にM&A業界が向いているか、まだ判断がつかない方も多いはずです。」
-
-▼ H2末尾の補完文の注意点
-- 共感文にするために無理に語尾を調整する必要は無し
-""" + EMPATHY_ENDING_POLICY + """
-
 ▼ ファクトの使い方
 - [confirmed]の要約または今回直接取得した原文で対象・条件を照合できる数値・データを使用する
 - [hypothesis]タグのものは本文に書かない
 - 根拠のない数値・推測を断言しない
 
-▼ 潜在ニーズの反映
-- 検索意図チェーンの concrete_phrase（具体化ワード）は、関連する箇所で原文を活かす。
-  各H2末尾への一律挿入や同じ文の反復は必須ではない。その章の説明に必要な表現を選ぶ。
-  分析用ラベルは読者に意味の伝わる文へ整え、原文の引用や感情表現そのものは禁止しない。
-- 抽象ラベル（「安全欲求に訴求」「閉塞感を解消」等）ではなく、
-  具体化された言葉そのもの（数字・比較・情景を含む表現）を本文に入れること。
+▼ 読者理解と導線
+- 共通提示基準「章の変化を文章へ実現する」「章の判断とCTAの接続」に従う。
 
 ▼ その他
 - 読者の不安を和らげる補完文は、そのH2の検索意図に必要な場合だけ入れる
@@ -118,7 +88,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 USER_TEMPLATE = """\
 キーワード: {keyword}
 
-## 検索意図の分析（潜在ニーズをリード文・H2末尾に反映すること）
+## 読者設計（問い・事情・必要な回答・記事目的）
 {intent_text}
 
 ## 構成案
@@ -249,13 +219,12 @@ def _build_part_instructions(
 
             sec_titles = [t for t, _, _ in secs]
             for title in sec_titles:
-                # Service treatment instructions for this section
-                if primary_h2 and _h2_title_matches(title, primary_h2):
-                    inst = per_instructions.get(primary_h2, per_instructions.get(title, ""))
-                    if inst:
-                        lines.append(f"\n【重要・サービス指示】「{title}」セクション：{inst}")
-                    elif service_name:
-                        lines.append(f"\n【重要・サービス指示】「{title}」セクションでは{service_name}を重点的に紹介してください。")
+                inst=per_instructions.get(title)
+                if inst:
+                    lines.append(f"\n【この章の案内設計】「{title}」：{inst}")
+                elif primary_h2 and _h2_title_matches(title, primary_h2) and not service_map.get('blueprint_version'):
+                    inst=per_instructions.get(primary_h2,'')
+                    if inst:lines.append(f"\n【サービス指示】「{title}」：{inst}")
             return "\n".join(lines)
 
         p1_total = sum(wc for _, _, wc in part1_secs)
@@ -280,8 +249,8 @@ def _build_part_instructions(
             f"最後に【PART2_END】と書いてください。"
         )
         part3 = (
-            f"上記の続きから以下のH2セクションとまとめまで書いてください：{_sec_label(part3_secs)}\n"
-            f"このパートの目安文字数は約{p3_total:,}字です。記事全体の目標文字数は{total:,}字です。必ずまとめまで書き切ってください。"
+            f"上記の続きから以下のH2セクションを書いてください：{_sec_label(part3_secs)}\n"
+            f"このパートの目安文字数は約{p3_total:,}字です。記事全体の目標文字数は{total:,}字です。指定した章を書き切り、構成にないまとめを追加しないでください。"
             f"{p3_rem}\n"
             f"最後に【PART3_END】と書いてください。"
         )
@@ -454,93 +423,18 @@ def _repair_missing_structure(
 
 
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
-    """企業設定リストをプロンプト文字列に変換する（step_outlineと同じロジック）"""
-    if not companies:
-        return ""
-    level_map = {
-        5: ("最強おすすめ", "比較表1位・強い推薦文・CTA誘導を含める"),
-        4: ("おすすめ", "比較表上位・推薦文あり"),
-        3: ("条件付きおすすめ", "「〜な人向け」として条件付きで紹介"),
-        2: ("消極的紹介", "特定ニーズがある人向けとして軽く触れる程度"),
-        1: ("比較用掲載", "名前と特徴のみ記載・推薦文なし・他社を引き立てる文脈で登場"),
-    }
-    by_level: dict[int, list] = {}
-    for c in companies:
-        lv = c.get("recommend_level", 0)
-        if lv == 0:
-            continue
-        by_level.setdefault(lv, []).append(c)
-
-    if not by_level:
-        return ""
-
-    if restriction == "registered_only":
-        intro = [
-            "",
-            "【紹介企業設定】",
-            "【重要】記事内で紹介・比較する企業は以下のリストに含まれる企業のみとしてください。",
-            "リストにない企業は一切紹介・言及しないでください。",
-            "構成案で決まった比較表の順番・紹介文の方針を守りながら、以下の企業を本文に反映してください。",
-            "おすすめレベルに応じて紹介文の強さを調整してください。",
-            "",
-        ]
-    else:
-        intro = [
-            "",
-            "【紹介企業設定】",
-            "以下の企業を優先的に紹介してください。",
-            "リスト外の企業も状況に応じて紹介してOKです。",
-            "構成案で決まった比較表の順番・紹介文の方針を守りながら、以下の企業を本文に反映してください。",
-            "おすすめレベルに応じて紹介文の強さを調整してください。",
-            "",
-        ]
-
-    lines = intro + [
-        "【各社紹介セクションの形式】各社をH3で個別紹介する場合、以下の形式を守ること：",
-        "  ①本文の後にスペック表を設ける（項目例：求人数・強み・こんな人向け・料金・公式サイト）",
-        "  　公式サイト行の値はURLをそのまま記載する（例：https://www.r-agent.com）",
-        "  ②スペック表の直後に以下のリンクを1行追加する：",
-        "  　[▶ {会社名}の公式サイトはこちら]({URL})",
-        "  　（例：[▶ リクルートエージェントの公式サイトはこちら](https://www.r-agent.com)）",
-        "  ③H3見出しにレベルに応じた【1位】【2位】等のラベルを付けてよい",
-        "",
-    ]
-    for lv in sorted(by_level.keys(), reverse=True):
-        label, instruction = level_map.get(lv, (str(lv), ""))
-        lines.append(f"レベル{lv}（{label}）：")
-        for c in by_level[lv]:
-            name = c.get("name", "")
-            url = c.get("affiliate_url", "")
-            notes = c.get("notes", "")
-            lines.append(f"- 会社名：{name} / URL：{url} / notes：{notes}")
-        lines.append(f"  → {instruction}")
-        lines.append("")
-    return "\n".join(lines)
+    from .authoring_policy import company_prompt
+    return company_prompt(companies,restriction)
 
 
 def _build_service_prompt(service: dict) -> str:
-    lines = ["\n【紹介サービス設定】"]
-    lines.append(f"サービス名：{service.get('name', '')}")
-    if service.get("url"):
-        lines.append(f"URL：{service['url']}")
-    sps = service.get("selling_points") or []
-    if sps:
-        lines.append("セールスポイント：")
-        for sp in sps:
-            lines.append(f"  - {sp}")
-    if service.get("raw_content"):
-        lines.append(f"サービス詳細情報：\n{service['raw_content'][:1200]}")
-    if service.get("must_include"):
-        lines.append(f"必須記載内容（事実・数値は今回の確認結果で更新し、未確認なら断定しない）：{service['must_include']}")
-    if service.get("must_exclude"):
-        lines.append(f"本文への記載禁止事項：{service['must_exclude']}")
-    lines.append("上記のサービスを記事の主要な紹介対象として自然に取り上げてください。")
-    return "\n".join(lines)
+    from .authoring_policy import service_prompt
+    return service_prompt(service)
 
 
-def _build_cta_prompt(cta: dict) -> str:
-    # A single deterministic stage owns placement; the writer must not duplicate it.
-    return "\n【CTA設定】CTAは執筆後の専用工程で指定位置へ挿入します。本文にCTAブロック・登録ボタン・同じ誘導文を追加しないでください。"
+def _build_cta_prompt(cta: dict, placement=None) -> str:
+    from .authoring_policy import cta_prompt
+    return cta_prompt(cta,placement)
 
 
 def _build_chains_prompt(chains: list) -> str:
@@ -728,6 +622,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             raise ContentQualityError('商品・CTA配置が現在の編集設計と一致しません。')
         service_map=expected
 
+    if cta_prompt:
+        cta_prompt=_build_cta_prompt(cta,service_map)
+
     _service_name = ""
     if service_map:
         try:
@@ -865,6 +762,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
 
+    reader_meta={}
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .article_design import design_context,correspondence
+        reader_meta['reader_correspondence']=correspondence(article_text,outline_text,design_context(outline))
     artifact = upsert_artifact(
         job_id=job_id,
         step="article",
@@ -875,6 +776,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
+            **reader_meta,
             "section_map": bind_sections(article_text, outline_text, contract),
             "structure_repaired": structure_repaired,
             "duplicate_service_h2s_removed": duplicate_service_h2s_removed,

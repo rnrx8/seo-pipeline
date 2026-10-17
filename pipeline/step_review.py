@@ -9,7 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
-from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT, SENTENCE_STYLE_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -51,8 +51,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 """ + READABILITY_POLICY + """
 
 6. 長文チェック
-   - 一文が""" + str(SENTENCE_REVIEW_LIMIT) + """字を超えている場合に検出
-   - 自然な区切りで2文に分割する
+   - """ + SENTENCE_STYLE_POLICY + """
 
 7. 文体チェック
    - 本文（見出し・表・リスト以外）でです・ます調でない箇所を検出
@@ -113,7 +112,7 @@ REVIEW_TEMPLATE = """\
 {learned_rules_block}"""
 
 WORD_COUNT_INSTRUCTION = """\
-## 文字数調整（最優先）
+## 文字数調整（必要な回答・条件・確定済み構成を保持）
 現在の記事は {actual:,}字です。目標は「{target}」です。
 {action}
 
@@ -138,8 +137,8 @@ def _word_count_action(actual: int, target_str: str) -> str | None:
         f"目標上限（{hi:,}字）を約{excess:,}字超過しています。\n"
         f"重複説明、冗長な例、長い導入、同内容のH3から先に圧縮し、{hi:,}字以内を目指してください。\n"
         "コンテンツ構造契約のprotected=trueは情報要件の保護です。独立H2の固定ではありません。\n"
-        "要件を満たす説明は残しつつ、重複H2は統合し、optional_sectionsの補助説明から圧縮してください。\n"
-        f"それでも収まらない場合だけoptional_sectionsに属する補助H2を削除できます。"
+        "要件を満たす説明と確定済みH2/H3/H4を残し、反復や補足の文章から圧縮してください。\n"
+        f"見出しの削除・統合・移動は行わず、構成の変更が必要ならサマリーで構成側の修正対象として示してください。"
     )
 
 

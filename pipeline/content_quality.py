@@ -62,7 +62,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
     from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
     from .editorial_blueprint import VERSION as BLUEPRINT_VERSION, REVIEW_POLICY as BLUEPRINT_REVIEW_POLICY
-    value = json.dumps([BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .article_design import VERSION as ARTICLE_DESIGN_VERSION, REVIEW_POLICY as ARTICLE_DESIGN_REVIEW
+    value = json.dumps([ARTICLE_DESIGN_VERSION, ARTICLE_DESIGN_REVIEW, BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -176,6 +177,12 @@ def intent_review_requirements(job: dict, keyword: str) -> dict:
 
 def final_review_requirements(job: dict, keyword: str) -> dict:
     requirements = intent_review_requirements(job, keyword)
+    if job.get('id'):
+        from .db import get_optional_artifact
+        from .article_design import design_context
+        outline=get_optional_artifact(job['id'],'outline')
+        if outline and (outline.get('meta') or {}).get('blueprint_version'):
+            requirements['article_design']=design_context(outline)
     if astra_review_enabled():
         from .db import get_learned_style_rules
         from .step_review import SYSTEM_PROMPT
@@ -521,6 +528,13 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
         phases = report.get('phases', {})
         if set(phases) != set(ROLES):
             raise ContentQualityError('分割品質検査が不足しています。')
+        if context and context.get('requirements',{}).get('article_design'):
+            from .article_design import checked_result
+            design=context['requirements']['article_design']
+            phase=phases['coverage']
+            verified=checked_result(phase.get('checks',[]),phase,design,context['text'])
+            if verified!=phase.get('checks') or any(c['status']!='pass' for c in verified):
+                raise ContentQualityError('本文の読者判断の個別確認が未合格・不整合です。')
         local = report.get('local_completion')
         if local:
             from .prose_completion import validate_completion

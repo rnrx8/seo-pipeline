@@ -1,0 +1,71 @@
+"""Trace intended reader answers into actual sections, then use existing coverage QA."""
+import copy
+import hashlib
+from .editorial_blueprint import require_projection,fingerprint
+from .content_edits import content_blocks
+from .section_identity import bind_sections
+
+VERSION='article-reader-design-v1'
+REVIEW_POLICY='''本文のdecision_reviewsでは、article_designの読者判断ごとに必要回答の実現を個別に確認する。
+構成・reader_correspondenceは設計と位置対応であり、実際の回答の証明ではない。本文の具体的記述をreasonに示し、比較・選び分け・手順・判断に必要な説明が実在するか確認する。設計した感情の文言そのものや、毎章の共感・CTA文は要求しない。章の役割に応じた理解・判断・説明を確認し、商材への誘導があること自体を不合格にしない。
+不足はmissing_requirementsと、補うべき実在する段落IDのaffected_blocksへ記録する。全体coverageがpassでも主要な必要回答の不足を相殺しない。'''
+
+
+def design_context(artifact):
+    value=require_projection(artifact)
+    if value is None:return None
+    ctx=artifact['meta']['blueprint_context']
+    fields=('id','parent_id','level','title','need_ids','decision_ids','research_ids','question','conclusion','answer_elements','reader_progression','cta')
+    return {'version':VERSION,'blueprint_sha256':fingerprint(value),
+        'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
+        'sections':[{k:copy.deepcopy(s[k]) for k in fields} for s in value['sections']]}
+
+
+def correspondence(text, outline, design, binding=None):
+    """Location mapping is diagnostic; no semantic pass is inferred from it."""
+    from .section_identity import valid_binding
+    binding=binding if binding and valid_binding(text,outline,binding) else bind_sections(text,outline)
+    blocks=content_blocks(text)
+    # Actual paragraph ranges keep repeated text anchored to its own occurrence.
+    ranges=[];cursor=0
+    for block in blocks:
+        start=text.index(block['text'],cursor);cursor=start+len(block['text']);ranges.append((block['id'],start,cursor))
+    import re
+    headings=list(re.finditer(r'^(#{2,4})\s+(.+)$',text,re.M))
+    rows=[]
+    for index,expected in enumerate(design['sections']):
+        located=[];ids=[]
+        for actual_index,entry in enumerate(binding['entries']):
+            if entry.get('outline_index')!=index:continue
+            located.append(entry['id'])
+            start=headings[actual_index].start();end=headings[actual_index+1].start() if actual_index+1<len(headings) else len(text)
+            ids.extend(i for i,a,b in ranges if a<end and b>start)
+        rows.append({'blueprint_id':expected['id'],'article_section_ids':located,'block_ids':list(dict.fromkeys(ids)),
+            'need_ids':expected['need_ids'],'decision_ids':expected['decision_ids'],
+            'status':'mapped_not_semantically_verified' if located else 'unresolved_location'})
+    return {'version':VERSION,'blueprint_sha256':design['blueprint_sha256'],'text_sha256':hashlib.sha256(text.encode()).hexdigest(),
+        'outline_sha256':hashlib.sha256(outline.encode()).hexdigest(),'sections':rows}
+
+
+def review_config(config, design):
+    from .reader_decisions import review_schema
+    return review_schema(config,design['reader_decisions'],locations=True)
+
+
+def checked_result(checks, value, design, text):
+    from .reader_decisions import checked_reviews
+    rows=checked_reviews(value,design['reader_decisions'],block_ids={b['id'] for b in content_blocks(text)})
+    result=copy.deepcopy(checks);coverage=next((c for c in result if c['key']=='coverage'),None)
+    if coverage is None:
+        from .content_quality import ContentQualityError
+        raise ContentQualityError('本文の回答品質確認が不足しています。')
+    for decision in design['reader_decisions']:
+        row=rows[decision['id']]
+        if row['status']!='fail' or decision['role']=='supporting':continue
+        coverage['status']='fail'
+        coverage['reason']+='\n'+decision['question']+'：'+row['reason']
+        coverage.setdefault('affected_blocks',[])
+        for loc in row['affected_blocks']:
+            if loc not in coverage['affected_blocks']:coverage['affected_blocks'].append(copy.deepcopy(loc))
+        coverage['research_ids']=sorted(set(coverage.get('research_ids',[]))|set(decision['research_ids']))
+    return result

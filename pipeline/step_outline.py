@@ -66,9 +66,8 @@ USER_TEMPLATE = OUTLINE_DESIGN_POLICY + "\n" + """\
 - 疑問詞（とは・いくら・なぜ・どのくらい・向いてる？）を少なくとも1案に使う
 
 ### リード文の設計方針
-- 読者の潜在ニーズ・感情的障壁を起点にする（高年収・転職・不安などの感情から入る）
-- 200字以内
-- 末尾でこの記事を読むと何が解決するかを1文で示す
+- 共通提示基準「記事タイプに合うリード」に従い、今回の問い・記事タイプ・読者状況から導入を選ぶ。
+- 本文で解消することと読む理由を簡潔に示す。完成リードは書かない。
 
 ### H1 / H2 / H3 構成
 
@@ -289,85 +288,18 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
 
 
 def _build_company_prompt(companies: list, restriction: str = "ai") -> str:
-    """企業設定リストをプロンプト文字列に変換する"""
-    if not companies:
-        return ""
-    level_map = {
-        5: ("最強おすすめ", "比較表1位・強い推薦文・CTA誘導を含める"),
-        4: ("おすすめ", "比較表上位・推薦文あり"),
-        3: ("条件付きおすすめ", "「〜な人向け」として条件付きで紹介"),
-        2: ("消極的紹介", "特定ニーズがある人向けとして軽く触れる程度"),
-        1: ("比較用掲載", "名前と特徴のみ記載・推薦文なし・他社を引き立てる文脈で登場"),
-    }
-    # level 0 は掲載しない
-    by_level: dict[int, list] = {}
-    for c in companies:
-        lv = c.get("recommend_level", 0)
-        if lv == 0:
-            continue
-        by_level.setdefault(lv, []).append(c)
-
-    if not by_level:
-        return ""
-
-    if restriction == "registered_only":
-        intro = [
-            "",
-            "【紹介企業設定】",
-            "【重要】記事内で紹介・比較する企業は以下のリストに含まれる企業のみとしてください。",
-            "リストにない企業は一切紹介・言及しないでください。",
-            "おすすめレベルに応じて比較表の順番・紹介文の強さを調整してください。",
-            "",
-        ]
-    else:
-        intro = [
-            "",
-            "【紹介企業設定】",
-            "以下の企業を優先的に紹介してください。",
-            "リスト外の企業も状況に応じて紹介してOKです。",
-            "おすすめレベルに応じて比較表の順番・紹介文の強さを調整してください。",
-            "",
-        ]
-
-    lines = intro
-    for lv in sorted(by_level.keys(), reverse=True):
-        label, instruction = level_map.get(lv, (str(lv), ""))
-        lines.append(f"レベル{lv}（{label}）：")
-        for c in by_level[lv]:
-            name = c.get("name", "")
-            url = c.get("affiliate_url", "")
-            notes = c.get("notes", "")
-            lines.append(f"- 会社名：{name} / URL：{url} / notes：{notes}")
-        lines.append(f"  → {instruction}")
-        lines.append("")
-    return "\n".join(lines)
+    from .authoring_policy import company_prompt
+    return company_prompt(companies,restriction)
 
 
 def _build_service_prompt(service: dict) -> str:
-    lines = ["\n【紹介サービス設定】"]
-    lines.append(f"サービス名：{service.get('name', '')}")
-    if service.get("url"):
-        lines.append(f"URL：{service['url']}")
-    sps = service.get("selling_points") or []
-    if sps:
-        lines.append("セールスポイント：")
-        for sp in sps:
-            lines.append(f"  - {sp}")
-    if service.get("must_include"):
-        lines.append(f"必ず構成に含める内容（事実・数値は今回の確認結果を優先）：{service['must_include']}")
-    if service.get("must_exclude"):
-        lines.append(f"構成への記載禁止事項：{service['must_exclude']}")
-    lines.append("上記のサービスを記事の主要な紹介対象として構成を設計してください。")
-    return "\n".join(lines)
+    from .authoring_policy import service_prompt
+    return service_prompt(service)
 
 
 def _build_cta_prompt(cta: dict) -> str:
-    lines = ["\n【CTA設定】"]
-    lines.append(f"CTA名称：{cta.get('name', '')}")
-    if cta.get("button_text") and cta.get("url"):
-        lines.append(f"ボタンテキスト：{cta['button_text']} / URL：{cta['url']}")
-    lines.append("上記のCTAを記事の適切なH2末尾に挿入することを構成案に明記してください。")
-    return "\n".join(lines)
+    from .authoring_policy import cta_prompt
+    return cta_prompt(cta,planning=True)
 
 
 def _build_chains_prompt(chains: list) -> str:

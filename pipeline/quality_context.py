@@ -66,6 +66,7 @@ def review_requirements(requirements, role):
     # All user/editorial settings survive unchanged. Research evidence is not
     # needed to judge prose, internal consistency, or information presentation.
     result=copy.deepcopy(requirements)
+    if role!='coverage':result.pop('article_design',None)
     # Outline readiness and article coverage share deeper search intent.
     # Other reviewers retain the shared policy but do not reread the analysis.
     if role not in ('coverage', 'research'):
