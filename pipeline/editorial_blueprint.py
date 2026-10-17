@@ -69,7 +69,31 @@ SECTION_SCHEMA = obj({
 SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},'lead_direction':STRING,
     'sections':{'type':'array','minItems':1,'items':SECTION_SCHEMA},
     'omissions':{'type':'array','items':obj({'research_id':STRING,'reason':STRING})}})
-OUTPUT_CONFIG = {'format':{'type':'json_schema','schema':SCHEMA}}
+def model_output_config(schema):
+    """Keep semantic bounds locally; send Claude's supported schema subset.
+
+    https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+    Literal enums and object shape stay constrained by the API. Unsupported
+    numeric/length bounds become instructions and remain enforced by validate.
+    """
+    value=copy.deepcopy(schema)
+    def visit(node):
+        if not isinstance(node,dict):return
+        constraints={k:node.pop(k) for k in ('minimum','maximum','multipleOf','minLength','maxLength','maxItems','uniqueItems') if k in node}
+        if node.get('minItems') not in (None,0,1):constraints['minItems']=node.pop('minItems')
+        if constraints:
+            node['description']=(node.get('description','')+' アプリ側で検証する条件: '+json.dumps(constraints,ensure_ascii=False)).strip()
+        for key,child in node.items():
+            if key=='properties':
+                for prop in child.values():visit(prop)
+            elif key in ('items','additionalProperties') and isinstance(child,dict):visit(child)
+            elif key in ('anyOf','allOf','oneOf'):
+                for branch in child:visit(branch)
+    visit(value)
+    return {'format':{'type':'json_schema','schema':value}}
+
+
+OUTPUT_CONFIG = model_output_config(SCHEMA)
 
 
 def context(plan, matrix):
@@ -325,9 +349,9 @@ def apply_edits(value, response, ctx, *, structural, targets):
 
 
 def repair_config():
-    return {'format':{'type':'json_schema','schema':obj({
+    return model_output_config(obj({
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
-        'delete_ids':STRINGS,'section_order':STRINGS})}}
+        'delete_ids':STRINGS,'section_order':STRINGS}))
 
 
 def review_context(artifact):

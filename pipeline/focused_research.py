@@ -23,6 +23,14 @@ sources_complete=trueは保存済み対象ページの集合を提示済みと�
 '''
 
 
+
+def review_output_limit(model, original, candidates):
+    """Reserve reasoning plus claim-level JSON, not just question count."""
+    if model!='gpt-6.1-sol':return original
+    count=sum(max(1,len(i.get('claims',[])),len(i.get('claim_states',[]))) for i in candidates)
+    return max(original,min(32000,6000+1000*count))
+
+
 def enabled():
     return os.getenv('QUALITY_RESEARCH_ROUTING', '') == 'focused'
 

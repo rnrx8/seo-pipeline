@@ -66,11 +66,21 @@ def cached_result(job_id,step,request):
  return None
 
 def checked_request(job_id,step,request,*,client=None):
- fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  old=cached_result(job_id,step,request)
  if old is not None:
   print('[tiered] Reuse '+step,flush=True)
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
+ if step.startswith('tiered_focused_') and request.get('model')=='gpt-6.1-sol':
+  from .focused_research import review_output_limit
+  data=json.loads(request['messages'][0]['content'])
+  limit=review_output_limit(request['model'],request['max_tokens'],data.get('candidate_answers',[]))
+  if limit!=request['max_tokens']:
+   request={**request,'max_tokens':limit}
+   old=cached_result(job_id,step,request)
+   if old is not None:
+    print('[tiered] Reuse '+step,flush=True)
+    return old,SimpleNamespace(input_tokens=0,output_tokens=0)
+ fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
   msg=create_with_retry(client,**request)

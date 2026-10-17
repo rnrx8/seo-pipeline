@@ -78,6 +78,14 @@ def _completed_response(response, started, diagnostics=None):
                 code = error.get('code') if isinstance(error, dict) else None
                 kind = error.get('type') if isinstance(error, dict) else None
                 if diagnostics is not None:
+                    usage=(event.get('response') or {}).get('usage')
+                    if (event['type']=='response.incomplete' and isinstance(usage,dict)
+                            and all(type(usage.get(k)) is int and usage[k]>=0 for k in ('input_tokens','output_tokens'))):
+                        diagnostics['incomplete_usage']={k:usage[k] for k in ('input_tokens','output_tokens')}
+                        for key in ('input_tokens_details','output_tokens_details'):
+                            detail=usage.get(key)
+                            if isinstance(detail,dict) and all(type(n) is int and n>=0 for n in detail.values()):
+                                diagnostics['incomplete_usage'][key]=detail
                     diagnostics.update(event_type=event['type'],
                                        error_code=_diagnostic_identifier(code),
                                        error_type=_diagnostic_identifier(kind),
@@ -170,7 +178,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
             raise ContentQualityError("品質確認の応答形式が不正です。") from None
         finally:
             if reservation is not None and not accounted:
-                settle(reservation)
+                settle(reservation,diagnostics.get('incomplete_usage'))
             if reservation is not None:
                 from .quality_budget import ledger
                 with ledger() as value:
