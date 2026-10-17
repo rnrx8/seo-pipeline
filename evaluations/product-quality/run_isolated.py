@@ -206,9 +206,48 @@ def main():
         grammar_recovery='--resume-after-grammar-fix' in sys.argv
         approved_qa_recovery='--resume-after-approved-qa-budget-extension' in sys.argv
         outline_capacity_recovery='--resume-after-outline-review-capacity-fix' in sys.argv
+        presentation_recovery='--resume-after-presentation-contract-fix' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation'):
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
+        if resume_from=='content_audit' and not presentation_recovery:raise RuntimeError('Body QA resume requires a diagnosed presentation recovery')
+        if presentation_recovery:
+            from pipeline.content_quality import audit_facts,final_review_requirements,snapshot,source_evidence
+            from pipeline.step_content_audit import apply_reviewed_edits,failed_audit_checkpoint
+            from pipeline.research_requirements import _require_matrix_strict
+            authorization=json.loads((root/'approved-qa-budget-extension.json').read_text())
+            ledgers=[json.loads(p.read_text()) for p in (root/'ledger').glob('*.json')]
+            calls=[c for ledger in ledgers for c in ledger['calls']]
+            if (resume_from!='content_audit' or previous['error_type']!='ContentQualityError' or len(ledgers)!=1
+                    or authorization['new_cap_usd']!=manifest['cap_usd'] or any(c['status']=='pending' for c in calls)
+                    or calls[-1]['status']!='accounted' or calls[-1].get('review_operation',{}).get('role')!='repair'):
+                raise RuntimeError('Expected completed repair responses under the approved cap')
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            diagnosis=json.loads((root/'grammar-recovery.json').read_text())
+            if len(uncertain)!=3 or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9:
+                raise RuntimeError('Uncertain expenses changed')
+            _require_matrix_strict(job['id'])
+            article=get(job['id'],'article');outline=get(job['id'],'outline')['content_text']
+            if sha(article)!=previous['artifacts']['article']:raise RuntimeError('Stopped body changed')
+            facts=audit_facts(get(job['id'],'fact_sheet')['content_text'],article,high_accuracy=False)
+            contract=json.loads(get(job['id'],'content_contract')['content_text'])
+            requirements=final_review_requirements(job,job['main_keyword'])
+            sources=source_evidence(get(job['id'],'fresh_sources'))
+            report=failed_audit_checkpoint(job['id'],snapshot(article['content_text'],facts,outline,contract,requirements,sources))
+            if report is None or set(report.get('phases',{}))!={'evidence','coverage','language','consistency','organization'}:
+                raise RuntimeError('Complete failed current-body QA required')
+            request=json.loads((root/'requests/0090.json').read_text())
+            packet=json.loads(request['messages'][0]['content'])
+            raw=get(job['id'],'content_repair_response_1')['content_text']
+            candidate,mapping=apply_reviewed_edits(article['content_text'],raw,packet,report,report['structural_issues'],facts,
+                outline,job.get('word_count_setting'),contract,article['meta']['section_map'],article['meta'].get('cta_placement'))
+            dump(root/'presentation-contract-recovery.json',{'previous':previous,'previous_article':article,
+                'previous_audit':report,'saved_model_response':'0090','no_manual_body_edits':True,
+                'candidate_sha256':hashlib.sha256(candidate.encode()).hexdigest(),'no_prior_verdict_promoted':True,
+                'reason':'Group-level edits may preserve correct paragraphs; quoted CTA is a separate prose run; all mechanical gates rerun before fresh five-role QA'})
+            save(job['id'],'article_content_repair_1','text/markdown',candidate,meta={'audited':False,'revalidated_saved_response':'0090'})
+            save(job['id'],'article','text/markdown',candidate,meta={**article['meta'],'section_map':mapping,'content_audited':False,'content_repaired':True})
+            save(job['id'],'content_audit','application/json',json.dumps({'valid':False,'status':'revalidated_model_patch_requires_full_qa'}),meta={'valid':False})
         if resume_from=='research_validation' and not (approved_qa_recovery or outline_capacity_recovery):raise RuntimeError('QA resume requires the recorded extension')
         if outline_capacity_recovery:
             authorization=json.loads((root/'approved-qa-budget-extension.json').read_text())
@@ -355,7 +394,7 @@ def main():
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        if not (approved_qa_recovery or outline_capacity_recovery):
+        if not (approved_qa_recovery or outline_capacity_recovery or presentation_recovery):
             dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'grammar-resume.json' if grammar_recovery else 'reread-capacity-resume.json' if reread_recovery else 'claim-type-resume.json' if claim_type_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
         marker='resume-grammar.json' if grammar_recovery else 'resume-reread-capacity.json' if reread_recovery else 'resume-claim-type.json' if claim_type_recovery else 'resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
         if approved_qa_recovery:
@@ -364,6 +403,7 @@ def main():
                 'no_prior_verdict_promoted':True,'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain)})
             marker='resume-approved-qa-budget.json'
         if outline_capacity_recovery:marker='resume-outline-review-capacity.json'
+        if presentation_recovery:marker='resume-presentation-contract.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown

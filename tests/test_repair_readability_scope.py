@@ -7,6 +7,32 @@ from pipeline.review_scope import repair_packet,validate_edits
 from pipeline.content_quality import ContentQualityError
 
 class RepairReadabilityScopeTests(unittest.TestCase):
+    def test_grouped_prose_finding_preserves_an_unchanged_correct_paragraph(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='## 説明\n\n'+'あ'*140+'\n\n'+'い'*170
+        blocks=content_blocks(text);ids=[b['id'] for b in blocks[1:]]
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':i,'reason':'文章の連続を整理'} for i in ids]}],
+                'editorial_findings':[{'severity':'blocking','block_ids':ids}]}
+        raw=json.dumps({'edits':[{'id':ids[0],'new':'あ'*120}]})
+        with patch('pipeline.step_content_audit.carry_sections',return_value={}):
+            result,_=apply_reviewed_edits(text,raw,None,report,readability_issues(text),'',text,None,{},None)
+        self.assertIn('い'*170,result)
+        self.assertEqual(readability_issues(result),[])
+        # Merely touching a run does not waive the deterministic full-text check.
+        raw=json.dumps({'edits':[{'id':ids[0],'new':'あ'*139}]})
+        with self.assertRaisesRegex(ContentQualityError,'continuous_prose'):
+            apply_reviewed_edits(text,raw,None,report,readability_issues(text),'',text,None,{},None)
+
+    def test_one_group_cannot_stand_in_for_a_separate_unedited_defect(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='## 説明\n\n一つめ。\n\n二つめ。'
+        blocks=content_blocks(text);ids=[b['id'] for b in blocks[1:]]
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':i,'reason':'意味の誤り'} for i in ids]}],
+                'editorial_findings':[{'severity':'blocking','block_ids':[i]} for i in ids]}
+        raw=json.dumps({'edits':[{'id':ids[0],'new':'直した一つめ。'}]})
+        with self.assertRaisesRegex(ContentQualityError,'問題の修正がありません'):
+            apply_reviewed_edits(text,raw,None,report,[],'',text,None,{},None)
+
     def setUp(self):
         self.text='# 記事\n\n## 選び方\n\n'+'あ'*160+'\n\n'+'い'*160+'\n\n| 項目 | 内容 |\n|---|---|\n| 料金 | 100円 |\n\n## 別の話題\n\n対象外。'
         self.blocks=content_blocks(self.text)

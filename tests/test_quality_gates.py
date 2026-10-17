@@ -10,6 +10,16 @@ from pipeline import content_quality as q
 from quality_fixtures import responses
 
 class QualityGateTests(unittest.TestCase):
+    def test_quote_or_cta_frame_does_not_extend_adjacent_body_prose(self):
+        text='## 説明\n\n'+'あ'*270+'\n\n---\n> '+'枠'*80+'\n>\n> **[登録](https://example.test/)**\n---\n\n'+'い'*270
+        self.assertEqual(readability_issues(text),[])
+        long_quote='## 説明\n\n短い本文。\n\n> '+'枠'*301
+        self.assertEqual(readability_issues(long_quote)[0]['characters'],301)
+
+    def test_horizontal_rule_alone_cannot_hide_a_long_prose_run(self):
+        text='## 説明\n\n'+'あ'*170+'\n\n---\n\n'+'い'*170
+        self.assertEqual(readability_issues(text)[0]['characters'],340)
+
     def test_blank_lines_bold_and_html_do_not_reset_prose(self):
         for separator in ['\n\n','\n\n**強調**\n\n','\n<div></div>\n']:
             findings=readability_issues('## 説明\n'+'あ'*170+separator+'い'*170)

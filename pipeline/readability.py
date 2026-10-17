@@ -16,7 +16,7 @@ READABILITY_POLICY = '''H2直下・H3・H4を含む本文では、通常の文�
 
 def readability_issues(text):
     issues, run, ids = [], [], []
-    heading, level, fenced = '', 0, False
+    heading, level, fenced, quoted = '', 0, False, False
     def flush():
         visible = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', ''.join(run))
         visible = re.sub(r'<[^>]*>|[*_`\s]', '', visible)
@@ -33,6 +33,10 @@ def readability_issues(text):
             if stripped.startswith(('```', '~~~')):
                 flush(); fenced = not fenced; continue
             if fenced: continue
+            if re.fullmatch(r'(?:-{3,}|\*{3,}|_{3,})',stripped):continue
+            is_quote=stripped.startswith('>')
+            if stripped and is_quote!=quoted:
+                flush();quoted=is_quote
             match = re.match(r'^(#{1,6})\s+(.+)', stripped)
             if match:
                 flush(); level, heading = len(match[1]), match[2]; continue

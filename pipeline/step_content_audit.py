@@ -72,7 +72,16 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
                     for loc in check.get('affected_blocks', [])}
     required_ids.update(loc['id'] for issue in issues if issue['key'] != 'continuous_prose' for loc in issue.get('affected_blocks', []))
     edits = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))['edits']
-    missed = required_ids - {edit['id'] for edit in edits}
+    touched={edit['id'] for edit in edits}
+    # A presentation finding can describe a whole prose run. Reorganizing two
+    # paragraphs can fix that run while preserving another correct paragraph.
+    # These are edit-coverage checks only; the candidate still needs full QA.
+    groups=[set(f['block_ids']) for f in report.get('editorial_findings',[]) if f['severity']=='blocking']
+    covered=set().union(*groups) if groups else set()
+    missed = required_ids - covered - touched
+    missed_groups=[sorted(group) for group in groups if not group & touched]
+    if missed_groups:
+        raise ContentQualityError('指摘された問題の修正がありません: '+json.dumps(missed_groups,ensure_ascii=False))
     if missed:
         raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
     unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
