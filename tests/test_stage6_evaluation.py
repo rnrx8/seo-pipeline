@@ -13,6 +13,39 @@ spec.loader.exec_module(recorder)
 
 
 class LocalRecorderTests(unittest.TestCase):
+    def trial(self,folder,status='accounted'):
+        root=Path(folder)
+        recorder.dump(root/'manifest.json',{'cap_usd':12.274548,'settings_sha256':'frozen','jpy_per_usd_for_planning':200})
+        recorder.dump(root/'status.json',{'status':'stopped'})
+        recorder.dump(root/'ledger/job.json',{'calls':[{'status':status,'reserved_usd':1}],
+            'limit_usd':12.274548,'total_limit_usd':12.274548,
+            'review_policy':{'phase_limits_usd':{'outline':12.274548,'article':12.274548}}})
+        return root
+
+    def test_authorized_trial_extension_preserves_history_and_phase_policy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=self.trial(folder,'unknown_cost_reserved')
+            before=json.loads((root/'ledger/job.json').read_text())
+            recorder.extend_trial_budget(root,5,'うん、大丈夫')
+            after=json.loads((root/'ledger/job.json').read_text())
+            manifest=json.loads((root/'manifest.json').read_text())
+            self.assertEqual(after['calls'],before['calls'])
+            self.assertEqual(after['review_policy'],before['review_policy'])
+            self.assertEqual(after['total_limit_usd'],17.274548)
+            self.assertEqual(manifest['review_phase_limit_usd'],12.274548)
+            self.assertEqual(manifest['cap_usd'],17.274548)
+            with self.assertRaisesRegex(RuntimeError,'already recorded'):
+                recorder.extend_trial_budget(root,5,'duplicate')
+
+    def test_pending_request_prevents_extension_without_mutation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=self.trial(folder,'pending')
+            before=(root/'ledger/job.json').read_text()
+            with self.assertRaisesRegex(RuntimeError,'Pending requests'):
+                recorder.extend_trial_budget(root,5,'approved')
+            self.assertEqual((root/'ledger/job.json').read_text(),before)
+            self.assertFalse((root/'approved-qa-budget-extension.json').exists())
+
     def test_sdk_tool_and_thinking_blocks_survive_local_recording(self):
         blocks=[ThinkingBlock(type='thinking',thinking='fixture reasoning',signature='fixture-signature'),
                 ToolUseBlock(type='tool_use',id='fixture-tool',name='fetch_current_page',input={'url':'https://example.test/page'})]

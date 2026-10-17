@@ -32,6 +32,37 @@ def sha(value):
     return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,default=sdk_value).encode()).hexdigest()
 
 
+def extend_trial_budget(root,additional_usd,user_message):
+    """Explicit local-evaluation authorization; never reset calls or phase policy."""
+    import math
+    receipt=root/'approved-qa-budget-extension.json'
+    if receipt.exists():raise RuntimeError('Budget extension already recorded')
+    manifest=json.loads((root/'manifest.json').read_text())
+    previous=json.loads((root/'status.json').read_text())
+    paths=list((root/'ledger').glob('*.json'))
+    if previous['status']!='stopped' or len(paths)!=1 or not user_message or not math.isfinite(additional_usd) or additional_usd<=0:
+        raise RuntimeError('Stopped single-ledger trial and explicit authorization required')
+    ledger=json.loads(paths[0].read_text())
+    if any(c['status']=='pending' for c in ledger['calls']):raise RuntimeError('Pending requests prevent extension')
+    old=manifest['cap_usd'];new=round(old+additional_usd,9)
+    if ledger['limit_usd']!=old or ledger['total_limit_usd']!=old:
+        raise RuntimeError('Existing trial caps differ')
+    before={'manifest':manifest,'status':previous,'ledger':ledger,'ledger_name':paths[0].name}
+    dump(root/'before-approved-qa-budget-extension.json',before)
+    manifest=copy.deepcopy(manifest);ledger=copy.deepcopy(ledger)
+    manifest['review_phase_limit_usd']=old
+    manifest['cap_usd']=new
+    ledger['limit_usd']=ledger['total_limit_usd']=new
+    ledger['additional_review_authorization']={'phase':'article','extra_calls_per_role':1,
+        'user_message':user_message,'scope':'One fresh body QA and, if needed, one consolidated repair/recheck after diagnosed outline correction; all past calls and expense holds retained'}
+    dump(paths[0],ledger);dump(root/'manifest.json',manifest)
+    dump(receipt,{'old_cap_usd':old,'new_cap_usd':new,'additional_usd':additional_usd,
+        'user_message':user_message,'planning_jpy_per_usd':manifest['jpy_per_usd_for_planning'],
+        'retained_calls_sha256':sha(ledger['calls']),'retained_review_policy':ledger.get('review_policy'),
+        'settings_sha256':manifest['settings_sha256'],'previous_status_sha256':sha(previous),
+        'before_snapshot':'before-approved-qa-budget-extension.json','production_changes':False})
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)
     root=Path(sys.argv[1]).resolve()
@@ -111,7 +142,8 @@ def main():
     db.get_user_credits_total=lambda *args:0
     from pipeline import quality_budget as qb
     qb.LIMIT=manifest['cap_usd']
-    qb.REVIEW_PHASE_LIMITS={'outline':manifest['cap_usd'],'article':manifest['cap_usd']}
+    phase_limit=manifest.get('review_phase_limit_usd',manifest['cap_usd'])
+    qb.REVIEW_PHASE_LIMITS={'outline':phase_limit,'article':phase_limit}
     from pipeline import ai
     normal_create=ai.create_with_retry
     request_counter=[max([int(p.stem) for p in (root/'requests').glob('*.json')]+[0])]
@@ -172,9 +204,30 @@ def main():
         claim_type_recovery='--resume-after-claim-type-fix' in sys.argv
         reread_recovery='--resume-after-reread-capacity-fix' in sys.argv
         grammar_recovery='--resume-after-grammar-fix' in sys.argv
+        approved_qa_recovery='--resume-after-approved-qa-budget-extension' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline'):
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
+        if resume_from=='research_validation' and not approved_qa_recovery:raise RuntimeError('QA resume requires the recorded extension')
+        if approved_qa_recovery:
+            if resume_from!='research_validation' or previous['error_type']!='ContentQualityError':raise RuntimeError('Unexpected QA budget recovery')
+            authorization=json.loads((root/'approved-qa-budget-extension.json').read_text())
+            if authorization['new_cap_usd']!=manifest['cap_usd'] or authorization['settings_sha256']!=sha(settings) or authorization['previous_status_sha256']!=sha(previous):
+                raise RuntimeError('Budget authorization does not match stopped trial')
+            ledgers=[json.loads(p.read_text()) for p in (root/'ledger').glob('*.json')]
+            calls=[c for ledger in ledgers for c in ledger['calls']]
+            diagnosis=json.loads((root/'grammar-recovery.json').read_text())
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            if (len(ledgers)!=1 or sha(calls)!=authorization['retained_calls_sha256'] or any(c['status']=='pending' for c in calls)
+                    or len(uncertain)!=3 or any(c['status']!='unknown_cost_reserved' for c in uncertain)
+                    or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9):
+                raise RuntimeError('Calls differ from retained terminal expenses')
+            audit=json.loads(get(job['id'],'content_audit')['content_text'])
+            if 'テスト全体の予算上限' not in audit.get('error',''):raise RuntimeError('Not the diagnosed pre-send budget stop')
+            from pipeline.research_requirements import _require_matrix_strict
+            _require_matrix_strict(job['id'])
+            outline_audit=json.loads(get(job['id'],'research_validation')['content_text'])
+            if outline_audit.get('valid') is not False:raise RuntimeError('Expected unaccepted outline requiring normal local repair')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
         if special_recovery:
@@ -280,6 +333,11 @@ def main():
             load_plan(job['id'])
         dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'grammar-resume.json' if grammar_recovery else 'reread-capacity-resume.json' if reread_recovery else 'claim-type-resume.json' if claim_type_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
         marker='resume-grammar.json' if grammar_recovery else 'resume-reread-capacity.json' if reread_recovery else 'resume-claim-type.json' if claim_type_recovery else 'resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
+        if approved_qa_recovery:
+            dump(root/'approved-qa-budget-resume.json',{'previous':previous,'resume_from':resume_from,
+                'reason':'User approved an additional 1000 JPY; correct outline via normal local repair, require full outline QA, regenerate from canonical budgets and finish body QA',
+                'no_prior_verdict_promoted':True,'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain)})
+            marker='resume-approved-qa-budget.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown
