@@ -458,6 +458,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     del keyword, api_key
     outline = get_artifact(job_id, "outline")
     contract = json.loads(get_artifact(job_id, "content_contract")["content_text"])
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import require_projection
+        require_projection(outline)
+        violations=validate_structure(outline['content_text'],contract,outline=True)
+        # Never inject Markdown-only sections behind the canonical blueprint.
+        return upsert_artifact(job_id=job_id,step='structure_validation',content_type='application/json',
+            content_text=json.dumps({'stage':'outline','valid':not violations,'initial_violations':violations,
+                'repair_kind':'editorial' if violations else None},ensure_ascii=False),
+            meta={'stage':'outline','valid':not violations})
     canonical = normalize_outline_headings(outline["content_text"])
     violations = validate_structure(canonical, contract, outline=True)
     added: list[str] = []

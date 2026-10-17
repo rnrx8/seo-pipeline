@@ -39,10 +39,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             reference = {}
 
     candidate_services = None
+    plan = None
     if fact.get('meta',{}).get('canonical_research_answers'):
         from .research_requirements import require_matrix,load_plan
         require_matrix(job_id)
-        candidate_services = load_plan(job_id)['candidate_services']
+        plan = load_plan(job_id)
+        candidate_services = plan['candidate_services']
 
     contract = build_content_contract(
         keyword=keyword,
@@ -53,6 +55,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         service=service,
         reference_structure=reference,
         candidate_services=candidate_services,
+        reader_decisions=(plan or {}).get('reader_decisions') if structured_intent else None,
+        reader_design=(plan or {}).get('reader_design') if structured_intent else None,
     )
     artifact = upsert_artifact(
         job_id=job_id,

@@ -147,6 +147,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     outline = get_artifact(job_id, "outline")
     from .outline_policy import require_current_outline
     require_current_outline(outline)
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import placement,require_projection,context,require_review
+        from .research_requirements import load_plan,require_matrix
+        require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
+        require_review(json.loads(get_artifact(job_id,'research_validation')['content_text']),outline)
+        return upsert_artifact(job_id=job_id,step='service_map',content_type='application/json',
+            content_text=json.dumps(placement(outline),ensure_ascii=False),meta={'derived_from_blueprint':True,'model_calls':0})
     outline_text = outline["content_text"]
     from .generation_context import registered_for_authoring
     try:

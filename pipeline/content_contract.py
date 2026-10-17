@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 
-CONTRACT_VERSION = "1.2"
+CONTRACT_VERSION = "1.3"
 
 _COMPARISON_TERMS = ("比較検討", "比較・検討", "比較して", "比較したい", "おすすめ", "ランキング", "選びたい")
 _CV_TERMS = ("cv", "コンバージョン", "自社商品", "自社サービス")
@@ -162,9 +162,11 @@ def build_content_contract(
     service: dict[str, Any] | None = None,
     reference_structure: dict[str, Any] | None = None,
     candidate_services: list[str] | None = None,
+    reader_decisions: list[dict[str, Any]] | None = None,
+    reader_design: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     attrs = _load_json(query_attrs_text)
-    primary = _primary_line(intent_text)
+    primary = ('Primary：'+'／'.join(d['question'] for d in reader_decisions if d['role']=='primary')) if reader_decisions else _primary_line(intent_text)
     stage = str(attrs.get("searcher_stage") or "不明")
     concerns = [str(v) for v in (attrs.get("key_concerns") or [])]
     purpose = str(job.get("article_purpose") or "")
@@ -186,6 +188,13 @@ def build_content_contract(
     query_candidates = [name for name in candidates if name in keyword]
     if len(query_candidates) >= 2:
         candidates = query_candidates
+    if reader_decisions:
+        # Stage attributes and background service facts cannot replace a
+        # higher-order method/understanding decision with product comparison.
+        # Other comparisons are evaluated against each actual answer requirement.
+        comparison_required = len(query_candidates) >= 2
+        fit=(reader_design or {}).get('product_fit',{}).get('role')
+        service_treatment = ('comparison_featured' if comparison_required else 'integrated') if service_name and is_cv and fit not in ('not_useful','none') else 'none'
     required: list[dict[str, Any]] = []
     optional: list[dict[str, Any]] = []
 
@@ -255,6 +264,7 @@ def build_content_contract(
         "version": CONTRACT_VERSION,
         "keyword": keyword,
         "primary_intent": primary or "不明",
+        **({"reader_decisions": reader_decisions} if reader_decisions else {}),
         "searcher_stage": stage,
         "key_concerns": concerns,
         "article_purpose": purpose or None,
@@ -278,6 +288,7 @@ def contract_prompt(contract: dict[str, Any]) -> str:
         "\n【コンテンツ構造契約（機械検証対象）】\n"
         "これはジョブ固有の検索意図から生成した要件です。required_sectionsだけを必須とし、"
         "optional_sectionsは記事に必要な場合のみ採用してください。固定テンプレとして全項目を追加しないでください。\n"
+        "reader_decisionsがある場合は、各判断の必要回答と前後関係を構成レビューで個別に照合します。商品比較の表で方法選びへの回答を代用しないでください。"
         "protected=trueは要件の充足を保護する指定です。独立H2を意味しません。"
         "文字数調整やレビュー後も、同等の情報をH2/H3または関連章内に残してください。\n"
         f"```json\n{json.dumps(contract, ensure_ascii=False, indent=2)}\n```\n"

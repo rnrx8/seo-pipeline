@@ -22,7 +22,7 @@ MODEL, MAX_TOKENS = get_step_config("outline")
 
 SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 あなたはSEOライティングの専門家です。
-検索意図・ファクトシート・競合データをもとに、上位表示を狙える記事構成を作成してください。
+検索意図・ファクトシート・競合データをもとに、読者の理解と判断に役立つ記事構成を作成してください。
 """
 
 USER_TEMPLATE = OUTLINE_DESIGN_POLICY + "\n" + """\
@@ -526,21 +526,34 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         print(f"[outline] Warning: could not load job settings: {e}")
 
     client = anthropic.Anthropic(api_key=api_key)
+    blueprint_context = None
+    blueprint_meta = {}
+    if structured_intent:
+        from . import editorial_blueprint as blueprint
+        blueprint_context = blueprint.context(load_plan(job_id), matrix)
+        prompt = (blueprint.POLICY + '\nキーワード: ' + keyword
+            + '\nタイトルは自然な日本語で主要語を含む3案、32字程度・最大36字。リードは既存方針を引き継ぐ設計のみ。'
+            + '\n分量指定: ' + word_count_instruction
+            + '\n制作資料（事実と設計仮説は区別）:\n' + json.dumps(blueprint_context, ensure_ascii=False)
+            + structure_prompts + company_prompt + service_prompt + cta_prompt + extra_instructions)
+        prompt += '\n登録商材の紹介指示は読者判断に従属する。商品を主回答に置き換えない。product_fitがnot_useful/noneの場合は推薦を強制しない。'
+        # CTA roles are part of the reader design, and override generic placement.
+        if blueprint_context['reader_design'].get('product_fit',{}).get('cta_role') in ('omit','defer'):
+            prompt += '\n今回のCTAは省略または保留。一般的なCTA配置指示よりこの判断を優先する。'
+    else:
+        prompt = USER_TEMPLATE.format(keyword=keyword,intent_text=intent['content_text'],
+            fact_text=fact['content_text'],serp_text=authoring_serp(serp['content_text'],structured_intent=False),
+            word_count_instruction=word_count_instruction) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
     message = create_with_retry(
         client,
+        **({'output_config':blueprint.OUTPUT_CONFIG} if structured_intent else {}),
         model=MODEL,
         max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=[
             {
                 "role": "user",
-                "content": USER_TEMPLATE.format(
-                    keyword=keyword,
-                    intent_text=intent["content_text"],
-                    fact_text=fact["content_text"],
-                    serp_text=authoring_serp(serp["content_text"],structured_intent=structured_intent),
-                    word_count_instruction=word_count_instruction,
-                ) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions,
+                "content": prompt,
             }
         ],
     )
@@ -555,11 +568,23 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
         raise ContentQualityError('構成生成が正常終了していません。')
     outline_text = message_text(message)
+    if structured_intent:
+        try:
+            blueprint_value = blueprint.validate(json.loads(outline_text), blueprint_context)
+            blueprint_meta = blueprint.metadata(blueprint_value, blueprint_context)
+            outline_text = blueprint.render(blueprint_value, blueprint_context)
+        except (ValueError, TypeError, KeyError) as exc:
+            upsert_artifact(job_id=job_id, step='outline_design_incomplete', content_type='application/json',
+                content_text=message_text(message), meta={'audited':False,'error':str(exc)})
+            raise ContentQualityError('編集設計が不完全です。保存した出力を確認してください: '+str(exc)) from exc
     upsert_artifact(job_id=job_id, step='outline_draft', content_type='text/markdown',
                     content_text=outline_text, meta={'model': MODEL, 'audited': False})
-    outline_text, volume_repaired = ensure_complete_volume_design(
-        outline_text, job.get("word_count_setting") or computed_target, reference_only=not bool(job.get("word_count_setting"))
-    )
+    if structured_intent:
+        volume_repaired = False
+    else:
+        outline_text, volume_repaired = ensure_complete_volume_design(
+            outline_text, job.get("word_count_setting") or computed_target, reference_only=not bool(job.get("word_count_setting"))
+        )
     design_issues = assignment_issues(outline_text, load_plan(job_id))
     if design_issues:
         upsert_artifact(job_id=job_id, step="outline_design_incomplete", content_type="text/markdown",
@@ -574,6 +599,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         content_type="text/markdown",
         content_text=outline_text,
         meta={
+            **blueprint_meta,
             "model": MODEL,
             "input_tokens": total_input,
             "output_tokens": total_output,

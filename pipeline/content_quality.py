@@ -61,7 +61,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .tiered_evidence import POLICY as EVIDENCE_ROUTING_POLICY
     from .review_scope import POLICY_VERSION as SCOPE_POLICY, ROUTING_POLICY
     from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
-    value = json.dumps([SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .editorial_blueprint import VERSION as BLUEPRINT_VERSION, REVIEW_POLICY as BLUEPRINT_REVIEW_POLICY
+    value = json.dumps([BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -440,7 +441,13 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         payload['source_excerpts']=source_excerpts(stage,sources)
         system+=ROUTING_POLICY
         system+='\n今回は構成の確認。執筆前の独立調査で採用した回答と適用条件・未確認/省略状態に照らし、構成の各主張・比較・網羅性を検査する。各checkにrequires_source_checkを返す。提示された採用回答から誤りと修正内容が確定する場合はfail、requires_source_check=falseとして局所修正へ渡す。要約が短い等の理由で原文を見ないと主張の正誤が判断できない事実項目だけfail、requires_source_check=trueとし、reasonに主張と必要な資料を明示する。pass/not_applicableはfalse。構成と確認済み回答が条件まで一致する場合に、原文がこの要求にないこと自体を欠陥としない。'
-    request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=audit_output_config(keys, source_routing=compact),
+    from . import editorial_blueprint as blueprint
+    blueprint_ctx=requirements.get('editorial_design')
+    output_config=audit_output_config(keys, source_routing=compact)
+    if blueprint_ctx:
+        system += '\n'+blueprint.REVIEW_POLICY
+        output_config=blueprint.review_config(output_config,blueprint_ctx)
+    request = dict(model=model, max_tokens=configured_budget if is_openai_model(model) else 7000, system=system, output_config=output_config,
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}])
     from .ai import tiered_review_enabled
     if tiered_review_enabled():
@@ -452,6 +459,8 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         message = create_with_retry(client, **request)
         raw, usage = response_text(message), message.usage
     report = parse_audit(raw)
+    blueprint_response=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())) if blueprint_ctx else None
+    if blueprint_ctx:blueprint.checked_review(blueprint_response,blueprint_ctx)
     if compact:
         from .review_scope import validate_routes, pages_from
         validate_routes(report['checks'],content_blocks(text),payload['requirements'],pages_from(sources),evidence_keys)
@@ -489,6 +498,9 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         check = next(c for c in report['checks'] if c['key'] == 'unsupported_guarantees')
         check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
         report['valid'] = False
+    if blueprint_ctx:
+        report=blueprint.apply_review(report,blueprint_response,blueprint_ctx)
+        report['blueprint_review_context']=blueprint_ctx
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
                   snapshot=snapshot(text, facts, outline, contract, requirements, sources),

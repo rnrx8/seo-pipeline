@@ -70,7 +70,7 @@ def authoring_serp(text, *, structured_intent):
         'reference_urls':[r['link'] for r in value.get('organic_results',[]) if r.get('link')]},ensure_ascii=False)
 
 
-def decision_bundle(plan, matrix, *, quotes, planning=False):
+def bundle_data(plan, matrix, *, quotes, planning=False):
     """Project current-policy answers; callers also validate source/plan snapshots."""
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
@@ -132,7 +132,11 @@ def decision_bundle(plan, matrix, *, quotes, planning=False):
             'reader_decisions':copy.deepcopy(plan.get('reader_decisions',[]))}
     if planning:
         bundle['editorial_planning']=outline_planning_context(plan)
-    return POLICY+'\n'+json.dumps(bundle,ensure_ascii=False)
+    return bundle
+
+
+def decision_bundle(plan, matrix, *, quotes, planning=False):
+    return POLICY+'\n'+json.dumps(bundle_data(plan,matrix,quotes=quotes,planning=planning),ensure_ascii=False)
 
 
 def generation_evidence(job_id, facts, sources, *, quotes=True, planning=False):

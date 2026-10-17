@@ -666,8 +666,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     matrix = require_matrix(job_id)
     from .quality_context import compact_enabled
     readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
+    readiness_requirements=intent_review_requirements(job, keyword)
+    from .editorial_blueprint import review_context,require_review
+    design=review_context(outline)
+    if design:readiness_requirements['editorial_design']=design
+    require_review(readiness,outline)
     require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                     contract, intent_review_requirements(job, keyword), sources), stage="research")
+                                     contract, readiness_requirements, sources), stage="research")
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")
@@ -696,7 +701,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     word_count_setting = planning_setting(job, outline)
 
     # Load volume design from outline and service_map if available
-    outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting, reference_only=(outline.get('meta') or {}).get('length_origin') == 'reference')
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import require_projection, context
+        from .research_requirements import load_plan
+        require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
+        outline_text=outline['content_text']
+    else:
+        outline_text, _ = ensure_complete_volume_design(outline['content_text'], word_count_setting, reference_only=(outline.get('meta') or {}).get('length_origin') == 'reference')
     if outline_text != outline['content_text']:
         warn('構成の見出し表記または文字数配分を正規化して執筆を継続します。')
     volume_sections = _parse_volume_design(outline_text)
@@ -709,6 +720,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         print(f"[article] Loaded service_map: type={service_map.get('service_section_type')}, cta_after={service_map.get('cta_after_h2')}")
     except Exception:
         pass
+
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import placement
+        expected=placement(outline)
+        if service_map is not None and service_map!=expected:
+            raise ContentQualityError('商品・CTA配置が現在の編集設計と一致しません。')
+        service_map=expected
 
     _service_name = ""
     if service_map:

@@ -22,6 +22,9 @@ def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict
     require_current_outline(get_artifact(job_id, 'outline'))
     require_matrix(job_id)
     artifact = get_artifact(job_id, 'outline')
+    if (artifact.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import repair
+        return repair(job_id,keyword,report,artifact,client)
     text = artifact['content_text']
     failed = [c for c in report['checks'] if c['status'] == 'fail']
     structure_edit = any(c.get("key") == "coverage" and not c.get("requires_source_check") for c in failed)
@@ -96,8 +99,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     for attempt in range(2):
         job = get_job(job_id)
         outline_artifact = get_artifact(job_id, 'outline')
-        outline, normalized = step_outline.ensure_complete_volume_design(outline_artifact['content_text'], planning_setting(job, outline_artifact),
-            reference_only=(outline_artifact.get('meta') or {}).get('length_origin') == 'reference')
+        if (outline_artifact.get('meta') or {}).get('blueprint_version'):
+            from .editorial_blueprint import require_projection,context
+            from .research_requirements import load_plan
+            require_projection(outline_artifact,context(load_plan(job_id),require_matrix(job_id)))
+            outline,normalized=outline_artifact['content_text'],False
+        else:
+            outline, normalized = step_outline.ensure_complete_volume_design(outline_artifact['content_text'], planning_setting(job, outline_artifact),
+                reference_only=(outline_artifact.get('meta') or {}).get('length_origin') == 'reference')
         if normalized:
             upsert_artifact(job_id=job_id, step='outline', content_type='text/markdown', content_text=outline,
                             meta={**(outline_artifact.get('meta') or {}), 'normalized_before_readiness':True})
@@ -109,13 +118,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         contract = json.loads(get_artifact(job_id, 'content_contract')['content_text'])
         sources = source_evidence(get_artifact(job_id, 'fresh_sources'))
         try:
+            requirements=intent_review_requirements(job, keyword)
+            from .editorial_blueprint import review_context
+            design=review_context(outline_artifact)
+            if design:requirements['editorial_design']=design
             report = audit(client, stage='research', text=outline, facts=facts, outline=outline,
-                           contract=contract, requirements=intent_review_requirements(job, keyword), sources=sources)
+                           contract=contract, requirements=requirements, sources=sources)
         except ContentQualityError as exc:
             upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                             content_text=json.dumps({'valid': False, 'error': str(exc)}), meta={'valid': False})
             raise
         issues = step_structure_guard.validate_structure(outline, contract, outline=True)
+        if (outline_artifact.get('meta') or {}).get('blueprint_version'):
+            from .editorial_blueprint import budget_issues
+            issues += budget_issues(outline_artifact['meta']['editorial_blueprint'],job.get('word_count_setting'))
         report['structural_issues'] = issues
         if issues:
             report['valid'] = False

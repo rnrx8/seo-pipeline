@@ -178,6 +178,19 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         print("[cta_inject] CTA is empty — skipping instead of inserting an empty separator")
         return article_artifact
 
+    # A canonical placement with no CTA is an intentional decision, never a fallback.
+    from .db import get_optional_artifact
+    outline_artifact=get_optional_artifact(job_id,'outline')
+    if outline_artifact and (outline_artifact.get('meta') or {}).get('blueprint_version'):
+        from .editorial_blueprint import placement
+        expected=placement(outline_artifact)
+        sm=get_artifact(job_id,'service_map')
+        if json.loads(sm['content_text'])!=expected:
+            from .content_quality import ContentQualityError
+            raise ContentQualityError('CTA配置が現在の編集設計と一致しません。')
+        if not expected['cta_after_h2']:
+            return article_artifact
+
     # Load service_map for CTA positions
     target_h2s: list[str] = []
     try:
