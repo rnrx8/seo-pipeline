@@ -153,6 +153,7 @@ class Stage5AuthoringTests(unittest.TestCase):
         def send(job,step,request):
             requests.append(request);role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_');keys=fq.ROLES[role]
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[],**({'requires_source_check':False,'research_ids':[],'source_urls':[]} if role in ('evidence','coverage') and routing=='focused' else {})} for k in keys]}
+            if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,missing))
             return result,NS(input_tokens=1,output_tokens=1)
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':routing}),patch('pipeline.tiered_research.checked_request',side_effect=send):
@@ -261,6 +262,7 @@ class Stage5AuthoringTests(unittest.TestCase):
         def send(*args,**request):
             role=next(roles);requests.append(request)
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[]} for k in fq.ROLES[role]]}
+            if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,1))
             return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'}),patch.object(cq,'create_with_retry',side_effect=send):

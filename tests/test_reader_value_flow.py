@@ -304,3 +304,23 @@ class ReaderValueFlowTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class ReaderReferenceContractTests(unittest.TestCase):
+    def test_model_schema_exposes_only_real_reference_ids(self):
+        schema=rn.output_schema(new_product=True)['format']['schema']
+        refs=schema['properties']['selected']['items']['properties']['support']['items']['properties']['source']['enum']
+        self.assertEqual(set(refs),{'','keyword','serp','request'})
+        self.assertNotIn('SERP position 3 title',refs)
+
+    def test_prompt_exposes_validation_requirements_for_hypotheses_and_examples(self):
+        self.assertIn('query_hintsはモデルの推定',rn.POLICY)
+        self.assertIn('kind=illustration',rn.POLICY)
+        self.assertIn('kind=hypothesis',rn.POLICY)
+        self.assertIn('support.field=context',rn.POLICY)
+        self.assertIn('quoteも空文字',rn.POLICY)
+
+    def test_unrecognized_reference_is_still_rejected(self):
+        _,_,sources,value=fixtures()
+        value['selected'][0]['support'][0]['source']='SERP position 3 title'
+        with self.assertRaises(rn.ContentQualityError):rn.validate(value,sources,product_material_ids=['service:point:0'],has_product=True,has_cta=False)

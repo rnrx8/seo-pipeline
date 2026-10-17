@@ -59,6 +59,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
     from .quality_context import review_reference_date
     reference_date = review_reference_date("article", fingerprint)
     phases = {}
+    detailed = bool(requirements.get('article_design'))
+    from . import editorial_findings as findings
     for role, keys in ROLES.items():
         # Source-heavy context is restricted to the roles that actually need it.
         payload = {'current_date':reference_date, 'article_blocks':content_blocks(text), 'requirements':review_requirements(requirements,role)}
@@ -94,6 +96,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             payload['reader_correspondence']=correspondence(text,outline,design)
             system+='\n'+DECISION_REVIEW_POLICY+'\n'+REVIEW_POLICY
             output_config=review_config(output_config,design)
+        if detailed and role != 'evidence':
+            system += '\n' + findings.POLICY
+            output_config = findings.output_config(output_config, keys)
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=output_config,
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
@@ -137,15 +142,20 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if role=='coverage' and compact_enabled():
             from .review_scope import validate_routes, pages_from
             validate_routes(checks,content_blocks(text),payload['requirements'],pages_from(sources),())
+        editorial = findings.checked_findings(json.loads(raw), checks, text) if detailed and role != 'evidence' else None
         if design:
             from .article_design import checked_result
             decision_response=json.loads(raw)
             checks=checked_result(checks,decision_response,design,text)
+            if editorial is not None:
+                editorial += findings.decision_findings(decision_response, design)
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
             phase['decision_reviews']=decision_response['decision_reviews']
             phase['reader_correspondence']=payload['reader_correspondence']
+        if editorial is not None:
+            phase.update(editorial_findings=editorial, findings_version=findings.VERSION)
         if trace:phase['evidence_routing']=trace
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)
@@ -174,6 +184,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
     mechanical=readability_issues(text)
     return {'checks':combined,'valid':all(c['status']=='pass' for c in combined) and not mechanical,
             'evidence_pending':any(p.get('evidence_routing') and p['evidence_routing'][-1]['review']['needed'] for p in phases.values()),
+            'editorial_findings':[{**f, 'role':role} for role, p in phases.items() for f in p.get('editorial_findings',[])],
             'phases':phases,'readability_issues':mechanical,'stage':'article','snapshot':fingerprint,
             'policy_version':POLICY_VERSION,'model':model,
             'input_tokens':sum(p['input_tokens'] for p in phases.values()),

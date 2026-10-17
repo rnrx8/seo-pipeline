@@ -13,7 +13,7 @@ from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
-POLICY_VERSION = 'content-quality-v14-scoped-resolution'
+POLICY_VERSION = 'content-quality-v15-reader-findings'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -63,7 +63,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .outline_design import POLICY as OUTLINE_DESIGN_POLICY
     from .editorial_blueprint import VERSION as BLUEPRINT_VERSION, REVIEW_POLICY as BLUEPRINT_REVIEW_POLICY
     from .article_design import VERSION as ARTICLE_DESIGN_VERSION, REVIEW_POLICY as ARTICLE_DESIGN_REVIEW
-    value = json.dumps([ARTICLE_DESIGN_VERSION, ARTICLE_DESIGN_REVIEW, BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .editorial_findings import VERSION as FINDINGS_VERSION, POLICY as FINDINGS_POLICY
+    value = json.dumps([FINDINGS_VERSION, FINDINGS_POLICY, ARTICLE_DESIGN_VERSION, ARTICLE_DESIGN_REVIEW, BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -533,6 +534,14 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
             design=context['requirements']['article_design']
             phase=phases['coverage']
             verified=checked_result(phase.get('checks',[]),phase,design,context['text'])
+            from . import editorial_findings as findings
+            for role in ROLES:
+                if role == 'evidence': continue
+                current = phases[role]
+                if current.get('findings_version') != findings.VERSION:
+                    raise ContentQualityError('編集指摘の個別確認が不足しています。')
+                finding_text=(report.get('local_completion') or {}).get('base_text', context['text'])
+                findings.checked_findings(current, current.get('checks', []), finding_text)
             if verified!=phase.get('checks') or any(c['status']!='pass' for c in verified):
                 raise ContentQualityError('本文の読者判断の個別確認が未合格・不整合です。')
         local = report.get('local_completion')

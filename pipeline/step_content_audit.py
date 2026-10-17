@@ -123,12 +123,14 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             packet['requirements']['intent_analysis'] = requirements['intent_analysis']
         if requirements.get('article_design') and any(c['key']=='coverage' and c['status']=='fail' for c in report['checks']):
             packet['requirements']['article_design']=requirements['article_design']
+        packet['editorial_findings']=[f for f in report.get('editorial_findings',[]) if f['severity']=='blocking']
         repair_data=packet
     else:
         from .generation_context import generation_evidence, repair_requirements
         repair_data={
             'confirmed_facts':generation_evidence(job_id, facts, sources),'source_documents':sources,'requirements':repair_requirements(requirements),
             'content_contract':contract,
+            'editorial_findings':[f for f in report.get('editorial_findings',[]) if f['severity']=='blocking'],
             'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'structural_issues':issues,'article_blocks':content_blocks(text)}
     messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]
