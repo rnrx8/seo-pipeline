@@ -31,7 +31,7 @@ class Stage6ApiContractTests(unittest.TestCase):
     def test_claim_count_not_just_question_count_reserves_review_output(self):
         candidates=[{'claims':[{}]*n,'claim_states':[{}]*n} for n in (2,3,4,2,2,1)]
         self.assertEqual(fr.review_output_limit('gpt-6.1-sol',7400,candidates),20000)
-        self.assertEqual(fr.review_output_limit('gpt-6-luna',6000,candidates),6000)
+        self.assertEqual(fr.review_output_limit('gpt-6-luna',6000,candidates),7400)
 
     def test_capacity_change_reuses_complete_older_verdict_before_sending(self):
         request={'model':'gpt-6.1-sol','max_tokens':7400,'messages':[{'content':json.dumps({'candidate_answers':[{'claims':[{}]*14}]})}]}
@@ -57,3 +57,8 @@ class Stage6ApiContractTests(unittest.TestCase):
                 self.assertEqual(call['usage']['output_tokens'],1000)
                 self.assertEqual(call['diagnostics']['incomplete_reason'],'max_output_tokens')
                 self.assertEqual(call['usage']['output_tokens_details']['reasoning_tokens'],500)
+
+    def test_wide_luna_reread_has_capacity_for_all_question_results(self):
+        self.assertEqual(fr.review_output_limit('gpt-6-luna',6000,[{}]*17),17300)
+        self.assertEqual(fr.review_output_limit('gpt-6-luna',6000,[{}]*2),6000)
+        self.assertEqual(fr.review_output_limit('gpt-6-luna',6000,[{}]*40),18000)

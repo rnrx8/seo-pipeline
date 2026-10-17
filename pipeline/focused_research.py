@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v12-feedback-routing'
+VERSION = 'focused-research-v13-reread-capacity'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -26,6 +26,7 @@ sources_complete=trueは保存済み対象ページの集合を提示済みと�
 
 def review_output_limit(model, original, candidates):
     """Reserve reasoning plus claim-level JSON, not just question count."""
+    if model=='gpt-6-luna':return max(original,min(18000,2000+900*len(candidates)))
     if model!='gpt-6.1-sol':return original
     count=sum(max(1,len(i.get('claims',[])),len(i.get('claim_states',[]))) for i in candidates)
     return max(original,min(32000,6000+1000*count))
