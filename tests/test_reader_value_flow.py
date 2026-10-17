@@ -154,6 +154,18 @@ class ReaderValueFlowTests(unittest.TestCase):
         with patch.object(db,'get_optional_artifact',return_value={'content_text':json.dumps({'version':rn.VERSION,'status':'analyzing'})}):
             with self.assertRaises(ContentQualityError):rn.load('j')
 
+    def test_plan_request_binds_the_adopted_questions_without_mutating_legacy_schema(self):
+        original=copy.deepcopy(req.PLAN_SCHEMA)
+        needs={'selected':[{'id':'i01','question':'方法をどう選ぶか'},{'id':'i02','question':'どう始めるか'}]}
+        config=req.plan_output_schema({'reader_needs':needs})
+        array=config['format']['schema']['properties']['reader_decisions']
+        self.assertEqual((array['minItems'],array['maxItems']),(2,2))
+        self.assertEqual(array['items']['properties']['id']['enum'],['i01','i02'])
+        self.assertEqual(array['items']['properties']['question']['enum'],['方法をどう選ぶか','どう始めるか'])
+        self.assertEqual(array['items']['properties']['depends_on']['items']['enum'],['i01','i02'])
+        self.assertEqual(req.PLAN_SCHEMA,original)
+        self.assertEqual(req.plan_output_schema({}),original)
+
     def test_selected_question_cannot_be_replaced_by_product_selection(self):
         plan=plan_fixture();plan['reader_decisions'][0]['question']='AとBのどちらのアプリを選ぶか'
         with self.assertRaises(ContentQualityError):req.validate_plan(plan)

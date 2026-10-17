@@ -215,6 +215,21 @@ def _plan_context(job_id, keyword):
     return payload
 
 
+def plan_output_schema(context):
+    """Expose the existing adopted-question contract in the producer schema."""
+    schema=copy.deepcopy(PLAN_SCHEMA)
+    needs=context.get('reader_needs',{}).get('selected',[])
+    if needs:
+        decisions=schema['format']['schema']['properties']['reader_decisions']
+        ids=[n['id'] for n in needs]
+        decisions.update(minItems=len(needs),maxItems=len(needs))
+        properties=decisions['items']['properties']
+        properties['id']['enum']=ids
+        properties['question']['enum']=[n['question'] for n in needs]
+        properties['depends_on']['items']['enum']=ids
+    return schema
+
+
 def plan(job_id, keyword, api_key=None):
     model,budget=get_step_config('search_intent')
     payload=_plan_context(job_id,keyword)
@@ -224,7 +239,7 @@ def plan(job_id, keyword, api_key=None):
     inputs=outputs=0
     for attempt in range(1,3):
         msg=create_with_retry(anthropic.Anthropic(api_key=api_key),model=model,max_tokens=max(budget,16000),system=PLAN_SYSTEM,
-            output_config=PLAN_SCHEMA,messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
+            output_config=plan_output_schema(payload),messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
         value=json.loads(response_text(msg));items=value.get('items')
         if not isinstance(items,list) or not 1<=len(items)<=120: raise ContentQualityError('調査計画の項目が不正です。')
         if any(not i.get('id') or not i.get('question','').strip() or type(i.get('required')) is not bool for i in items):
