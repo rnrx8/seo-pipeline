@@ -16,18 +16,20 @@ BACKEND=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(BACKEND))
 
 
+def sdk_value(value):
+    if hasattr(value,'model_dump'):return value.model_dump(mode='json')
+    raise TypeError('Unsupported recorded value: '+type(value).__name__)
+
+
 def dump(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
     temp=path.with_suffix('.tmp')
-    def sdk_value(value):
-        if hasattr(value,'model_dump'):return value.model_dump(mode='json')
-        raise TypeError('Unsupported recorded value: '+type(value).__name__)
     temp.write_text(json.dumps(value,ensure_ascii=False,indent=2,default=sdk_value))
     temp.replace(path)
 
 
 def sha(value):
-    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,default=sdk_value).encode()).hexdigest()
 
 
 def main():
@@ -165,7 +167,8 @@ def main():
         previous=json.loads((root/'status.json').read_text())
         special_recovery='--resume-after-api-contract-fix' in sys.argv
         handoff_recovery='--resume-after-feedback-handoff-fix' in sys.argv
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
+        recorder_hash_recovery='--resume-after-recorder-hash-fix' in sys.argv
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
@@ -204,11 +207,34 @@ def main():
                 'reason':'Preserve previous findings through focused review, derive accepted claim parent references, route exact source gaps and re-audit',
                 'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
                 'in_flight_requests':0,'no_prior_verdict_promoted':True})
+        if recorder_hash_recovery:
+            if special_recovery or handoff_recovery or resume_from!='research_completeness' or previous['error_type']!='TypeError' or previous['paid_calls']!=40:
+                raise RuntimeError('Unexpected recorder fingerprint recovery stop')
+            failure=json.loads(get(job['id'],'pipeline_failure')['content_text'])
+            if failure.get('detail')!='Object of type ThinkingBlock is not JSON serializable':raise RuntimeError('Unexpected recorder error')
+            response=json.loads((root/'responses/0040.json').read_text())
+            if response['stop_reason']!='tool_use' or not response.get('provider_response') or (root/'requests/0041.json').exists():
+                raise RuntimeError('Tool response or no-next-send evidence missing')
+            calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text()).get('calls',[])]
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            diagnosis=json.loads((root/'api-contract-recovery.json').read_text())
+            if len(uncertain)!=2 or any(c['status']!='unknown_cost_reserved' for c in uncertain) or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9:
+                raise RuntimeError('Any new unknown request prevents recorder recovery')
+            resolution=get(job['id'],'research_finding_resolution')
+            state=json.loads(resolution['content_text'])
+            if state.get('status')!='running' or state.get('source_question_ids')!=['q11']:raise RuntimeError('Unexpected incomplete resolution')
+            dump(root/'recorder-hash-recovery.json',{'previous':previous,'failed_resolution':resolution,
+                'reason':'Local-only fingerprint serialization failed before request 0041 was saved or sent; 0040 tool response was accounted and saved; no completion receipt exists',
+                'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
+                'completed_source_work_promoted':False,'in_flight_requests':0})
+            # Rewind only the incomplete local evaluation journal. Its immutable
+            # history and every paid/source receipt remain; no verdict is changed.
+            (artifacts/'research_finding_resolution.json').rename(root/'research-finding-resolution-recorder-stop.json')
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
-        marker='resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
+        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
+        marker='resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown

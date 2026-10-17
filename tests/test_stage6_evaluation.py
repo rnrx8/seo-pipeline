@@ -23,3 +23,10 @@ class LocalRecorderTests(unittest.TestCase):
         self.assertEqual([b['type'] for b in saved],['thinking','tool_use'])
         self.assertEqual(saved[1]['input']['url'],'https://example.test/page')
         self.assertEqual(saved[0]['signature'],'fixture-signature')
+
+    def test_sdk_request_fingerprint_matches_its_serialized_receipt(self):
+        request={'messages':[{'role':'assistant','content':[ThinkingBlock(type='thinking',thinking='fixture',signature='sig'),
+                  ToolUseBlock(type='tool_use',id='tool',name='fetch_current_page',input={'url':'https://example.test'})]}]}
+        with tempfile.TemporaryDirectory() as folder:
+            dest=Path(folder)/'request.json';recorder.dump(dest,request)
+            self.assertEqual(recorder.sha(request),recorder.sha(json.loads(dest.read_text())))
