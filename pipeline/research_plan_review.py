@@ -31,6 +31,8 @@ reader_needsとproduction_briefがある場合、採用した問い・背景・�
 '''
 from .competitor_context import GAP_POLICY
 PLAN_REVIEW_SYSTEM += GAP_POLICY + '\ncontent_gapsの不足候補に具体的な確認箇所があるか、未取得・抜粋外の不明を全記事の不足へ広げていないか確認し、問題はoverallに指摘する。'
+from .reader_needs import ANSWER_SCOPE_POLICY
+PLAN_REVIEW_SYSTEM += '\n' + ANSWER_SCOPE_POLICY
 PLAN_REVIEW_SCHEMA={'format':{'type':'json_schema','schema':{'type':'object','properties':{
     'valid':{'type':'boolean'},'issues':{'type':'array','items':{'type':'object','properties':{
         'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},

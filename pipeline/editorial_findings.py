@@ -3,7 +3,7 @@ import copy
 
 VERSION = 'editorial-findings-v1'
 POLICY = '''【修正必須と任意改善の区別】
-今回のeditorial_findingsは担当checkごとの具体的な指摘。severity=blockingは、主回答・必要な判断材料の欠落、誤り、誤解、意味が通らない文章など公開前に直す欠陥。severity=improvementは、現状でも読者の問い・判断が成立する任意改善。好みの語尾、短い共感、感情の強弱、正当なマーケティング誘導だけでblockingにしない。感情や次の問いを毎章へ追加する義務はない。理解が進み潜在課題へ気づく構成は許可する。架空の不安・効果・緊急性、判断に必要な制約の隠蔽は欠陥として扱う。
+今回のeditorial_findingsは担当checkごとの具体的な指摘。severity=blockingは、主回答・必要な判断材料の欠落、誤り、誤解、意味が通らない文章など公開前に直す欠陥。severity=improvementは、現状でも読者の問い・判断が成立する任意改善。モデルの好みだけによる語尾変更、短い共感、感情の強弱、正当なマーケティング誘導だけでblockingにしない。ユーザーが明示した媒体規則・禁止表現は維持する。感情や次の問いを毎章へ追加する義務はない。理解が進み潜在課題へ気づく構成は許可する。架空の不安・効果・緊急性、判断に必要な制約の隠蔽は欠陥として扱う。
 各指摘にcheck_key、severity、実在のblock_ids、problem（不足する回答・説明または問題）、reader_impact（理解・判断・行動にどう影響するか）、required_change（必要な修正）、stage_to_fixを記す。stage_to_fixは資料不足ならresearch、順序・回答範囲ならoutline、本文の説明・表現ならarticle、表示形式ならpresentation、入力だけで原因工程を確定できなければinvestigate。現在の記事にない原因を推測しない。根拠の再収集と文章の説明不足を区別する。
 checksのfailとaffected_blocksにはblockingだけを対応させ、improvementはchecksをfailにしない。passのaffected_blocksは空配列。blockingのblock_idsの集合と同じcheckのaffected_blocksのID集合を一致させる。欠落は補うべき既存段落を指定する。問題がなければeditorial_findingsは空配列でよい。任意改善を必ず見つける必要はない。'''
 STAGES = ('research', 'outline', 'article', 'presentation', 'investigate')

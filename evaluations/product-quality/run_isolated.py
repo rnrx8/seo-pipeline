@@ -72,7 +72,7 @@ def main():
         saved=optional(job_id,step)
         if saved is None:raise ValueError('Artifact not found: '+step)
         return saved
-    counter=[0]
+    counter=[max([int(p.name.split('-')[0]) for p in (root/'history').glob('*.json')]+[0])]
     def save(job_id,step,content_type,content_text,content=None,payload=None,meta=None):
         if job_id!=job['id']:raise RuntimeError('Unexpected job')
         previous=optional(job_id,step) or {}
@@ -103,12 +103,13 @@ def main():
     db.get_cached_product_context=lambda *args:None
     db.get_job_company_restriction=lambda *args:job.get('company_restriction') or 'ai'
     db.get_user_email=lambda *args:'nishi.aworks@gmail.com'
+    db.get_user_credits_total=lambda *args:0
     from pipeline import quality_budget as qb
     qb.LIMIT=manifest['cap_usd']
     qb.REVIEW_PHASE_LIMITS={'outline':manifest['cap_usd'],'article':manifest['cap_usd']}
     from pipeline import ai
     normal_create=ai.create_with_retry
-    request_counter=[0]
+    request_counter=[max([int(p.stem) for p in (root/'requests').glob('*.json')]+[0])]
     def measured(*args,**kwargs):
         request_counter[0]+=1;ident=f'{request_counter[0]:04d}'
         dump(root/'requests'/(ident+'.json'),kwargs)
@@ -134,6 +135,10 @@ def main():
         'production_writes':False,'input_settings_sha256':sha(settings),'cap_usd':manifest['cap_usd']}
     plan['serp_provider']=os.environ['SERP_PROVIDER']
     dump(root/'plan.json',plan)
+    resume_from=sys.argv[sys.argv.index('--resume-from')+1] if '--resume-from' in sys.argv else None
+    if resume_from and live:
+        saved_manifest=root/'backend-source-manifest.json'
+        if saved_manifest.exists():dump(root/'backend-source-manifest-before-scope-resume.json',json.loads(saved_manifest.read_text()))
     dump(root/'backend-source-manifest.json',{'files':{str(p.relative_to(BACKEND)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))}})
     if not live:
         print(json.dumps(plan,ensure_ascii=False));return
@@ -149,15 +154,34 @@ def main():
         dump(root/'serp-failure.json',previous)
         dump(root/'serp-recovery.json',{'reason':'Switch existing provider after a failed acquisition; zero model calls and empty artifact store', 'previous_provider':'serpapi','new_provider':'serper'})
         marker='recover-serp.json'
+    if resume_from:
+        previous=json.loads((root/'status.json').read_text())
+        if previous['status']!='stopped' or previous.get('unsettled_calls')!=0 or resume_from!='research_plan':
+            raise RuntimeError('Only a settled research-plan stop can resume here')
+        if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
+            raise RuntimeError('Complete unchanged intent is required')
+        dump(root/'scope-contract-resume.json',{'previous':previous,'resume_from':resume_from,'reason':'Separate original analysis proposals from independently reviewed answer/evidence scope; no prior verdict promoted'})
+        marker='resume-scope-contract.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
-    if list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
+    if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown
     # reservation must be reconciled, never silently rerun by this fresh runner.
     status={'status':'running','job_id':job['id'],'normal_plan':plan['stages'],'started_at':time.time()}
     dump(root/'status.json',status)
     from pipeline.runner import run_pipeline
     try:
-        run_pipeline(job['main_keyword'],job_id=job['id'])
+        if resume_from:
+            # Use the existing server-side resume scheduler. External incident
+            # delivery is a local receipt in this evaluation, never a send.
+            from pipeline import notify,autofix
+            def incident(*args,**kwargs):
+                dump(root/'local-incident.json',{'args':args,'kwargs':kwargs,'sent':False})
+            notify.alert_failed_job=notify.alert_stale_job=notify.alert_quality_warning=incident
+            autofix.create_github_issue=incident
+            import api_server
+            api_server._run_pipeline(job['id'],job['main_keyword'],resume_from=resume_from)
+        else:
+            run_pipeline(job['main_keyword'],job_id=job['id'])
         status['runner_status']=job['status']
         # A normal 'done' can contain warn-and-continue results. Never accept it
         # as semantic completion without strict current-revision checks.

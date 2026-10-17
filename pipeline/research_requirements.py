@@ -114,6 +114,10 @@ MATRIX_SYSTEM += CLAIM_POLICY
 MATRIX_SCHEMA = claim_response_schema(MATRIX_SCHEMA)
 
 
+from .reader_needs import ANSWER_SCOPE_POLICY
+PLAN_SYSTEM += '\n' + ANSWER_SCOPE_POLICY
+
+
 def plan_policy():
     from .research_plan_review import PLAN_REVIEW_SYSTEM, PLAN_REVIEW_SCHEMA
     return digest(json.dumps([EVIDENCE_POLICY_VERSION, PLAN_SYSTEM, PLAN_SCHEMA, PLAN_REVIEW_SYSTEM, PLAN_REVIEW_SCHEMA, get_step_config('content_audit')],ensure_ascii=False,sort_keys=True))

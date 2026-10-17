@@ -324,3 +324,36 @@ class ReaderReferenceContractTests(unittest.TestCase):
         _,_,sources,value=fixtures()
         value['selected'][0]['support'][0]['source']='SERP position 3 title'
         with self.assertRaises(rn.ContentQualityError):rn.validate(value,sources,product_material_ids=['service:point:0'],has_product=True,has_cta=False)
+
+
+class AnswerScopeHandoffTests(unittest.TestCase):
+    def test_initial_analysis_is_preserved_as_provenance_not_rewritten(self):
+        brief,_,_,value=fixtures()
+        value['selected'][0]['answer_requirements']=['公式資料だけというAI由来の候補']
+        original=copy.deepcopy(value)
+        context=rn.editorial_context(brief,value)
+        self.assertEqual(value,original)
+        self.assertEqual(context['reader_needs'],value['selected'])
+        self.assertEqual(context['answer_scope_policy'],rn.ANSWER_SCOPE_POLICY)
+        self.assertIn('ユーザーの明示指定',context['answer_scope_policy'])
+
+    def test_planning_review_and_downstream_share_scope_boundary(self):
+        for system in (rn.POLICY,req.PLAN_SYSTEM,review.PLAN_REVIEW_SYSTEM):
+            self.assertIn(rn.ANSWER_SCOPE_POLICY,system)
+        context=rn.editorial_context(*[fixtures()[i] for i in (0,3)])
+        self.assertIn('書き換え',context['answer_scope_policy'])
+        self.assertIn('必要な回答を落とした場合',context['answer_scope_policy'])
+
+    def test_shared_scope_policy_change_invalidates_plan_acceptance(self):
+        before=req.plan_policy()
+        with patch.object(review,'PLAN_REVIEW_SYSTEM',review.PLAN_REVIEW_SYSTEM+'scope changed'):
+            self.assertNotEqual(before,req.plan_policy())
+
+    def test_explicit_user_source_limit_remains_in_the_handoff(self):
+        brief,_,_,value=fixtures()
+        brief['request']['custom_prompt']='この記事では公式情報だけを採用する'
+        brief['request']['must_include']='各方法の制約を説明する'
+        context=rn.editorial_context(brief,value)
+        self.assertEqual(context['request'],brief['request'])
+        context['request']['custom_prompt']='changed copy'
+        self.assertEqual(brief['request']['custom_prompt'],'この記事では公式情報だけを採用する')
