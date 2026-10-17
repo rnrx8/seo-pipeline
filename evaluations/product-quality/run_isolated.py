@@ -82,6 +82,22 @@ def main():
     manifest=json.loads(manifest_path.read_text())
     if manifest['settings_sha256']!=sha(settings):raise RuntimeError('Frozen settings changed')
     job=copy.deepcopy(manifest['job'])
+    reuse=None
+    if '--reuse-research-from' in sys.argv:
+        from research_reuse import prepare
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        reuse=prepare(Path(sys.argv[sys.argv.index('--reuse-research-from')+1]),settings,datetime.now(ZoneInfo("Asia/Tokyo")).date().isoformat())
+        if manifest.get('research_reuse') and manifest['research_reuse']!=reuse:
+            raise RuntimeError('Frozen research reuse changed')
+        if not manifest.get('research_reuse'):
+            if (root/'started.json').exists() or list((root/'artifacts').glob('*.json')):
+                raise RuntimeError('Reuse must be declared before trial execution')
+            dump(root/'manifest-before-research-reuse.json',manifest)
+            manifest['research_reuse']=reuse;manifest['scope']='New analysis/plan/verification/outline/body/QA using same-day acquired raw sources; local adapter only'
+            dump(manifest_path,manifest)
+    elif manifest.get('research_reuse'):
+        raise RuntimeError('Research reuse must remain explicit')
     os.environ.update(**manifest['model_settings'],QUALITY_BUDGET_DIR=str(root/'ledger'),QUALITY_BUDGET_MODE='bounded',QUALITY_TOTAL_LIMIT_USD=str(manifest['cap_usd']),SERP_PROVIDER=manifest['serp_provider'],ARTICLE_REVISION_TRACKING='0')
     if '--recover-serp' in sys.argv:
         previous=json.loads((root/'status.json').read_text())
@@ -171,6 +187,9 @@ def main():
             dump(root/'serp-error.json',{'error_type':type(exc).__name__,'error':str(exc),'provider':os.environ['SERP_PROVIDER']})
             raise
     serp_sources.fetch_serp=observed_serp
+    if reuse:
+        from research_reuse import install
+        install(reuse,job_id=job['id'],get=get,save=save,receipt=lambda value:dump(root/'research-reuse-receipt.json',value))
     from pipeline.step_plan import build_step_plan
     steps=build_step_plan(job)
     plan={'stages':[k for k,_ in steps], 'models':{s:ai.get_step_config(s) for s in (*ai.STEP_CONFIG,'content_audit','content_repair')},
