@@ -19,7 +19,10 @@ sys.path.insert(0,str(BACKEND))
 def dump(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
     temp=path.with_suffix('.tmp')
-    temp.write_text(json.dumps(value,ensure_ascii=False,indent=2))
+    def sdk_value(value):
+        if hasattr(value,'model_dump'):return value.model_dump(mode='json')
+        raise TypeError('Unsupported recorded value: '+type(value).__name__)
+    temp.write_text(json.dumps(value,ensure_ascii=False,indent=2,default=sdk_value))
     temp.replace(path)
 
 
@@ -115,7 +118,7 @@ def main():
         dump(root/'requests'/(ident+'.json'),kwargs)
         result=normal_create(*args,**kwargs)
         dump(root/'responses'/(ident+'.json'),{'model':getattr(result,'model',kwargs['model']),'stop_reason':result.stop_reason,
-            'text':ai.message_text(result),'usage':result.usage.model_dump() if hasattr(result.usage,'model_dump') else vars(result.usage)})
+            'text':ai.message_text(result),'provider_response':result.model_dump(mode='json') if hasattr(result,'model_dump') else None,'usage':result.usage.model_dump() if hasattr(result.usage,'model_dump') else vars(result.usage)})
         return result
     ai.create_with_retry=measured
     from pipeline import serp_sources
@@ -138,7 +141,7 @@ def main():
     resume_from=sys.argv[sys.argv.index('--resume-from')+1] if '--resume-from' in sys.argv else None
     if resume_from and live:
         saved_manifest=root/'backend-source-manifest.json'
-        if saved_manifest.exists():dump(root/'backend-source-manifest-before-scope-resume.json',json.loads(saved_manifest.read_text()))
+        if saved_manifest.exists():dump(root/('backend-source-manifest-before-'+resume_from+'.json'),json.loads(saved_manifest.read_text()))
     dump(root/'backend-source-manifest.json',{'files':{str(p.relative_to(BACKEND)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))}})
     if not live:
         print(json.dumps(plan,ensure_ascii=False));return
@@ -156,12 +159,15 @@ def main():
         marker='recover-serp.json'
     if resume_from:
         previous=json.loads((root/'status.json').read_text())
-        if previous['status']!='stopped' or previous.get('unsettled_calls')!=0 or resume_from!='research_plan':
-            raise RuntimeError('Only a settled research-plan stop can resume here')
+        if previous['status']!='stopped' or previous.get('unsettled_calls')!=0 or resume_from not in ('research_plan','fact_sheet'):
+            raise RuntimeError('Only a settled planning/collection stop can resume here')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
-        dump(root/'scope-contract-resume.json',{'previous':previous,'resume_from':resume_from,'reason':'Separate original analysis proposals from independently reviewed answer/evidence scope; no prior verdict promoted'})
-        marker='resume-scope-contract.json'
+        if resume_from=='fact_sheet':
+            from pipeline.research_requirements import load_plan
+            load_plan(job['id'])
+        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
+        marker='resume-scope-contract.json' if resume_from=='research_plan' else 'resume-recorder.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown
