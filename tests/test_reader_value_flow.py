@@ -159,7 +159,10 @@ class ReaderValueFlowTests(unittest.TestCase):
         needs={'selected':[{'id':'i01','question':'方法をどう選ぶか'},{'id':'i02','question':'どう始めるか'}]}
         config=req.plan_output_schema({'reader_needs':needs})
         array=config['format']['schema']['properties']['reader_decisions']
-        self.assertEqual((array['minItems'],array['maxItems']),(2,2))
+        self.assertNotIn('maxItems',array)
+        self.assertNotIn('minItems',array)
+        self.assertIn('"minItems": 2',array['description'])
+        self.assertIn('"maxItems": 2',array['description'])
         self.assertEqual(array['items']['properties']['id']['enum'],['i01','i02'])
         self.assertEqual(array['items']['properties']['question']['enum'],['方法をどう選ぶか','どう始めるか'])
         self.assertEqual(array['items']['properties']['depends_on']['items']['enum'],['i01','i02'])

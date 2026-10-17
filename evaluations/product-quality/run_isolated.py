@@ -32,6 +32,18 @@ def sha(value):
     return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,default=sdk_value).encode()).hexdigest()
 
 
+def validate_resume_diagnosis(root, diagnosis, previous, calls, stage, cap):
+    """Explicit local diagnosis permits a fresh request, retaining terminal holds."""
+    latest=max((root/'requests').glob('*.json'),key=lambda p:int(p.stem))
+    if (diagnosis.get('previous_status_sha256')!=sha(previous)
+        or diagnosis.get('retained_calls_sha256')!=sha(calls)
+        or diagnosis.get('resume_from')!=stage or diagnosis.get('cap_usd')!=cap
+        or diagnosis.get('current_pipeline_sha256')!=sha(json.loads((root/'backend-source-manifest.json').read_text()))
+        or not diagnosis.get('reason') or any(c['status']=='pending' for c in calls)
+        or sha(json.loads(latest.read_text())) not in diagnosis.get('blocked_original_request_hashes',[])):
+        raise RuntimeError('Resume diagnosis differs from the stopped revision or retained expenses')
+
+
 def extend_trial_budget(root,additional_usd,user_message):
     """Explicit local-evaluation authorization; never reset calls or phase policy."""
     import math
@@ -166,7 +178,7 @@ def main():
     def measured(*args,**kwargs):
         request_counter[0]+=1;ident=f'{request_counter[0]:04d}'
         fingerprint=sha(kwargs)
-        for name in ('api-contract-recovery.json','reread-capacity-recovery.json','grammar-recovery.json','outline-review-capacity-recovery.json'):
+        for name in ('api-contract-recovery.json','reread-capacity-recovery.json','grammar-recovery.json','outline-review-capacity-recovery.json','diagnosed-recovery-blocks.json'):
             blocked=root/name
             if blocked.exists() and fingerprint in json.loads(blocked.read_text()).get('blocked_original_request_hashes',[]):
                 raise RuntimeError('Original failed request cannot be resent unchanged')
@@ -217,6 +229,11 @@ def main():
         marker='recover-serp.json'
     if resume_from:
         previous=json.loads((root/'status.json').read_text())
+        recorded_diagnosis=None
+        if '--resume-diagnosis' in sys.argv:
+            recorded_diagnosis=json.loads(Path(sys.argv[sys.argv.index('--resume-diagnosis')+1]).read_text())
+            calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
+            validate_resume_diagnosis(root,recorded_diagnosis,previous,calls,resume_from,manifest['cap_usd'])
         special_recovery='--resume-after-api-contract-fix' in sys.argv
         handoff_recovery='--resume-after-feedback-handoff-fix' in sys.argv
         recorder_hash_recovery='--resume-after-recorder-hash-fix' in sys.argv
@@ -228,7 +245,7 @@ def main():
         presentation_recovery='--resume-after-presentation-contract-fix' in sys.argv
         final_body_recheck='--resume-final-body-recheck' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck or recorded_diagnosis)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
         if resume_from=='content_audit' and not (presentation_recovery or final_body_recheck):raise RuntimeError('Body QA resume requires a diagnosed recovery')
         if final_body_recheck:
@@ -435,7 +452,7 @@ def main():
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        if not (approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck):
+        if not (approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck or recorded_diagnosis):
             dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'grammar-resume.json' if grammar_recovery else 'reread-capacity-resume.json' if reread_recovery else 'claim-type-resume.json' if claim_type_recovery else 'feedback-routing-resume.json' if feedback_routing_recovery else 'recorder-hash-resume.json' if recorder_hash_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Route verified but incomplete answers using the adopted article scope and shared claim policy' if feedback_routing_recovery else 'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
         marker='resume-grammar.json' if grammar_recovery else 'resume-reread-capacity.json' if reread_recovery else 'resume-claim-type.json' if claim_type_recovery else 'resume-feedback-routing.json' if feedback_routing_recovery else 'resume-recorder-hash.json' if recorder_hash_recovery else 'resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
         if approved_qa_recovery:
@@ -446,6 +463,12 @@ def main():
         if outline_capacity_recovery:marker='resume-outline-review-capacity.json'
         if presentation_recovery:marker='resume-presentation-contract.json'
         if final_body_recheck:marker='resume-final-body-recheck.json'
+        if recorded_diagnosis:
+            saved=root/'diagnosed-recovery-blocks.json'
+            blocked=json.loads(saved.read_text()) if saved.exists() else {'blocked_original_request_hashes':[]}
+            blocked['blocked_original_request_hashes']=sorted(set(blocked['blocked_original_request_hashes']+recorded_diagnosis['blocked_original_request_hashes']))
+            dump(saved,blocked)
+            marker='resume-diagnosed-'+sha(recorded_diagnosis)[:16]+'.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown

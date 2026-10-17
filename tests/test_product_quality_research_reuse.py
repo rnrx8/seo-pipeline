@@ -51,6 +51,25 @@ class ResearchReuseTests(unittest.TestCase):
             with self.assertRaises(ValueError):reuse.seed(spec,job_id='new',save=lambda **kw:saved.append(kw))
             self.assertEqual(saved,[])
 
+    def test_diagnosed_resume_cannot_reset_holds_change_cap_or_resend_failed_request(self):
+        location=path.with_name('run_isolated.py')
+        loader=importlib.util.spec_from_file_location('product_quality_run_isolated',location)
+        runner=importlib.util.module_from_spec(loader);loader.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'requests').mkdir()
+            request={'model':'trial','output_config':{'bad':'old'}}
+            (root/'requests/0001.json').write_text(json.dumps(request))
+            snapshot={'files':{'pipeline/a.py':'current'}}
+            (root/'backend-source-manifest.json').write_text(json.dumps(snapshot))
+            previous={'status':'stopped','cost_usd':1};calls=[{'status':'unknown_cost_reserved','reserved_usd':1}]
+            diagnosis={'previous_status_sha256':runner.sha(previous),'retained_calls_sha256':runner.sha(calls),
+                'resume_from':'research_plan','cap_usd':2,'current_pipeline_sha256':runner.sha(snapshot),
+                'reason':'Diagnosed producer schema error','blocked_original_request_hashes':[runner.sha(request)]}
+            runner.validate_resume_diagnosis(root,diagnosis,previous,calls,'research_plan',2)
+            for broken in ({**diagnosis,'cap_usd':3},{**diagnosis,'retained_calls_sha256':'reset'},
+                           {**diagnosis,'blocked_original_request_hashes':[]}):
+                with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,broken,previous,calls,'research_plan',2)
+
     def test_reused_acquisition_does_not_bypass_normal_targeted_supplement(self):
         from pipeline import step_serp,step_fact_sheet
         with tempfile.TemporaryDirectory() as d:

@@ -228,6 +228,8 @@ def plan_output_schema(context):
         properties['id']['enum']=ids
         properties['question']['enum']=[n['question'] for n in needs]
         properties['depends_on']['items']['enum']=ids
+        from .editorial_blueprint import model_output_config
+        return model_output_config(schema['format']['schema'])
     return schema
 
 
