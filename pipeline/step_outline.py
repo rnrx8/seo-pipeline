@@ -367,6 +367,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     intent = {**intent, 'content_text': authoring_intent(job_id, intent)}
     from .research_requirements import require_matrix, load_plan
     matrix = require_matrix(job_id)
+    if structured_intent:
+        from .research_requirements import _require_matrix_strict
+        _require_matrix_strict(job_id)
     fact = dict(get_artifact(job_id, "fact_sheet"))
     from .generation_context import generation_evidence
     from .quality_context import compact_enabled
@@ -502,7 +505,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     outline_text = message_text(message)
     if structured_intent:
         try:
-            blueprint_value = blueprint.validate(json.loads(outline_text), blueprint_context)
+            blueprint_value = blueprint.validate(blueprint.canonicalize_research_refs(json.loads(outline_text), blueprint_context), blueprint_context)
             blueprint_meta = blueprint.metadata(blueprint_value, blueprint_context)
             outline_text = blueprint.render(blueprint_value, blueprint_context)
         except (ValueError, TypeError, KeyError) as exc:

@@ -325,6 +325,9 @@ def revalidate_plan(job_id, keyword, api_key=None):
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',
                     content_text=json.dumps({'valid':False,'status':'plan_policy_review'}),meta={'valid':False})
     context=_plan_context(job_id,keyword)
+    if context.get('reader_needs'):
+        from .reader_needs import editorial_context
+        value['reader_design']=editorial_context(context.get('production_brief'),context['reader_needs'])
     verdict,usage=review(job_id,value,context,'policy',api_key)
     inputs=usage.input_tokens;outputs=usage.output_tokens
     if not verdict['valid']:
@@ -669,17 +672,52 @@ def supplement_once(job_id, keyword, plan, gaps, api_key=None, *, matrix=None):
     save('completed')
 
 
+
+def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
+    """One routed resolution: repair existing answers, fetch only named source gaps."""
+    findings=matrix.get('coverage_issues',[])
+    planned={q['id'] for q in plan['items']}
+    relevant=[f for f in findings if f.get('id') in planned and f.get('repair_kind') in ('source','editorial','handoff')]
+    if not relevant:return False
+    plan_hash=digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))
+    if matrix.get('plan_sha256')!=plan_hash:return False
+    old=get_optional_artifact(job_id,'research_finding_resolution')
+    if old:
+        state=json.loads(old['content_text'])
+        if state.get('plan_sha256')!=plan_hash:raise ContentQualityError('回答修正の対象計画が変わっています。古い回復処理を再利用しません。')
+        if state.get('status')=='running':raise ContentQualityError('回答修正の実行記録が未完了です。未確定要求を再送しません。')
+        return False
+    ids=sorted({f['id'] for f in relevant if f['repair_kind']=='source'})
+    state={'status':'running','plan_sha256':plan_hash,'source_question_ids':ids,
+           'findings':relevant,'acceptance':'requires_fresh_full_verification'}
+    def save():
+        upsert_artifact(job_id=job_id,step='research_finding_resolution',content_type='application/json',content_text=json.dumps(state,ensure_ascii=False),meta={'valid':False})
+    save()
+    if ids:
+        from . import step_fact_sheet
+        step_fact_sheet.run(job_id,keyword,api_key=api_key,research_gaps=json.dumps(relevant,ensure_ascii=False),research_question_ids=ids)
+    state['status']='completed';save()
+    return True
+
 def verify(job_id, keyword, api_key=None):
-    """At most one targeted retrieval retry; never drop planned questions."""
+    """Resolve specific findings without dropping questions or unbounded replay."""
     plan_value=load_plan(job_id)
     previous=get_optional_artifact(job_id,'research_matrix')
     from .research_collection import recover_empty_collections
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
-    pending=None if recovered else resume_research_gaps(previous,plan_value)
+    previous_value=json.loads(previous['content_text']) if previous else {}
+    if (previous_value.get('valid') is False and previous_value.get('attempt')==3 and previous_value.get('policy_sha256')==matrix_policy()
+            and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))):
+        raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
+    resolution=False
+    if (previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
+            and previous_value['attempt']>=2):
+        resolution=resolve_current_findings(job_id,keyword,plan_value,previous_value,api_key)
+    pending=None if recovered or resolution else resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
     supplement=get_optional_artifact(job_id,'research_supplement')
     # A policy update invalidates verdicts, not the already-used retrieval budget.
-    first_attempt=1 if supplement and json.loads(supplement['content_text']).get('status')=='completed' else 0
+    first_attempt=2 if resolution else 1 if supplement and json.loads(supplement['content_text']).get('status')=='completed' else 0
     if pending:
         first_attempt,pending_gaps=pending
         if first_attempt>=2:raise ContentQualityError('追加調査の上限まで確認済みです。同じ不合格を自動再試行しません。')
@@ -688,7 +726,7 @@ def verify(job_id, keyword, api_key=None):
         print('[research] Resume pending retrieval; do not repeat the completed audit',flush=True)
         supplement_once(job_id,keyword,plan_value,pending_gaps,api_key,matrix=json.loads(previous['content_text']))
     upsert_artifact(job_id=job_id,step='research_matrix',content_type='application/json',content_text=json.dumps({**(json.loads(previous['content_text']) if previous else {}), 'valid':False,'status':'running'}),meta={'valid':False})
-    for attempt in range(first_attempt,2):
+    for attempt in range(first_attempt,3):
         sources=source_evidence(get_artifact(job_id,'fresh_sources'))
         facts=get_artifact(job_id,'fact_sheet')['content_text']
         model,budget=get_step_config('content_audit')
@@ -716,7 +754,10 @@ def verify(job_id, keyword, api_key=None):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
                 meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
         if not gaps:return saved
-        if attempt<1: supplement_once(job_id,keyword,plan_value,gaps,api_key,matrix=value)
+        if attempt<1:
+            supplement_once(job_id,keyword,plan_value,gaps,api_key,matrix=value)
+        elif attempt==1:
+            if not resolve_current_findings(job_id,keyword,plan_value,value,api_key):break
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
 
 

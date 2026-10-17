@@ -161,7 +161,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
   urls={u for r in notes for u in r.get('meta',{}).get('source_urls',[])}
   urls.update(u for r in notes for u in extract_urls(r['content_text']))
   if subject=='共通':
-   related={q['id'] for name,qs in grouped.items() if name!='共通' and any(name in q['question'] for q in questions) for q in qs}
+   related={q['id'] for name,qs in grouped.items() if name!='共通' for q in qs}
    hints.extend(i for i in items if i['id'] in related)
   related_answers=[{k:i.get(k) for k in ('id','answer','basis','applicable_at','publication_conditions','claim_limits','supports_current_conclusion')} |
                    {'evidence':[{k:r.get(k) for k in ('url','source_kind')} for r in i.get('evidence',[])]}
@@ -199,7 +199,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
    from .focused_research import enabled as focused_enabled, review_pending
    paid_legacy=cached_result(job_id,f'tiered_adjudication_{index}',request)
    if focused_enabled() and paid_legacy is None:
-    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'],related_answers=related_answers,prior_candidates=hints)
+    value,usage=review_pending(job_id,index,value,questions,compact_plan,scope,selected,packed,payload['searches'],related_answers=related_answers,prior_candidates=hints,previous_findings=previous_issues)
     inputs+=usage.input_tokens;outputs+=usage.output_tokens
    else:
     # Keep already-paid identical factual checks. For new work, offer eligible

@@ -212,6 +212,7 @@ class ReaderProgressionTests(unittest.TestCase):
             'blueprint_issues':[{'repair_kind':'editorial','section_ids':['s02']}]}
         with ExitStack() as stack:
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.db.get_job',return_value={}))
             stack.enter_context(patch('pipeline.db.get_artifact',return_value={'content_text':'{"required_sections":[]}'}))
@@ -234,6 +235,7 @@ class ReaderProgressionTests(unittest.TestCase):
             stack.enter_context(patch.object(step_outline,'get_job',return_value={}))
             stack.enter_context(patch.object(step_outline.anthropic,'Anthropic'))
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.generation_context.authoring_intent',return_value='reader design'))
             send=stack.enter_context(patch.object(step_outline,'create_with_retry',return_value=response(value)))
@@ -262,6 +264,7 @@ class ReaderProgressionTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article,'get_job',return_value={'id':'job'}))
             stack.enter_context(patch.object(step_article,'intent_review_requirements',return_value=copy.deepcopy(requirements)))
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.generation_context.authoring_intent',return_value='reader design'))
             stack.enter_context(patch.object(step_article.anthropic,'Anthropic'))

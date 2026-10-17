@@ -140,6 +140,20 @@ def validate_shape(value, schema):
     if 'enum' in schema and value not in schema['enum']:fail('編集設計の選択値が不正です。')
 
 
+
+def canonicalize_research_refs(value, ctx):
+    """Derive accepted claim provenance, never invent claims or evidence."""
+    validate_shape(value,SCHEMA)
+    result=copy.deepcopy(value)
+    for section in result['sections']:
+        for element in section['answer_elements']:
+            for ref in element['claim_ids']:
+                claim=ctx['accepted_claims'].get(ref)
+                if claim is None:fail('回答要素が未採用の主張を参照しています。')
+                if claim['research_id'] not in section['research_ids']:
+                    section['research_ids'].append(claim['research_id'])
+    return result
+
 def validate(value, ctx):
     """Structural referential integrity only; semantic acceptance belongs to review."""
     validate_shape(value,SCHEMA)
@@ -345,7 +359,7 @@ def apply_edits(value, response, ctx, *, structural, targets):
         if set(by_id)-{s['id'] for s in value['sections']}:fail('新しい節の挿入位置がありません。')
         candidate['sections']=[by_id[s['id']] for s in value['sections'] if s['id'] in by_id]
     if candidate==value:fail('編集設計に変更がありません。')
-    return validate(candidate,ctx)
+    return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
 def repair_config():

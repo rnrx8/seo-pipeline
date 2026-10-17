@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v10-retain-disputed-candidates'
+VERSION = 'focused-research-v11-feedback-handoff'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -74,7 +74,7 @@ def merge_visible_sources(original, reread):
     return result
 
 
-def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches, related_answers=None, prior_candidates=None):
+def review_pending(job_id, index, value, questions, compact_plan, scope, selected, packed, searches, related_answers=None, prior_candidates=None, previous_findings=None):
     from .research_requirements import MATRIX_SCHEMA, MATRIX_SYSTEM, propose_optional_omissions
     from .source_spans import indexed_sources, span_schema, expand_references, SPAN_POLICY
     from .tiered_research import checked_request, needs_adjudication, packed_sources, validate_visible_matrix, POLICY
@@ -108,6 +108,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
                    'candidate_answers':candidates, 'related_verified_answers':related_answers or [],
                    'sources':sources, 'source_catalog':catalog,
                    'source_revision':source_revision, 'sources_complete':complete, 'searches':searches}
+        relevant=[copy.deepcopy(f) for f in previous_findings or [] if f.get('id') in ids]
+        if relevant:payload['previous_findings']=relevant
         request = dict(model=model, max_tokens=min(6000 if model == 'gpt-6-luna' else 10000, 2000+len(ids)*900),
                        system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+policy+'\n回答対象はplan.itemsのみ。',
                        output_config=schema, messages=[{'role':'user','content':json.dumps(payload, ensure_ascii=False)}])

@@ -164,7 +164,8 @@ def main():
     if resume_from:
         previous=json.loads((root/'status.json').read_text())
         special_recovery='--resume-after-api-contract-fix' in sys.argv
-        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not special_recovery) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
+        handoff_recovery='--resume-after-feedback-handoff-fix' in sys.argv
+        if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery)) or resume_from not in ('research_plan','fact_sheet','research_completeness'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
         if not get(job['id'],'search_intent') or not json.loads(get(job['id'],'reader_needs')['content_text']).get('selected'):
             raise RuntimeError('Complete unchanged intent is required')
@@ -184,11 +185,30 @@ def main():
                 'in_flight_requests':0,'usage_retrieval':'404 for original store=false response; original expense reservations retained',
                 'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
                 'request_change':'Claim-level output allowance and supported schema projection; no identical failed request resend; no verdict promoted'})
+        if handoff_recovery:
+            if special_recovery or resume_from!='research_completeness' or previous['error_type']!='ContentQualityError' or '編集設計が不完全' not in previous['error']:
+                raise RuntimeError('Unexpected feedback recovery stop')
+            diagnosis=json.loads((root/'api-contract-recovery.json').read_text())
+            calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text()).get('calls',[])]
+            uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
+            if (len(uncertain)!=2 or any(c['status']!='unknown_cost_reserved' for c in uncertain)
+                    or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9):
+                raise RuntimeError('Unknown calls differ from the two retained terminal API failures')
+            matrix=json.loads(get(job['id'],'research_matrix')['content_text'])
+            if matrix.get('valid') is not False or matrix.get('attempt')!=2 or not matrix.get('coverage_issues'):
+                raise RuntimeError('Expected diagnosed failed second research review')
+            failure=json.loads(get(job['id'],'pipeline_failure')['content_text'])
+            if '回答要素が未採用の主張・別の質問を参照' not in failure.get('detail',''):
+                raise RuntimeError('Unexpected provenance failure')
+            dump(root/'feedback-handoff-recovery.json',{'previous':previous,
+                'reason':'Preserve previous findings through focused review, derive accepted claim parent references, route exact source gaps and re-audit',
+                'expense_reservations_retained_usd':sum(c['reserved_usd'] for c in uncertain),
+                'in_flight_requests':0,'no_prior_verdict_promoted':True})
         if resume_from in ('fact_sheet','research_completeness'):
             from pipeline.research_requirements import load_plan
             load_plan(job['id'])
-        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
-        marker='resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
+        dump(root/('scope-contract-resume.json' if resume_from=='research_plan' else 'api-contract-resume.json' if special_recovery else 'feedback-handoff-resume.json' if handoff_recovery else 'recorder-resume.json'),{'previous':previous,'resume_from':resume_from,'reason':'Pass exact feedback and current sources to a fresh full review; retain diagnosed expense holds' if handoff_recovery else 'Separate analysis proposals from reviewed scope' if resume_from=='research_plan' else 'Correct known API schema/output-capacity failures; retain unknown expense reservations; block unchanged failed requests' if special_recovery else 'Serialize SDK content in local recorder; prior model response is accounted, no uncertain request retried','no_prior_verdict_promoted':True})
+        marker='resume-feedback-handoff.json' if handoff_recovery else 'resume-scope-contract.json' if resume_from=='research_plan' else 'resume-api-contract.json' if special_recovery else 'resume-recorder.json'
     with (root/marker).open('x') as file:json.dump({'pid':os.getpid(),'at':time.time()},file)
     if not resume_from and list(artifacts.glob('*.json')):raise RuntimeError('Fresh trial requires an empty artifact store')
     # API and stage requests are recorded before sending; an interrupted unknown
