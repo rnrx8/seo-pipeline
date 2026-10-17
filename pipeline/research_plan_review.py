@@ -27,7 +27,7 @@ previous_plan/proposed_changesがある場合、削除・統合の理由を元�
 JSON claim_checks:質問IDをキーとする個別確認, valid:boolean, issues:[{id:質問IDまたはoverall,reason:具体的な矛盾と修正条件}]。合格ならissuesは空。
 '''
 PLAN_REVIEW_SYSTEM += DECISION_POLICY + PLAN_REVIEW_POLICY + '''
-reader_needsとproduction_briefがある場合、採用した問い・背景・回答順序がresearch_idsとanswer_requirementsへ実際につながっているか確認する。reader_needs.selectedの必要回答を元のクエリと照合し、計画で欠落・別の問いへ縮小していないか確認する。IDの一致だけを回答設計の合格にしない。observedの引用が支える範囲と心理仮説を区別し、観測した語から全読者の感情を断定した場合はoverallへ指摘する。商品資料の数字・機能は未検証の候補であり、商品理解と独立した調査が必要。商品が役立たない場合やCTA保留の設計を、CV指定だけで差し戻さない。
+reader_needsとproduction_briefがある場合、採用した問い・背景・回答順序がresearch_idsとanswer_requirementsへ実際につながっているか確認する。reader_needs.selectedの必要回答を元のクエリと照合し、計画で欠落・別の問いへ縮小していないか確認する。IDの一致だけを回答設計の合格にしない。observedの引用が支える範囲と心理仮説を区別し、観測した語から全読者の感情を断定した場合はoverallへ指摘する。商品資料の数字・機能は未検証の候補であり、商品理解と独立した調査が必要。商品が役立たない場合やCTA保留の具体的な理由がある設計は尊重する。一方、AI生成の中立トーン・条件付き適合のラベルだけで、CV目的が求めるカテゴリ推薦や商材への接続が消えていないか確認する。役割分類が正しいことと記事目的が達成できる回答設計であることを別に照合し、後者の不足もoverallへ指摘する。
 '''
 from .competitor_context import GAP_POLICY
 PLAN_REVIEW_SYSTEM += GAP_POLICY + '\ncontent_gapsの不足候補に具体的な確認箇所があるか、未取得・抜粋外の不明を全記事の不足へ広げていないか確認し、問題はoverallに指摘する。'

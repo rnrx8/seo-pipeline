@@ -48,13 +48,29 @@ def controls():
     return cases
 
 
+def objective_controls():
+    decision={'id':'d1','role':'primary','scope':'学習方法比較の抜粋','depends_on':[],'research_ids':['q1'],
+        'question':'英語の学習方法をどう選ぶか','answer_requirements':['本・動画・オンライン講座の特徴と選ぶ理由を説明する']}
+    facts='[confirmed] 架空条件：本は自分の時間で読み返せる。動画は停止・再生しながら復習できる。オンライン講座は講師へ質問して学べ、予約時間への参加が必要。講座Aはオンライン講座で自習と予約質問を組み合わせる。競合への優越や効果率は未確認。'
+    scope={'article_purpose':'cv','featured_service':'講座A','request':{'article_purpose':'講座Aへの申込みを促す','featured_service':'講座A'},
+        'reader_design':{'request':{'article_purpose':'講座Aへの申込みを促す'},'reader_needs':[{'tone':'中立に比較し、推奨を押し付けない'}]},
+        'evaluation_scope':'記事の方法比較H2だけを評価。個別商品の紹介・料金・CTAは後続H2で示すため、この抜粋への追加は不要。入力の元の記事目的と実際の比較結論を確認する。'}
+    common='本は好きな時間に読み返せ、動画は止めながら復習できます。オンライン講座では講師へ質問できますが、予約時間への参加が必要です。'
+    absent='自分の時間で進めたい方には本をおすすめします。繰り返し見たい方には動画、質問したい方にはオンライン講座も候補になります。'
+    directed='英語を学び始めるなら、疑問を講師に質問して進められるオンライン講座をまずおすすめします。分からない所を確認しながら学べるためです。予約時間に参加できるかを確かめて選びましょう。自分の時間だけで進めたい方には本、繰り返し見て復習したい方には動画が向いています。'
+    return [('objective-lost-despite-conditional-choice','# 英語学習の始め方\n\n## 学習方法の選び方\n\n'+absent+'\n\n'+common,decision,'fail',facts,scope),
+            ('objective-led-category-recommendation','# 英語学習の始め方\n\n## 学習方法の選び方\n\n'+directed+'\n\n'+common,decision,'pass',facts,scope)]
+
+
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('root',type=Path);parser.add_argument('--source-trial',type=Path,required=True);parser.add_argument('--live',action='store_true');parser.add_argument('--lead-followup',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('root',type=Path);parser.add_argument('--source-trial',type=Path,required=True);parser.add_argument('--live',action='store_true');parser.add_argument('--lead-followup',action='store_true');parser.add_argument('--objective-followup',action='store_true');args=parser.parse_args()
+    if args.lead_followup and args.objective_followup:parser.error('Choose one followup mode')
     root=args.root.resolve();source=args.source_trial.resolve();prior_roots=[source.parent/'qa-replay',source.parent/'qa-replay-corrected']
-    if args.lead_followup:prior_roots.append(source.parent/'reader-value-revision')
+    if args.lead_followup or args.objective_followup:prior_roots.append(source.parent/'reader-value-revision')
+    if args.objective_followup:prior_roots.append(source.parent/'reader-value-revision-v2')
     def calls(folder):return [c for p in (folder/'ledger').glob('*.json') for c in json.loads(p.read_text()).get('calls',[])]
     prior=[c for folder in prior_roots for c in calls(folder)]
-    if len(prior)!=(19 if args.lead_followup else 10) or any(c['status']!='accounted' for c in prior):raise RuntimeError('Prior QA expenses differ from the completed calls')
+    if len(prior)!=(22 if args.objective_followup else 19 if args.lead_followup else 10) or any(c['status']!='accounted' for c in prior):raise RuntimeError('Prior QA expenses differ from the completed calls')
     prior_cost=sum(c['cost_usd'] for c in prior);cap=2.5
     os.environ.update(ARTICLE_REVIEW_PROVIDER='tiered',QUALITY_RESEARCH_ROUTING='focused',ARTICLE_WRITING_FLOW='sonnet_opus',QUALITY_BUDGET_MODE='bounded',QUALITY_BUDGET_DIR=str(root/'ledger'))
     from pipeline import db
@@ -73,12 +89,12 @@ def main():
     design=ad.design_context(outline_artifact)
     req['evaluation_scope']='完成記事のcoverageを現在の共通基準で確認する。旧判定は提示しない。取得済みの根拠と省略状態を保ち、本文の実際の説明と章の約束を検査する。'
     request,design=capture(article,design['reader_decisions'][0],'coverage',facts=payload['confirmed_facts'],extra_requirements=req,design=design,outline=payload['outline'])
-    candidates.append(('unchanged-rejected-article',request,design,article,'fail'))
-    for ident,text,decision,expected,facts,req in controls():
+    if not args.objective_followup:candidates.append(('unchanged-rejected-article',request,design,article,'fail'))
+    for ident,text,decision,expected,facts,req in (objective_controls() if args.objective_followup else controls()):
         if args.lead_followup and ident not in ('lead-connected','direct-howto-no-empathy'):continue
         request,design=capture(text,decision,'coverage',facts=facts,extra_requirements=req)
         candidates.append((ident,request,design,text,expected))
-    manifest={'scope':'Existing coverage role only; unchanged rejected article plus blinded controls; no regeneration or whole-flow acceptance',
+    manifest={'scope':('Existing coverage role on objective-led category recommendation controls; no article regeneration or whole-flow acceptance' if args.objective_followup else 'Existing coverage role only; unchanged rejected article plus blinded controls; no regeneration or whole-flow acceptance'),
               'combined_qa_cap_usd':cap,'prior_qa_cost_usd':prior_cost,'new_run_available_usd':cap-prior_cost,
               'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
               'prior_ledger_sha256':[sha(calls(folder)) for folder in prior_roots],
