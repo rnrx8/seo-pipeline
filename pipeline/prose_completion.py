@@ -60,7 +60,7 @@ def eligible(report, text, expected):
     try:
         checked = parse_audit(json.dumps(report))
         if (report.get('stage') != 'article' or report.get('snapshot') != expected
-                or report.get('attempt') != 2 or report.get('valid') is not False
+                or type(report.get('attempt')) is not int or not 2 <= report['attempt'] <= 3 or report.get('valid') is not False
                 or report.get('local_completion') or checked['valid']
                 or report.get('evidence_pending') or report.get('readability_issues')
                 or report.get('structural_issues')):

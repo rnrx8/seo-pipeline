@@ -67,6 +67,13 @@ class CompletionTests(unittest.TestCase):
             with self.subTest(new=new), self.assertRaises(quality.ContentQualityError):
                 self.execute(self.verdict('meaning_preserved'),new)
 
+    def test_prose_finish_accepts_the_authorized_third_full_audit(self):
+        self.base['attempt']=3
+        (candidate,result),calls=self.execute()
+        self.assertEqual(len(calls),2)
+        self.assertEqual(result['local_completion']['base_report']['attempt'],3)
+        quality.require_audit(result,quality.snapshot(candidate,**self.ctx),stage='article',context={'text':candidate,**self.ctx})
+
     def test_every_local_verdict_is_mandatory(self):
         for key in finish.VERDICTS:
             with self.subTest(key=key), self.assertRaises(quality.ContentQualityError):self.execute(self.verdict(key))
@@ -95,7 +102,7 @@ class CompletionTests(unittest.TestCase):
 
     def test_ineligible_base_never_calls_model(self):
         variants=[]
-        for key,value in [('attempt',1),('evidence_pending',True),('structural_issues',[{'key':'missing_table'}]),
+        for key,value in [('attempt',1),('attempt',4),('evidence_pending',True),('structural_issues',[{'key':'missing_table'}]),
                           ('snapshot','stale'),('local_completion',{'x':1})]:
             v=copy.deepcopy(self.base);v[key]=value;variants.append(v)
         v=copy.deepcopy(self.base);v['checks'][0]['status']='fail';variants.append(v)
@@ -243,10 +250,14 @@ class CompletionBudgetTests(unittest.TestCase):
         for step in ('tiered_prose_finish_repair','tiered_prose_finish_review'):
             with self.subTest(step=step),self.assertRaises(quality.ContentQualityError):self.charge(step,'different')
 
-    def test_encoding_retry_already_consumed_repair_allowance(self):
+    def test_encoding_retries_keep_their_cost_without_consuming_the_one_shot_finish(self):
         self.charge('tiered_content_repair_1_0','first')
         self.charge('tiered_content_repair_1_1','encoding')
-        with self.assertRaises(quality.ContentQualityError):self.charge('tiered_prose_finish_repair','finish')
+        self.charge('tiered_prose_finish_repair','finish')
+        with budget.scope('job'),budget.ledger() as value:
+            self.assertEqual(len(value['calls']),3)
+            self.assertAlmostEqual(sum(c['cost_usd'] for c in value['calls']),.06)
+        with self.assertRaises(quality.ContentQualityError):self.charge('tiered_prose_finish_repair','second')
 
     def test_no_new_budget_for_finish(self):
         self.charge('tiered_content_repair_1_0','first',.29)

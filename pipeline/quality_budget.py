@@ -138,9 +138,8 @@ def guard_review(value,amount):
    extra=extension['extra_calls_per_role']
  if meta['role'] in ('prose_finish_repair','prose_finish_review'):
   extra=0 # A terminal local finish cannot be extended into another loop.
-  repairs=[c for c in previous if c['review_operation']['role'] in ('repair','prose_finish_repair')]
-  if spending_limits_enabled() and meta['role']=='prose_finish_repair' and len(repairs)>=2:
-   raise ContentQualityError('既存の修正回数枠を使い切っています。局所修正を追加しません。')
+  # Its own one-shot role limit and shared spend cap still apply. Prior full
+  # repair/encoding attempts do not change a prose-only finding's eligibility.
  if spending_limits_enabled() and len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in previous)

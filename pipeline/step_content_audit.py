@@ -53,7 +53,7 @@ def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
         if not isinstance(report, dict) or report.get('valid') is not False:
             return None
         if (report.get('snapshot') != expected_snapshot or report.get('stage') != 'article'
-                or type(report.get('attempt')) is not int or not 1 <= report['attempt'] <= 2):
+                or type(report.get('attempt')) is not int or not 1 <= report['attempt'] <= 3):
             return None
         parse_audit(json.dumps(report))
         return report
@@ -245,7 +245,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             raise ContentQualityError('原文照合が未完了です。確認側の資料不足を本文の誤りとして修正しません。保存した照合結果を確認してください。')
         if attempt == attempt_limit - 1:
             from .prose_completion import enabled, complete
-            if attempt == 1 and enabled():
+            if enabled():
                 context = dict(facts=facts, outline=outline, contract=contract,
                                requirements=requirements, sources=sources)
                 def check_candidate(candidate):
