@@ -35,12 +35,24 @@ def sha(value):
 def validate_resume_diagnosis(root, diagnosis, previous, calls, stage, cap):
     """Explicit local diagnosis permits a fresh request, retaining terminal holds."""
     latest=max((root/'requests').glob('*.json'),key=lambda p:int(p.stem))
+    credit_retry=diagnosis.get('credit_retry')
+    if credit_retry:
+        last=calls[-1] if calls else {}
+        permit=last.get('retry_authorization',{})
+        if (stage!='content_audit' or last.get('status')!='unknown_cost_reserved'
+            or last.get('diagnostics',{}).get('error_code')!='credit_balance_exhausted'
+            or permit.get('reason')!='credit_balance_exhausted' or not permit.get('user_message')
+            or permit.get('request_sha256')!=last.get('review_operation',{}).get('request_sha256')
+            or credit_retry.get('request_sha256')!=sha(json.loads(latest.read_text()))
+            or credit_retry.get('user_message')!=permit.get('user_message')
+            or (root/'responses'/latest.name).exists()):
+            raise RuntimeError('Credit retry is not the authorized terminal rejection')
     if (diagnosis.get('previous_status_sha256')!=sha(previous)
         or diagnosis.get('retained_calls_sha256')!=sha(calls)
         or diagnosis.get('resume_from')!=stage or diagnosis.get('cap_usd')!=cap
         or diagnosis.get('current_pipeline_sha256')!=sha(json.loads((root/'backend-source-manifest.json').read_text()))
         or not diagnosis.get('reason') or any(c['status']=='pending' for c in calls)
-        or sha(json.loads(latest.read_text())) not in diagnosis.get('blocked_original_request_hashes',[])):
+        or (not credit_retry and sha(json.loads(latest.read_text())) not in diagnosis.get('blocked_original_request_hashes',[]))):
         raise RuntimeError('Resume diagnosis differs from the stopped revision or retained expenses')
 
 
@@ -243,12 +255,22 @@ def main():
         approved_qa_recovery='--resume-after-approved-qa-budget-extension' in sys.argv
         outline_capacity_recovery='--resume-after-outline-review-capacity-fix' in sys.argv
         saved_patch=(recorded_diagnosis or {}).get('saved_patch')
+        credit_recovery=bool((recorded_diagnosis or {}).get('credit_retry'))
         presentation_recovery='--resume-after-presentation-contract-fix' in sys.argv or bool(saved_patch)
         final_body_recheck='--resume-final-body-recheck' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
         if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck or recorded_diagnosis)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
-        if resume_from=='content_audit' and not (presentation_recovery or final_body_recheck):raise RuntimeError('Body QA resume requires a diagnosed recovery')
+        if resume_from=='content_audit' and not (presentation_recovery or final_body_recheck or credit_recovery):raise RuntimeError('Body QA resume requires a diagnosed recovery')
+        if credit_recovery:
+            if (sha(get(job['id'],'article'))!=previous['artifacts']['article']
+                or json.loads(get(job['id'],'structure_validation_final')['content_text']).get('valid') is not True):
+                raise RuntimeError('Credit recovery requires the unchanged mechanically valid body')
+            from pipeline.research_requirements import _require_matrix_strict
+            _require_matrix_strict(job['id'])
+            dump(root/'credit-recovery.json',{'previous':previous,'diagnosis':recorded_diagnosis,
+                'reason':'User restored API credits; re-audit the saved body without regenerating or replaying a patch',
+                'no_prior_verdict_promoted':True})
         if final_body_recheck:
             authorization=json.loads((root/'approved-qa-budget-extension.json').read_text())
             ledgers=[json.loads(p.read_text()) for p in (root/'ledger').glob('*.json')]

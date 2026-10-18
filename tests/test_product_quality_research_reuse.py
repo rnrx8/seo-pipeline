@@ -70,6 +70,32 @@ class ResearchReuseTests(unittest.TestCase):
                            {**diagnosis,'blocked_original_request_hashes':[]}):
                 with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,broken,previous,calls,'research_plan',2)
 
+    def test_credit_retry_requires_exact_terminal_rejection_and_user_authorization(self):
+        loader=importlib.util.spec_from_file_location('credit_resume',path.with_name('run_isolated.py'))
+        runner=importlib.util.module_from_spec(loader);loader.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'requests').mkdir();(root/'responses').mkdir()
+            request={'model':'trial'};(root/'requests/0001.json').write_text(json.dumps(request))
+            source={'files':{}};(root/'backend-source-manifest.json').write_text(json.dumps(source))
+            previous={'status':'stopped'}
+            call={'status':'unknown_cost_reserved','reserved_usd':1,
+                  'diagnostics':{'error_code':'credit_balance_exhausted'},
+                  'review_operation':{'request_sha256':'scope-hash'},
+                  'retry_authorization':{'reason':'credit_balance_exhausted','request_sha256':'scope-hash','user_message':'やったよー'}}
+            def diagnosis(c):
+                return {'previous_status_sha256':runner.sha(previous),'retained_calls_sha256':runner.sha([c]),
+                    'resume_from':'content_audit','cap_usd':2,'current_pipeline_sha256':runner.sha(source),
+                    'reason':'User restored credits','blocked_original_request_hashes':[],
+                    'credit_retry':{'request_sha256':runner.sha(request),'user_message':'やったよー'}}
+            runner.validate_resume_diagnosis(root,diagnosis(call),previous,[call],'content_audit',2)
+            for field,value in [('status','pending'),('diagnostics',{'error_code':'other'}),
+                    ('retry_authorization',{'reason':'credit_balance_exhausted','request_sha256':'wrong','user_message':'やったよー'})]:
+                changed={**call,field:value}
+                with self.subTest(field=field),self.assertRaises(RuntimeError):
+                    runner.validate_resume_diagnosis(root,diagnosis(changed),previous,[changed],'content_audit',2)
+            (root/'responses/0001.json').write_text('{}')
+            with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,diagnosis(call),previous,[call],'content_audit',2)
+
     def test_reused_acquisition_does_not_bypass_normal_targeted_supplement(self):
         from pipeline import step_serp,step_fact_sheet
         with tempfile.TemporaryDirectory() as d:
