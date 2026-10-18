@@ -166,6 +166,13 @@ class ReaderValueFlowTests(unittest.TestCase):
         self.assertEqual(array['items']['properties']['id']['enum'],['i01','i02'])
         self.assertEqual(array['items']['properties']['question']['enum'],['方法をどう選ぶか','どう始めるか'])
         self.assertEqual(array['items']['properties']['depends_on']['items']['enum'],['i01','i02'])
+        gaps=config['format']['schema']['properties']['content_gaps']['items']['properties']
+        self.assertEqual(gaps['need_id']['enum'],['i01','i02'])
+        for field in ('question','reason','opportunity'):
+            self.assertNotIn('enum',gaps[field])
+        self.assertNotIn('enum',gaps['research_ids']['items'])
+        for field in ('excerpt_id','quote'):
+            self.assertNotIn('enum',gaps['evidence']['items']['properties'][field])
         self.assertEqual(req.PLAN_SCHEMA,original)
         self.assertEqual(req.plan_output_schema({}),original)
 

@@ -225,12 +225,13 @@ def plan_output_schema(context):
         ids=[n['id'] for n in needs]
         decisions.update(minItems=len(needs),maxItems=len(needs))
         properties=decisions['items']['properties']
-        properties['id']['enum']=ids
-        properties['question']['enum']=[n['question'] for n in needs]
-        properties['depends_on']['items']['enum']=ids
+        properties['id']={**properties['id'],'enum':ids}
+        properties['question']={**properties['question'],'enum':[n['question'] for n in needs]}
+        properties['depends_on']['items']={**properties['depends_on']['items'],'enum':ids}
         gaps=schema['format']['schema']['properties']['content_gaps']
         gaps.update(minItems=len(needs),maxItems=len(needs))
-        gaps['items']['properties']['need_id']['enum']=ids
+        # GAP_SCHEMA reuses its base string node; replace only the ID property.
+        gaps['items']['properties']['need_id']={**gaps['items']['properties']['need_id'],'enum':ids}
         from .editorial_blueprint import model_output_config
         return model_output_config(schema['format']['schema'])
     return schema
