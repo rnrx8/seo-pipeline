@@ -261,7 +261,19 @@ def main():
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
         if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck or recorded_diagnosis)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
             raise RuntimeError('Only a settled planning/collection stop can resume here')
-        if resume_from=='content_audit' and not (presentation_recovery or final_body_recheck or credit_recovery):raise RuntimeError('Body QA resume requires a diagnosed recovery')
+        diagnosed_body_resume=bool(recorded_diagnosis and resume_from=='content_audit')
+        if resume_from=='content_audit' and not (presentation_recovery or final_body_recheck or diagnosed_body_resume):raise RuntimeError('Body QA resume requires a diagnosed recovery')
+        if diagnosed_body_resume and not (presentation_recovery or credit_recovery):
+            from pipeline.content_quality import audit_facts,final_review_requirements,snapshot,source_evidence
+            from pipeline.step_content_audit import failed_audit_checkpoint
+            article=get(job['id'],'article');outline=get(job['id'],'outline')['content_text']
+            expected=snapshot(article['content_text'],audit_facts(get(job['id'],'fact_sheet')['content_text'],article,high_accuracy=False),
+                outline,json.loads(get(job['id'],'content_contract')['content_text']),
+                final_review_requirements(job,job['main_keyword']),source_evidence(get(job['id'],'fresh_sources')))
+            if (sha(article)!=previous['artifacts']['article']
+                or recorded_diagnosis.get('failed_audit_sha256')!=sha(get(job['id'],'content_audit'))
+                or failed_audit_checkpoint(job['id'],expected) is None):
+                raise RuntimeError('Diagnosed repair requires the unchanged failed full audit')
         if credit_recovery:
             if (sha(get(job['id'],'article'))!=previous['artifacts']['article']
                 or json.loads(get(job['id'],'structure_validation_final')['content_text']).get('valid') is not True):
