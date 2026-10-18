@@ -643,7 +643,10 @@ def retrieval_gaps(gaps, matrix, pages):
     still independently satisfy the unchanged evidence and coverage policy.
     Missing/legacy routing data retains the conservative retrieval path.
     """
-    coverage_ids={i.get('id') for i in matrix.get('coverage_issues',[])}
+    coverage_routes={}
+    for issue in matrix.get('coverage_issues',[]):
+        coverage_routes.setdefault(issue.get('id'),set()).add(issue.get('repair_kind'))
+    coverage_ids=set(coverage_routes)
     items={i.get('id'):i for i in matrix.get('items',[])}
     normalize=lambda text: re.sub(r'\s+','',text)
     bodies={normalize_url(p['url']):normalize(p.get('text','')) for p in pages
@@ -651,6 +654,10 @@ def retrieval_gaps(gaps, matrix, pages):
     result=[]
     for gap in gaps:
         if gap.get('repair_kind') in ('handoff','editorial'):continue
+        # A per-claim validation gap may duplicate a scoped overall finding.
+        # Honor an explicit editorial/handoff route for rereview, never a pass.
+        routes=coverage_routes.get(gap.get('id'),set())
+        if gap.get('repair_kind')!='source' and routes and routes<={'handoff','editorial'}:continue
         item=items.get(gap.get('id'),{})
         candidates=[item]+[item[k] for k in ('omission_candidate_from','unresolved_candidate')
                            if isinstance(item.get(k),dict)]

@@ -336,6 +336,20 @@ class CoverageRetrievalRoutingTests(unittest.TestCase):
             plan,pages,result,gaps=self.case();change(result,pages)
             self.assertEqual(req.retrieval_gaps(gaps,result,pages),gaps)
 
+    def test_overall_editorial_route_for_duplicate_validation_gap_rereads_without_accepting(self):
+        from pipeline import research_requirements as req
+        plan,pages,result,gaps=self.case();qid=gaps[0]['id']
+        result['items'][0].update(additional_sources_needed=True,verified=False,answer='',evidence=[])
+        result['coverage_issues']=[{'id':qid,'repair_kind':'editorial','reason':'Use other stored answers; no collection needed'}]
+        before=copy.deepcopy(result)
+        self.assertEqual(req.retrieval_gaps(gaps,result,pages),[])
+        self.assertEqual(result,before)
+        self.assertFalse(result['items'][0]['verified'])
+        result['coverage_issues'].append({'id':qid,'repair_kind':'source','reason':'A concrete fact still needs a source'})
+        self.assertEqual(req.retrieval_gaps(gaps,result,pages),gaps)
+        result['coverage_issues'].pop();gaps[0]['repair_kind']='source'
+        self.assertEqual(req.retrieval_gaps(gaps,result,pages),gaps)
+
     def test_omission_keeps_candidate_evidence_for_recheck_not_publication(self):
         from pipeline import research_requirements as req
         plan,pages,result,gaps=self.case()
