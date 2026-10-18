@@ -28,11 +28,12 @@ class ReaderValueRevisionTests(unittest.TestCase):
         need={'id':'i1','reader_situation':'学び直したいが、また途中で止まるのが気になる',
             'background_emotion':'分からないまま人に聞けず、自信をなくしたくないという仮説',
             'desired_state':'小さな疑問を聞きながら、自分でも進められる感覚を得たい',
+            'after_reading':'質問対応のある学び方を選び、質問したい点を準備できる',
             'barrier':'何を質問してよいか分からずためらう',
             'support':[{'kind':'hypothesis','reason':'分析上の推定'}]}
         original={'reader_needs':[need],'answer_scope_policy':'internal adoption policy'}
         projected=publication_design(original)
-        for field in ('reader_situation','background_emotion','desired_state','barrier'):
+        for field in ('reader_situation','background_emotion','desired_state','barrier','after_reading'):
             self.assertEqual(projected['reader_needs'][0][field],need[field])
         self.assertNotIn('support',projected['reader_needs'][0])
         self.assertNotIn('answer_scope_policy',projected)

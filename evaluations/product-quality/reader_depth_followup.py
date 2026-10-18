@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 from unittest.mock import patch
+from types import SimpleNamespace as NS
 
 BACKEND=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(BACKEND))
@@ -28,8 +29,25 @@ def write(path,value):
 def main():
     sys.stdout.reconfigure(line_buffering=True)
     root=Path(sys.argv[1]).resolve();source=Path(sys.argv[2]).resolve();live='--live' in sys.argv
-    if (root/'started.json').exists():raise RuntimeError('Followup already started; inspect saved responses, do not duplicate')
+    resume='--resume-existing' in sys.argv
+    if (root/'started.json').exists() and not resume:raise RuntimeError('Followup already started; inspect saved responses, do not duplicate')
+    if resume:
+        old=json.loads((root/'result.json').read_text())
+        existing=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
+        frozen=json.loads((root/'manifest.json').read_text())
+        if (not live or old.get('status')!='stopped' or old.get('error_type') not in ('RuntimeError','AttributeError')
+            or len(list((root/'responses').glob('*.json')))!=len(existing)
+            or any(c['status']!='accounted' for c in existing) or old.get('pending_calls')!=0
+            or any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest for name,digest in frozen['pipeline_sha256'].items())):
+            raise RuntimeError('Only complete paid responses under the unchanged generation policy can resume')
     calls=[c for p in (source/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
+    prior_followup=None
+    if '--prior-followup' in sys.argv:
+        prior_followup=Path(sys.argv[sys.argv.index('--prior-followup')+1]).resolve()
+        if prior_followup in (root,source):raise RuntimeError('Cannot count the same trial twice')
+        previous_manifest=json.loads((prior_followup/'manifest.json').read_text())
+        if previous_manifest['prior_trial']!=str(source):raise RuntimeError('Followup belongs to another budget')
+        calls += [c for p in (prior_followup/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
     if any(c['status']=='pending' for c in calls):raise RuntimeError('Prior request still pending')
     prior_cost=sum(c.get('cost_usd',c['reserved_usd']) for c in calls);cap=17.5-prior_cost
     if cap<=0:raise RuntimeError('No previously approved budget remaining')
@@ -52,16 +70,17 @@ def main():
     source_hashes={n:hashlib.sha256((source/'artifacts'/(n+'.json')).read_bytes()).hexdigest()
         for n in ('article','outline','production_brief','reader_needs','product_context')}
     manifest={'scope':'New analysis and four excerpt proposals with existing shared writer; blinded coverage controls only',
-        'prior_trial':str(source),'prior_calls_sha256':sha(calls),'prior_cost_with_holds_usd':prior_cost,
+        'prior_trial':str(source),'prior_followup':str(prior_followup) if prior_followup else None,'prior_calls_sha256':sha(calls),'prior_cost_with_holds_usd':prior_cost,
         'combined_cap_usd':17.5,'this_followup_cap_usd':cap,'source_hashes':source_hashes,
         'feedback':feedback,'lead_target_chars':180,'new_sources':False,'source_facts_frozen_at':'2026-10-18',
         'full_article_regeneration':False,'production_changes':False,
         'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
         'preregistered_expectations':{'a1':'fail','a2':'pass','b1':'fail','b2':'pass','c1':'fail','c2':'pass','d1':'pass'}}
-    write(root/'manifest.json',manifest)
+    write(root/('resume-manifest.json' if resume else 'manifest.json'),manifest)
     if not live:print(json.dumps(manifest,ensure_ascii=False));return
-    with (root/'started.json').open('x') as f:json.dump({'source_hashes':source_hashes},f)
+    marker=('resume-'+str(len(list((root/'responses').glob('*.json'))))+'-'+hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:10]+'.json' if resume else 'started.json')
+    with (root/marker).open('x') as f:json.dump({'source_hashes':source_hashes,'reuse_complete_responses':resume},f)
     from dotenv import dotenv_values
     values=dotenv_values('/Users/ryoka/seo-pipeline/.env')
     for key in ('OPENAI_API_KEY','ANTHROPIC_API_KEY'):
@@ -72,6 +91,12 @@ def main():
     normal=ai.create_with_retry;counter=[0]
     def measured(*args,**kwargs):
         counter[0]+=1;ident=f'{counter[0]:04d}'
+        if resume and (root/'responses'/(ident+'.json')).exists():
+            if sha(kwargs)!=sha(json.loads((root/'requests'/(ident+'.json')).read_text())):
+                raise RuntimeError('Completed generation request changed; do not resend')
+            saved_response=json.loads((root/'responses'/(ident+'.json')).read_text())
+            return NS(stop_reason='end_turn',model=saved_response['model'],usage=NS(**saved_response['usage']),
+                content=[NS(type='text',text=saved_response['text'])])
         write(root/'requests'/(ident+'.json'),kwargs)
         response=normal(*args,**kwargs)
         write(root/'responses'/(ident+'.json'),{'text':ai.message_text(response),'model':response.model,
@@ -79,6 +104,8 @@ def main():
         return response
     from pipeline import tiered_research
     ai.create_with_retry=step_intent.create_with_retry=tiered_research.create_with_retry=measured
+    tiered_research.get_optional_artifact=lambda *a:None
+    tiered_research.upsert_artifact=lambda **kw:kw
     saved={};result={'status':'running','cases':[]}
     budget_job='reader-depth-followup'
     try:
@@ -101,7 +128,9 @@ def main():
         request=dict(model=writer_model,max_tokens=4096,system=step_article.SYSTEM_PROMPT,
             messages=[{'role':'user','content':json.dumps({'scope':'全文ではなく、リード、方法H3の説明、商品H3の説明、末尾まとめの4抜粋だけを生成。H2直下の結論・短い理由・表という配置は維持し、深い説明は該当H3へ置く。表や既存本文の再出力は不要。',
                 'request':brief['request'],'reader_needs':needs['selected'],'confirmed_facts':facts,
-                'lead_target_chars':180,'lead_max_chars':200,'chapter_roles':{'method_detail':'方法を選ぶ理由と、背景の望み・懸念に応える具体策を示す。','product_detail':'既婚者クラブの推薦と、特徴が望みに役立つ作用・無理のない始め方を示す。','closing':'新情報を足さず、結論・理由・次の一歩を短く回収する。'}},ensure_ascii=False)}],
+                'lead_target_chars':180,'lead_min_chars':160,'lead_max_chars':200,
+                'article_goal':{'recommended_category':'既婚者専用マッチング','recommended_service':'既婚者クラブ','action':'無料登録で希望に合う相手がいるか確かめる'},
+                'chapter_roles':{'method_detail':'「既婚者専用マッチングで探す」H3の説明、160〜260字程度。全方法を再度列挙せず、求める関係・大切にしたい日常と、この方法を勧める理由、読者が取れる具体策をつなぐ。','product_detail':'既婚者クラブの特徴表に続く価値説明、160〜260字程度。商材を明確に勧め、特徴が求める関係や日常に役立つ作用と、無理のない始め方を示す。','closing':'140〜220字程度。新情報を足さず、結論・理由・次の一歩を短く回収する。'}},ensure_ascii=False)}],
             output_config={'format':{'type':'json_schema','schema':schema}})
         with qb.scope(budget_job,'article'):response=measured(client,**request)
         proposal=json.loads(ai.message_text(response));write(root/'proposal.json',proposal)
@@ -119,20 +148,21 @@ def main():
             ('b2','## 方法を選ぶ理由\n\n'+proposal['method_detail']+'\n\n## 既婚者クラブの推薦\n\n'+proposal['product_detail'],depth_need,'pass','方法・商品説明の抜粋だけ。料金表や別章の省略は欠陥ではない。'),
             ('c1','## 関係の目的とルール\n\n'+original.rsplit('\n\n',1)[-1],closing_need,'fail','複数章の比較記事の結末だけを検査。主回答は既婚者専用マッチング、商材は既婚者クラブ。章本文の省略ではなく、記事末尾が判断を回収しているかを見る。'),
             ('c2','## '+proposal['closing_title']+'\n\n'+proposal['closing'],closing_need,'pass','複数章の比較記事の結末だけを検査。前の章で主回答・料金・機能を説明済み。'),
-            ('d1','# 登録メールが届かないとき\n\n入力したメールアドレスと迷惑メールフォルダを確認し、登録画面から一度再送してください。届かないときはサポートへ問い合わせます。',direct,'pass','短い直接操作の回答。心理の掘り下げ・独立したまとめ・商材推薦は不要。')]
+            ('d1','# 登録メールが届かないとき\n\n## 確認と再送の手順\n\n入力したメールアドレスと迷惑メールフォルダを確認し、登録画面から一度再送してください。届かないときはサポートへ問い合わせます。',direct,'pass','導入を含まない短い直接操作の回答本文。心理の掘り下げ・独立したまとめ・商材推薦は不要。')]
         write(root/'case-plan.json',[{'id':i,'text_sha256':hashlib.sha256(t.encode()).hexdigest(),'expected':e,'scope':s} for i,t,n,e,s in cases])
         for ident,text,need,expected,scope in cases:
             request,design=capture(text,need,'coverage',facts=json.dumps(facts,ensure_ascii=False),extra_requirements={'evaluation_scope':scope,'custom_prompt':feedback,'article_purpose':'cv' if ident.startswith(('b','c')) else '情報提供'})
             with qb.scope(budget_job,'quality'):
                 value,usage=checked_request(budget_job,'depth_followup_'+ident,request)
             checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],text)
-            findings=ef.validate(value,fq.ROLES['coverage'],text)
+            findings=ef.checked_findings(value,checks,text)
             from pipeline import article_design as ad
-            ad.checked_result(checks,value,design,text)
+            checks=ad.checked_result(checks,value,design,text)
+            findings+=ef.decision_findings(value,design)
             actual='fail' if any(c['status']=='fail' for c in checks) else 'pass'
             result['cases'].append({'id':ident,'expected':expected,'actual':actual,'expected_matched':actual==expected,'checks':checks,'editorial_findings':findings,'lead_review':value.get('lead_review')})
             write(root/'result.json',result);print(ident,actual,'expected',expected,flush=True)
-        result.update(status='completed',lead_chars=len(proposal['lead']),lead_target_met=len(proposal['lead'])<=200)
+        result.update(status='completed',lead_chars=len(proposal['lead']),lead_target_met=160<=len(proposal['lead'])<=200)
     except Exception as exc:
         result.update(status='stopped',error_type=type(exc).__name__,error=str(exc));raise
     finally:
