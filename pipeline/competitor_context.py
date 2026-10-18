@@ -8,6 +8,7 @@ VERSION='competitor-evidence-v1'
 GAP_POLICY='''
 【読者の問いと競合の回答】
 competitor_contextは今回取得した競合本文の関連抜粋。見出しの有無だけで答えの十分さを判定しない。採用する読者の問いごとに、実際の回答・条件・具体性を確認し、content_gapsへanswered_in_excerpt/gap_candidate/not_assessedを記録する。
+content_gapsは採用したneed_idごとに1件とし、同じIDを部分論点ごとの行へ分割しない。回答を確認した部分と抜粋外で未確認の部分が混在し、問い全体を評価できない場合はnot_assessedとする。reasonとopportunityで確認できた部分・評価できない部分を分け、evidenceに確認した部分の引用を残す。独立QAも部分の区別を同じ行内へ求め、重複IDの追加を要求しない。
 gap_candidateは確認した範囲で不足・曖昧な回答がある場合だけ。抜粋に見当たらないことを記事全体や検索上位全体に情報がない証明にせず、不足候補としてquestionとopportunityを具体化する。本文未取得や対応箇所が未提示ならnot_assessed。既存の必要な回答を残し、違うこと自体を目的にしない。
 引用は提示excerptsのidと短い連続した原文を返す。取得失敗、見出し、検索スニペットを競合本文の引用にしない。research_idsは必要な調査質問に結ぶ。PAA・関連検索の未取得・未対応・取得失敗・0件の区別も維持し、欠損を他クエリのデータで補わない。
 '''

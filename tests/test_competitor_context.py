@@ -71,6 +71,16 @@ class CompetitorContextTests(unittest.TestCase):
         cc.validate_gaps(plan,context);gap['status']='gap_candidate'
         with self.assertRaises(ContentQualityError):cc.validate_gaps(plan,context)
 
+    def test_partly_answered_need_can_keep_one_unassessed_record_with_scoped_evidence(self):
+        context={'reader_needs':{'selected':[{'id':'i1'}]},
+                 'competitor_context':{'excerpts':[{'id':'p1:0','text':'通知から知られる場合があります。'}]}}
+        gap=dict(need_id='i1',question='身バレと法的リスクをどう考えるか',status='not_assessed',
+                 reason='通知の説明は確認したが法的線引きは提示範囲外',opportunity='確認済みの範囲と未評価の部分を分ける',
+                 research_ids=['q1'],evidence=[dict(excerpt_id='p1:0',quote='通知から知られる場合があります。')])
+        plan={'items':[{'id':'q1'}],'content_gaps':[gap]};cc.validate_gaps(plan,context)
+        plan['content_gaps'].append(dict(gap,status='answered_in_excerpt'))
+        with self.assertRaises(ContentQualityError):cc.validate_gaps(plan,context)
+
     def test_serp_does_not_repeat_competitor_bodies_in_every_downstream_input(self):
         organic=[dict(position=i,title='A',link=f'https://a.example/{i}') for i in range(1,4)]
         records={}

@@ -228,6 +228,9 @@ def plan_output_schema(context):
         properties['id']['enum']=ids
         properties['question']['enum']=[n['question'] for n in needs]
         properties['depends_on']['items']['enum']=ids
+        gaps=schema['format']['schema']['properties']['content_gaps']
+        gaps.update(minItems=len(needs),maxItems=len(needs))
+        gaps['items']['properties']['need_id']['enum']=ids
         from .editorial_blueprint import model_output_config
         return model_output_config(schema['format']['schema'])
     return schema
