@@ -18,6 +18,11 @@ def main():
         calls += [c for p in (parent/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
         manifest=json.loads((parent/'manifest.json').read_text())
         source=Path(manifest['source']) if 'prior_calls_sha256' in manifest else parent
+        for value in manifest.get('extra_allowance_history',[]):
+            history=Path(value)
+            if str(history) in visited:raise RuntimeError('Repeated extra cost history')
+            visited.add(str(history))
+            calls += [c for p in (history/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
         if manifest.get('previous_trial'):parent=Path(manifest['previous_trial'])
         elif 'prior_calls_sha256' in manifest:parent=source
         else:parent=None
@@ -85,15 +90,31 @@ def main():
         'this_cap_usd':cap,'approved_partial_cap_usd':7.5,'source_body_raw_sha256':hashlib.sha256(original.encode()).hexdigest(),
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
         'expected':{'before':False,'after':True,'direct':True},'handwritten_lead_examples_in_request':False})
+    reuse_controls='--reuse-trial-controls' in sys.argv
+    if reuse_controls:
+        saved=json.loads((prior/'result.json').read_text())
+        if saved.get('status')!='completed':raise RuntimeError('Only completed trial controls can be reused')
+        if any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest
+               for name,digest in pm['pipeline_sha256'].items()):
+            raise RuntimeError('Control policy changed; cannot reuse')
+        controls={c['id']:c for c in saved['controls']}
+        if controls['b']['actual']!='fail' or controls['c']['actual']!='pass':
+            raise RuntimeError('Expected failed generated lead and passed direct control')
     result={'status':'running'}
     try:
-        before=review(initial,'before')
+        before=({'valid':False,**{k:controls['b'][k] for k in ('checks','editorial_findings','lead_review')},
+                 'reused_control':str(prior/'result.json')+'#b'} if reuse_controls else review(initial,'before'))
+        if reuse_controls:write(root/'before.json',before)
         lead_id='block-0002'
         human={'check_key':'coverage','severity':'blocking','block_ids':[lead_id],
             'problem':'気持ちの流れはあるが、何の相手を探す話か冒頭で分からない。末尾も制作側の説明であり、自然な読者への案内に整える必要がある。',
             'reader_impact':'一般的な相談相手を探す記事とも読め、セカンドパートナーを探す読者が自分向けの導入だと捉えにくい。',
             'required_change':'読者の気持ちとためらいの流れを保ち、冒頭からセカンドパートナーを探す話と自然に分かるようにする。対象属性や記事作業を詰め込まず、本文で得られる助けへつなぐ。比較軸・方法名を羅列しない。',
             'stage_to_fix':'article','origin':'codex_editorial_read'}
+        if '--reader-address' in sys.argv:
+            human.update(problem='冒頭が誰の望みか不明な独白で始まり、セカンドパートナーを探す読者へ案内する文章として成立していない。',
+                reader_impact='書き手が突然自己紹介しているように読め、自分向けの記事か分からない。',
+                required_change='書き手から対象読者へ案内する視点を保ち、冒頭から何を探す人の話か自然に伝える。読者の内面を無主語の告白にせず、短い気持ちとためらいから本文の助けへつなぐ。固定の呼びかけや例文の使用は要求しない。')
         report={**before,'valid':False,'editorial_findings':before['editorial_findings']+[human]}
         if all(c['status']!='fail' for c in report['checks']):
             report['checks'][0].update(status='fail',reason=human['problem'],affected_blocks=[{'id':lead_id,'reason':human['required_change']}])
@@ -110,7 +131,12 @@ def main():
         (root/'merged-article.md').write_text(candidate)
         after=review(lead,'after')
         direct_text='登録メールが届かないときは、メールアドレスと迷惑メールフォルダを確認し、登録画面から一度再送してください。それでも届かなければサポートへ問い合わせます。'
-        direct=review(direct_text,'direct',{**need,'question':'登録メールが届かないとき何をするか','answer_requirements':['確認・再送・未解決時の連絡先が分かる。心理描写は不要。']},'登録メール 届かない')
+        if reuse_controls:
+            direct={'valid':True,**{k:controls['c'][k] for k in ('checks','editorial_findings','lead_review')},
+                    'reused_control':str(prior/'result.json')+'#c'}
+            write(root/'direct.json',direct)
+        else:
+            direct=review(direct_text,'direct',{**need,'question':'登録メールが届かないとき何をするか','answer_requirements':['確認・再送・未解決時の連絡先が分かる。心理描写は不要。']},'登録メール 届かない')
         result.update(status='completed',before_qa_valid=before['valid'],after_qa_valid=after['valid'],direct_qa_valid=direct['valid'],
             normal_scoped_edit_applied=True,body_unchanged=True,lead_chars=len(lead),
             codex_editorial_acceptance=False,user_review='pending',full_article_qa=False)

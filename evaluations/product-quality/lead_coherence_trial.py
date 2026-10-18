@@ -26,6 +26,17 @@ def main():
         if previous_trial in (root,source) or previous_manifest['source']!=str(source):
             raise RuntimeError('Previous trial belongs to another allowance')
         prior_calls += [c for p in (previous_trial/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
+    extra_history=[]
+    for index, arg in enumerate(sys.argv):
+        if arg!='--prior-ledger':continue
+        history=Path(sys.argv[index+1]).resolve()
+        if history in (source,root,previous_trial) or history in extra_history:
+            raise RuntimeError('Duplicate allowance history')
+        extra_history.append(history)
+        prior_calls += [c for p in (history/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
+    rejected_lead_path=None
+    if '--rejected-lead' in sys.argv:
+        rejected_lead_path=Path(sys.argv[sys.argv.index('--rejected-lead')+1]).resolve()
     if any(c['status']=='pending' for c in prior_calls):
         raise RuntimeError('Prior partial revision still has a pending request')
     prior_cost = sum(c.get('cost_usd',c['reserved_usd']) for c in prior_calls)
@@ -62,15 +73,21 @@ def main():
     title,old_lead=article[:start].strip().split('\n\n',1)
     needs=json.loads(json.loads((hypotheses/'analysis_artifacts/reader_needs.json').read_text())['content_text'])['selected']
     feedback='主題が自然に分かる短いリード。読者の気持ちを汲み取る文章と、文同士の自然な流れが明示された必須要件。望みやためらいを外側から説明するだけでなく、何を相手に受け止めてもらいたくて、何を打ち明けにくくて、この探し方を知りたくなるのかを読者の立場で伝える。一般的な比較条件の説明へ急がず、その気持ちから記事を読む理由まで一続きに表す。元275字の約3分の2、180字前後が目安。'
+    feedback_path=None
+    if '--request-feedback' in sys.argv:
+        feedback_path=Path(sys.argv[sys.argv.index('--request-feedback')+1]).resolve()
+        feedback=feedback_path.read_text().strip()
     manifest={'scope':'Lead-only design, generation and scoped QA; not normal full generation or full article acceptance',
         'source':str(source),'hypotheses':str(hypotheses),'previous_trial':str(previous_trial) if previous_trial else None,'prior_calls_sha256':sha(prior_calls),
         'prior_usage_usd':prior_cost,'approved_partial_cap_usd':7.5,'this_remainder_cap_usd':cap,
+        'extra_allowance_history':[str(p) for p in extra_history],
+        'rejected_control_sha256':hashlib.sha256(rejected_lead_path.read_bytes()).hexdigest() if rejected_lead_path else None,
         'source_outline_sha256':sha(outline),'source_article_raw_sha256':hashlib.sha256(article.encode()).hexdigest(),
-        'reader_hypotheses_sha256':sha(needs),'no_handwritten_lead_example_in_generation':True,
+        'reader_hypotheses_sha256':sha(needs),'request_feedback_sha256':sha(feedback),'request_feedback_path':str(feedback_path) if feedback_path else None,'no_handwritten_lead_example_in_generation':True,
         'old_lead_in_generation':False,'lead_review_version':lr.VERSION,
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
         'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        'preregistered_controls':{'a':'fail','b':'pass','c':'pass',**({'d':'fail'} if previous_trial else {})},'production_changes':False}
+        'preregistered_controls':{'a':'fail','b':'pass','c':'pass',**({'d':'fail'} if previous_trial else {}),**({'e':'fail'} if rejected_lead_path else {})},'production_changes':False}
     if (root/'manifest.json').exists():
         saved_manifest=json.loads((root/'manifest.json').read_text())
         if saved_manifest!=manifest:
@@ -155,6 +172,8 @@ def main():
         need={'id':'d1','role':'primary','scope':'リードのみ','depends_on':[],'research_ids':['q1'],
             'question':'読者の望みやためらいから読む理由までが自然な一続きの導入になっているか',
             'answer_requirements':['冒頭で何を探す読者向けか自然に分かる','感情語の列挙でなく、何を満たしたくて何をためらうかが読者の立場で伝わる','文間の主語・視点・意味がつながり、記事を読むと得られる助けへ進む']}
+        if feedback_path:
+            need['answer_requirements']=['書き手から対象読者への案内として、冒頭で何を探す人の話か自然に分かる','読者の気持ちへの理解が伝わる。特定の望み・ためらいの組合せや感情の説明順は指定していない','話の流れが自然で、記事を読む助けが分かる。心理の独白や長い人物分類に置き換えない']
         control_body='メールアドレスと迷惑メールフォルダを確認し、登録画面から一度再送してください。それでも届かなければ、サポートへ問い合わせます。'
         controls=[('a',title+'\n\n'+old_lead,need,'fail'),('b',title+'\n\n'+lead,need,'pass'),
             ('c','# 登録メールが届かないとき\n\n'+control_body,
@@ -162,13 +181,16 @@ def main():
         if previous_trial:
             previous_lead=json.loads((previous_trial/'proposal.json').read_text())['lead']
             controls.append(('d',title+'\n\n'+previous_lead,need,'fail'))
+        if rejected_lead_path:
+            rejected_lead=json.loads(rejected_lead_path.read_text())['lead']
+            controls.append(('e',title+'\n\n'+rejected_lead,need,'fail'))
         write(root/'control-plan.json',[{'id':i,'text_sha256':hashlib.sha256(t.encode()).hexdigest(),'expected':e} for i,t,n,e in controls])
         for ident,text,decision,expected in controls:
             request,article_design=capture(text,decision,'coverage',facts='新しい料金・統計・機能の断定は不要。',
                 extra_requirements={'evaluation_scope':'提示した導入のみ。本文・比較表・商材紹介・まとめの省略を欠陥としない。',
                     'keyword':'登録メール 届かない' if ident=='c' else 'セカンドパートナー 探し方',
                     'custom_prompt':feedback if ident!='c' else '短い直接操作の回答。心理的な共感は求めていない。',
-                    'measured_lead_chars':len(lead) if ident=='b' else len(old_lead) if ident=='a' else len(previous_lead) if ident=='d' else len(control_body)})
+                    'measured_lead_chars':len(text.split('\n\n',1)[1])})
             with qb.scope(job,'quality'):value,usage=tr.checked_request(job,'coherence_control_'+ident,request)
             checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],text)
             findings=ef.checked_findings(value,checks,text)
