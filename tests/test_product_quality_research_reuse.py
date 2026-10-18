@@ -96,6 +96,24 @@ class ResearchReuseTests(unittest.TestCase):
             (root/'responses/0001.json').write_text('{}')
             with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,diagnosis(call),previous,[call],'content_audit',2)
 
+    def test_unsent_trial_request_retry_cannot_release_a_sent_request(self):
+        loader=importlib.util.spec_from_file_location('unsent_resume',path.with_name('run_isolated.py'))
+        runner=importlib.util.module_from_spec(loader);loader.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'requests').mkdir();(root/'responses').mkdir()
+            request={'model':'trial'};(root/'requests/0002.json').write_text(json.dumps(request))
+            source={'files':{}};(root/'backend-source-manifest.json').write_text(json.dumps(source))
+            previous={'status':'stopped','paid_calls':1};calls=[{'status':'accounted'}]
+            diagnosis={'previous_status_sha256':runner.sha(previous),'retained_calls_sha256':runner.sha(calls),
+                'resume_from':'content_audit','cap_usd':2,'current_pipeline_sha256':runner.sha(source),
+                'reason':'Local count rejection before reservation','blocked_original_request_hashes':[],
+                'unsent_retry':{'request_sha256':runner.sha(request)}}
+            runner.validate_resume_diagnosis(root,diagnosis,previous,calls,'content_audit',2)
+            (root/'responses/0002.json').write_text('{}')
+            with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,diagnosis,previous,calls,'content_audit',2)
+            (root/'responses/0002.json').unlink();changed=calls+[{'status':'accounted'}]
+            with self.assertRaises(RuntimeError):runner.validate_resume_diagnosis(root,{**diagnosis,'retained_calls_sha256':runner.sha(changed)},previous,changed,'content_audit',2)
+
     def test_reused_acquisition_does_not_bypass_normal_targeted_supplement(self):
         from pipeline import step_serp,step_fact_sheet
         with tempfile.TemporaryDirectory() as d:

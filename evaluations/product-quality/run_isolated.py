@@ -35,6 +35,11 @@ def sha(value):
 def validate_resume_diagnosis(root, diagnosis, previous, calls, stage, cap):
     """Explicit local diagnosis permits a fresh request, retaining terminal holds."""
     latest=max((root/'requests').glob('*.json'),key=lambda p:int(p.stem))
+    unsent_retry=diagnosis.get('unsent_retry')
+    if unsent_retry and (unsent_retry.get('request_sha256')!=sha(json.loads(latest.read_text()))
+        or previous.get('paid_calls')!=len(calls) or int(latest.stem)!=len(calls)+1
+        or (root/'responses'/latest.name).exists()):
+        raise RuntimeError('Unsent retry does not match the request rejected before reservation')
     credit_retry=diagnosis.get('credit_retry')
     if credit_retry:
         last=calls[-1] if calls else {}
@@ -52,7 +57,7 @@ def validate_resume_diagnosis(root, diagnosis, previous, calls, stage, cap):
         or diagnosis.get('resume_from')!=stage or diagnosis.get('cap_usd')!=cap
         or diagnosis.get('current_pipeline_sha256')!=sha(json.loads((root/'backend-source-manifest.json').read_text()))
         or not diagnosis.get('reason') or any(c['status']=='pending' for c in calls)
-        or (not credit_retry and sha(json.loads(latest.read_text())) not in diagnosis.get('blocked_original_request_hashes',[]))):
+        or (not (credit_retry or unsent_retry) and sha(json.loads(latest.read_text())) not in diagnosis.get('blocked_original_request_hashes',[]))):
         raise RuntimeError('Resume diagnosis differs from the stopped revision or retained expenses')
 
 
