@@ -43,6 +43,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             self.assertEqual(prompt.count(ap.CTA_WRITING_POLICY),1)
             self.assertEqual(prompt.count(ap.SELECTION_POLICY),1)
             self.assertEqual(prompt.count(ap.SECTION_SCOPE_POLICY),1)
+            self.assertEqual(prompt.count(ap.CLOSING_POLICY),1)
         # Positive fixed patterns are absent from the effective composed prompt.
         for old in ('構成は3パートで書く','共感→背景→解決の骨格は維持','concrete_phrase は原文のまま活かす','▼ H2末尾の感情補完文'):
             self.assertNotIn(old,step_article.SYSTEM_PROMPT)

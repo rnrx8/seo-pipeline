@@ -23,6 +23,34 @@ def lead_finding(saved):
 
 
 class ReaderValueRevisionTests(unittest.TestCase):
+    def test_reader_hypothesis_and_underlying_wish_survive_writing_projection(self):
+        from pipeline.generation_context import publication_design
+        need={'id':'i1','reader_situation':'学び直したいが、また途中で止まるのが気になる',
+            'background_emotion':'分からないまま人に聞けず、自信をなくしたくないという仮説',
+            'desired_state':'小さな疑問を聞きながら、自分でも進められる感覚を得たい',
+            'barrier':'何を質問してよいか分からずためらう',
+            'support':[{'kind':'hypothesis','reason':'分析上の推定'}]}
+        original={'reader_needs':[need],'answer_scope_policy':'internal adoption policy'}
+        projected=publication_design(original)
+        for field in ('reader_situation','background_emotion','desired_state','barrier'):
+            self.assertEqual(projected['reader_needs'][0][field],need[field])
+        self.assertNotIn('support',projected['reader_needs'][0])
+        self.assertNotIn('answer_scope_policy',projected)
+        self.assertIn('support',original['reader_needs'][0])
+
+    def test_adding_a_closing_chapter_invalidates_the_old_outline_review(self):
+        _,_,_,ctx,value=fixture();saved=artifact(value,ctx);old_context=bp.review_context(saved)
+        review={'valid':True,'blueprint_review_context':old_context,**verdict(old_context)}
+        revised=copy.deepcopy(value);closing=copy.deepcopy(value['sections'][0])
+        closing.update(id='s99',parent_id='',level=2,title='まとめ：自分に合う方法で始める',
+            question='最後に何を選び、どう進めるか',cta='')
+        if closing['reader_progression']:
+            closing['reader_progression']['next_questions']=[]
+        revised['sections'].append(closing)
+        revised_artifact=artifact(revised,ctx);bp.require_projection(revised_artifact,ctx)
+        with self.assertRaises(cq.ContentQualityError):bp.require_review(review,revised_artifact)
+        self.assertEqual(len(saved['meta']['editorial_blueprint']['sections']),len(value['sections']))
+
     def test_failed_lead_cannot_be_hidden_by_all_passed_decisions_or_global_coverage(self):
         original=stage5.decision_result
         def reply(design,text,missing=None):
