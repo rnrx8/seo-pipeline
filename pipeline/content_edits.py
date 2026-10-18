@@ -27,7 +27,8 @@ def content_blocks(text: str) -> list[dict]:
             for index, part in enumerate(parts) if part.strip()]
 
 
-def apply_block_edits(text: str, raw: str) -> str:
+def validated_block_edits(text: str, raw: str) -> list[dict]:
+    """Validate every submitted address, returning only actual changes."""
     from .content_quality import ContentQualityError
     raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())
     try:
@@ -36,15 +37,30 @@ def apply_block_edits(text: str, raw: str) -> str:
             raise ValueError('empty or excessive edits')
         blocks = {b['id']: b['text'] for b in content_blocks(text)}
         replacements = {}
+        seen = set()
         for edit in edits:
             block_id, new = edit['id'], edit['new']
-            if not isinstance(block_id, str) or block_id not in blocks or block_id in replacements:
+            if not isinstance(block_id, str) or block_id not in blocks or block_id in seen:
                 raise ValueError('unknown or duplicate block id')
-            if not isinstance(new, str) or new == blocks[block_id]:
-                raise ValueError('invalid or unchanged replacement')
+            seen.add(block_id)
+            if not isinstance(new, str):
+                raise ValueError('invalid replacement')
+            if new == blocks[block_id]:
+                continue
             if not new.strip() and (new != '' or re.search(r'^\s*(?:#{1,6}\s|\|)', blocks[block_id], re.M)):
                 raise ValueError('cannot remove headings or tables')
             replacements[block_id] = new
+        if not replacements:
+            raise ValueError('no effective edits')
+        return [{'id':block_id,'new':new} for block_id,new in replacements.items()]
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ContentQualityError(f'内容修正の段落IDを確認できません: {exc}') from exc
+
+
+def apply_block_edits(text: str, raw: str) -> str:
+    from .content_quality import ContentQualityError
+    replacements = {edit['id']:edit['new'] for edit in validated_block_edits(text,raw)}
+    try:
         parts = re.split(r'(\n[ \t]*\n)', text)
         result = ''.join(replacements.get(f'block-{index:04d}', part) for index, part in enumerate(parts))
         if not result.strip().startswith('#'):

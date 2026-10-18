@@ -12,7 +12,7 @@ from .readability import readability_issues, h3_volume_regressions, READABILITY_
 from .section_identity import bind_sections, carry_sections
 from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .claim_scope import scope_issues
-from .content_edits import content_blocks, apply_block_edits, REPAIR_OUTPUT_CONFIG
+from .content_edits import content_blocks, apply_block_edits, validated_block_edits, REPAIR_OUTPUT_CONFIG
 from .content_quality import (ContentQualityError, audit, final_review_requirements,
                               response_text, audit_facts, source_evidence, explicit_risk_guarantees,
                               snapshot, parse_audit)
@@ -67,6 +67,9 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
     if packet is not None:
         from .review_scope import validate_edits
         validate_edits(raw,packet)
+    # Unchanged members of a grouped repair neither reject valid edits nor
+    # count as addressing a separate finding.
+    raw = json.dumps({'edits':validated_block_edits(text,raw)},ensure_ascii=False)
     candidate = apply_block_edits(text, raw)
     required_ids = {loc['id'] for check in report['checks'] if check['status'] == 'fail'
                     for loc in check.get('affected_blocks', [])}
@@ -76,7 +79,23 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
     # A presentation finding can describe a whole prose run. Reorganizing two
     # paragraphs can fix that run while preserving another correct paragraph.
     # These are edit-coverage checks only; the candidate still needs full QA.
-    groups=[set(f['block_ids']) for f in report.get('editorial_findings',[]) if f['severity']=='blocking']
+    findings=[f for f in report.get('editorial_findings',[]) if f['severity']=='blocking']
+    groups=[set(f['block_ids']) for f in findings]
+    # Presentation can be repaired by inserting a table/list in another writable
+    # paragraph of the same section. This checks edit coverage, never QA success
+    # or permission to edit a read-only paragraph.
+    sections={};current=None;fenced=False
+    for block in content_blocks(text):
+        for line in block['text'].splitlines():
+            if line.lstrip().startswith(('```','~~~')):
+                fenced=not fenced
+            elif not fenced and re.match(r'^[ \t]{0,3}#{1,6}[ \t]+',line):
+                current=(block['id'],line)
+        sections[block['id']]=current
+    for finding,group in zip(findings,groups):
+        if finding.get('stage_to_fix')=='presentation':
+            parents={sections[i] for i in group if sections.get(i) is not None}
+            group.update(i for i in touched if sections.get(i) in parents)
     covered=set().union(*groups) if groups else set()
     missed = required_ids - covered - touched
     missed_groups=[sorted(group) for group in groups if not group & touched]

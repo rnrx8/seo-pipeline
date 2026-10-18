@@ -7,6 +7,62 @@ from pipeline.review_scope import repair_packet,validate_edits
 from pipeline.content_quality import ContentQualityError
 
 class RepairReadabilityScopeTests(unittest.TestCase):
+    def test_unchanged_group_member_is_preserved_without_rejecting_real_changes(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='## 説明\n\n'+'あ'*140+'\n\n'+'い'*170
+        ids=[b['id'] for b in content_blocks(text)[1:]]
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':i} for i in ids]}],
+                'editorial_findings':[{'severity':'blocking','block_ids':ids}]}
+        raw=json.dumps({'edits':[{'id':ids[0],'new':'あ'*120},{'id':ids[1],'new':'い'*170}]})
+        with patch('pipeline.step_content_audit.carry_sections',return_value={}):
+            result,_=apply_reviewed_edits(text,raw,None,report,readability_issues(text),'',text,None,{},None)
+        self.assertIn('い'*170,result)
+        self.assertEqual(readability_issues(result),[])
+
+    def test_unchanged_edit_cannot_count_as_fixing_a_separate_finding(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='## 説明\n\n一つめ。\n\n二つめ。'
+        ids=[b['id'] for b in content_blocks(text)[1:]]
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':i} for i in ids]}],
+                'editorial_findings':[{'severity':'blocking','block_ids':[i]} for i in ids]}
+        raw=json.dumps({'edits':[{'id':ids[0],'new':'直した一つめ。'},{'id':ids[1],'new':'二つめ。'}]})
+        with self.assertRaisesRegex(ContentQualityError,'問題の修正がありません'):
+            apply_reviewed_edits(text,raw,None,report,[],'',text,None,{},None)
+
+    def test_noop_only_unknown_and_duplicate_addresses_are_rejected(self):
+        text='# 記事\n\n本文。';block=content_blocks(text)[1]
+        for edits in ([{'id':block['id'],'new':block['text']}],
+                      [{'id':'block-9999','new':block['text']}],
+                      [{'id':block['id'],'new':block['text']},{'id':block['id'],'new':'修正。'}]):
+            with self.subTest(edits=edits), self.assertRaises(ContentQualityError):
+                apply_block_edits(text,json.dumps({'edits':edits}))
+
+    def test_unchanged_outside_scope_address_is_still_rejected(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='# 記事\n\n対象。\n\n対象外。';bs=content_blocks(text)
+        raw=json.dumps({'edits':[{'id':bs[1]['id'],'new':'修正。'},{'id':bs[2]['id'],'new':bs[2]['text']}]})
+        with self.assertRaisesRegex(ContentQualityError,'指摘対象外'):
+            apply_reviewed_edits(text,raw,{'target_block_ids':[bs[1]['id']]},{'checks':[]},[],'',text,None,{},None)
+
+    def test_presentation_can_be_fixed_elsewhere_in_its_section_only(self):
+        from pipeline.step_content_audit import apply_reviewed_edits
+        text='# 記事\n\n### A\n\n紹介。\n\n特徴。\n\n### B\n\n別の紹介。'
+        bs=content_blocks(text);target=bs[3]['id']
+        report={'checks':[{'key':'prose_quality','status':'fail','affected_blocks':[{'id':target}]}],
+                'editorial_findings':[{'severity':'blocking','stage_to_fix':'presentation','block_ids':[target]}]}
+        table='\n\n| 項目 | 内容 |\n|---|---|\n| 特徴 | 説明 |'
+        with patch('pipeline.step_content_audit.carry_sections',return_value={}):
+            raw=json.dumps({'edits':[{'id':bs[2]['id'],'new':bs[2]['text']+table}]})
+            result,_=apply_reviewed_edits(text,raw,None,report,[],'',text,None,{},None)
+            self.assertIn(table,result)
+        raw=json.dumps({'edits':[{'id':bs[-1]['id'],'new':bs[-1]['text']+table}]})
+        with self.assertRaisesRegex(ContentQualityError,'問題の修正がありません'):
+            apply_reviewed_edits(text,raw,None,report,[],'',text,None,{},None)
+        report['editorial_findings'][0]['stage_to_fix']='article'
+        raw=json.dumps({'edits':[{'id':bs[2]['id'],'new':bs[2]['text']+table}]})
+        with self.assertRaisesRegex(ContentQualityError,'問題の修正がありません'):
+            apply_reviewed_edits(text,raw,None,report,[],'',text,None,{},None)
+
     def test_grouped_prose_finding_preserves_an_unchanged_correct_paragraph(self):
         from pipeline.step_content_audit import apply_reviewed_edits
         text='## 説明\n\n'+'あ'*140+'\n\n'+'い'*170

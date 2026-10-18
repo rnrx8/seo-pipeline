@@ -242,7 +242,8 @@ def main():
         grammar_recovery='--resume-after-grammar-fix' in sys.argv
         approved_qa_recovery='--resume-after-approved-qa-budget-extension' in sys.argv
         outline_capacity_recovery='--resume-after-outline-review-capacity-fix' in sys.argv
-        presentation_recovery='--resume-after-presentation-contract-fix' in sys.argv
+        saved_patch=(recorded_diagnosis or {}).get('saved_patch')
+        presentation_recovery='--resume-after-presentation-contract-fix' in sys.argv or bool(saved_patch)
         final_body_recheck='--resume-final-body-recheck' in sys.argv
         feedback_routing_recovery='--resume-after-feedback-routing-fix' in sys.argv or claim_type_recovery or reread_recovery
         if previous['status']!='stopped' or (previous.get('unsettled_calls')!=0 and not (special_recovery or handoff_recovery or recorder_hash_recovery or feedback_routing_recovery or grammar_recovery or approved_qa_recovery or outline_capacity_recovery or presentation_recovery or final_body_recheck or recorded_diagnosis)) or resume_from not in ('research_plan','fact_sheet','research_completeness','outline','research_validation','content_audit'):
@@ -273,17 +274,18 @@ def main():
             from pipeline.content_quality import audit_facts,final_review_requirements,snapshot,source_evidence
             from pipeline.step_content_audit import apply_reviewed_edits,failed_audit_checkpoint
             from pipeline.research_requirements import _require_matrix_strict
-            authorization=json.loads((root/'approved-qa-budget-extension.json').read_text())
+            authorization=(None if saved_patch else json.loads((root/'approved-qa-budget-extension.json').read_text()))
             ledgers=[json.loads(p.read_text()) for p in (root/'ledger').glob('*.json')]
             calls=[c for ledger in ledgers for c in ledger['calls']]
             if (resume_from!='content_audit' or previous['error_type']!='ContentQualityError' or len(ledgers)!=1
-                    or authorization['new_cap_usd']!=manifest['cap_usd'] or any(c['status']=='pending' for c in calls)
+                    or (authorization is not None and authorization['new_cap_usd']!=manifest['cap_usd']) or any(c['status']=='pending' for c in calls)
                     or calls[-1]['status']!='accounted' or calls[-1].get('review_operation',{}).get('role')!='repair'):
                 raise RuntimeError('Expected completed repair responses under the approved cap')
             uncertain=[c for c in calls if c.get('model')!='search' and c['status']!='accounted']
-            diagnosis=json.loads((root/'grammar-recovery.json').read_text())
-            if len(uncertain)!=3 or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9:
-                raise RuntimeError('Uncertain expenses changed')
+            if not saved_patch:
+                diagnosis=json.loads((root/'grammar-recovery.json').read_text())
+                if len(uncertain)!=3 or abs(sum(c['reserved_usd'] for c in uncertain)-diagnosis['expense_reservations_retained_usd'])>1e-9:
+                    raise RuntimeError('Uncertain expenses changed')
             _require_matrix_strict(job['id'])
             article=get(job['id'],'article');outline=get(job['id'],'outline')['content_text']
             if sha(article)!=previous['artifacts']['article']:raise RuntimeError('Stopped body changed')
@@ -294,16 +296,25 @@ def main():
             report=failed_audit_checkpoint(job['id'],snapshot(article['content_text'],facts,outline,contract,requirements,sources))
             if report is None or set(report.get('phases',{}))!={'evidence','coverage','language','consistency','organization'}:
                 raise RuntimeError('Complete failed current-body QA required')
-            request=json.loads((root/'requests/0090.json').read_text())
+            request_id=saved_patch['request_id'] if saved_patch else '0090'
+            import re
+            if not re.fullmatch(r'\d{4}',request_id):raise RuntimeError('Invalid recorded request ID')
+            response_step=saved_patch['artifact'] if saved_patch else 'content_repair_response_1'
+            if not re.fullmatch(r'content_repair_response_\d+(?:_retry_\d+)?',response_step):raise RuntimeError('Invalid repair artifact')
+            request=json.loads((root/'requests'/(request_id+'.json')).read_text())
             packet=json.loads(request['messages'][0]['content'])
-            raw=get(job['id'],'content_repair_response_1')['content_text']
+            raw=get(job['id'],response_step)['content_text']
+            if saved_patch and (saved_patch['request_sha256']!=sha(request)
+                    or saved_patch['raw_sha256']!=hashlib.sha256(raw.encode()).hexdigest()
+                    or saved_patch['failed_audit_sha256']!=sha(get(job['id'],'content_audit'))):
+                raise RuntimeError('Saved repair differs from diagnosis')
             candidate,mapping=apply_reviewed_edits(article['content_text'],raw,packet,report,report['structural_issues'],facts,
                 outline,job.get('word_count_setting'),contract,article['meta']['section_map'],article['meta'].get('cta_placement'))
             dump(root/'presentation-contract-recovery.json',{'previous':previous,'previous_article':article,
-                'previous_audit':report,'saved_model_response':'0090','no_manual_body_edits':True,
+                'previous_audit':report,'saved_model_response':request_id,'no_manual_body_edits':True,
                 'candidate_sha256':hashlib.sha256(candidate.encode()).hexdigest(),'no_prior_verdict_promoted':True,
-                'reason':'Group-level edits may preserve correct paragraphs; quoted CTA is a separate prose run; all mechanical gates rerun before fresh five-role QA'})
-            save(job['id'],'article_content_repair_1','text/markdown',candidate,meta={'audited':False,'revalidated_saved_response':'0090'})
+                'reason':'Revalidate the unchanged saved model patch through current scope, edit coverage and mechanical checks; require fresh five-role QA'})
+            save(job['id'],'article_content_repair_1','text/markdown',candidate,meta={'audited':False,'revalidated_saved_response':request_id})
             save(job['id'],'article','text/markdown',candidate,meta={**article['meta'],'section_map':mapping,'content_audited':False,'content_repaired':True})
             save(job['id'],'content_audit','application/json',json.dumps({'valid':False,'status':'revalidated_model_patch_requires_full_qa'}),meta={'valid':False})
         if resume_from=='research_validation' and not (approved_qa_recovery or outline_capacity_recovery):raise RuntimeError('QA resume requires the recorded extension')
