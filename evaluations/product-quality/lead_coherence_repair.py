@@ -11,13 +11,14 @@ from stage6_replay import capture
 
 def main():
     prior, root = (Path(v).resolve() for v in sys.argv[1:3])
-    parent=prior;calls=[];visited=set()
+    transfer_root=Path(sys.argv[sys.argv.index('--lead-transfer-controls')+1]).resolve() if '--lead-transfer-controls' in sys.argv else None
+    parent=transfer_root or prior;calls=[];visited=set()
     while parent:
         if str(parent) in visited:raise RuntimeError('Repeated cost history')
         visited.add(str(parent))
         calls += [c for p in (parent/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
         manifest=json.loads((parent/'manifest.json').read_text())
-        source=Path(manifest['source']) if 'prior_calls_sha256' in manifest else parent
+        source=Path(manifest['source']) if 'source' in manifest else parent
         for value in manifest.get('extra_allowance_history',[]):
             history=Path(value)
             if str(history) in visited:raise RuntimeError('Repeated extra cost history')
@@ -70,6 +71,19 @@ def main():
     original=(source/'merged-article-v2.md').read_text();body_start=original.index('\n## ')
     title=original.split('\n',1)[0]
     initial=json.loads((prior/'proposal.json').read_text())['lead']
+    transfer_controls=None
+    if transfer_root:
+        transfer_manifest=json.loads((transfer_root/'manifest.json').read_text())
+        transfer_result=json.loads((transfer_root/'result.json').read_text())
+        if transfer_result.get('status')!='completed' or transfer_result.get('pending_calls')!=0:
+            raise RuntimeError('Transfer controls must be complete')
+        if any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest
+               for name,digest in transfer_manifest['pipeline_sha256'].items()):
+            raise RuntimeError('Cannot reuse transfer controls after policy changes')
+        transfer_controls={c['id']:c for c in transfer_result['cases']}
+        if transfer_controls['relationship']['valid'] or not transfer_controls['direct']['valid']:
+            raise RuntimeError('Expected failed relationship lead and passed direct control')
+        initial=transfer_controls['relationship']['lead']
     text=title+'\n\n'+initial+original[body_start:]
     outline=json.loads((context_root/'outline.json').read_text())['content_text']
     normal_source=Path(json.loads((source/'manifest.json').read_text())['source'])
@@ -85,6 +99,8 @@ def main():
         need['answer_requirements']=['冒頭で何を探す人の話か自然に分かり、記事の自己説明で始めない',
             '具体的な事情や得たい体験から読む理由へ自然につながり、読者全員の心理を決めつけない',
             'アプリの推薦は後続の比較章へ任せ、リードは本文で得られる判断の見通しへつなぐ']
+    if '--request-feedback' in sys.argv:
+        feedback=Path(sys.argv[sys.argv.index('--request-feedback')+1]).read_text().strip()
     def review(lead,name,decision=need,keyword='セカンドパートナー 探し方'):
         scoped=title+'\n\n'+lead if name!='direct' else '# 登録メールが届かないとき\n\n'+lead
         request,design=capture(scoped,decision,'coverage',facts='この検査は導入だけ。新しい数値・機能の断定は不要。',
@@ -98,11 +114,15 @@ def main():
         write(root/(name+'.json'),r)
         return r
     write(root/'manifest.json',{'scope':'One normal lead-only repair; explicit real keyword in scoped QA; not whole article QA',
-        'prior_trial':str(prior),'previous_calls_sha256':sha(calls),'previous_partial_usage_usd':previous_cost,
+        'prior_trial':str(transfer_root or prior),'context_trial':str(prior),
+        'previous_calls_sha256':sha(calls),'previous_partial_usage_usd':previous_cost,
         'this_cap_usd':cap,'approved_partial_cap_usd':7.5,'source_body_raw_sha256':hashlib.sha256(original.encode()).hexdigest(),
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
         'expected':{'before':None if '--reuse-repair-controls' in sys.argv else False,'after':True,'direct':True},
-        'before_review_reused':'--reuse-repair-controls' in sys.argv,'handwritten_lead_examples_in_request':False})
+        'before_review_reused':bool(transfer_root) or '--reuse-repair-controls' in sys.argv,
+        'reused_transfer_controls':str(transfer_root) if transfer_root else None,
+        'request_feedback_sha256':sha(feedback),'initial_lead_sha256':sha(initial),
+        'handwritten_lead_examples_in_request':False})
     reuse_controls='--reuse-trial-controls' in sys.argv
     if reuse_controls:
         saved=json.loads((prior/'result.json').read_text())
@@ -123,12 +143,13 @@ def main():
             raise RuntimeError('Control policy changed; cannot reuse repair controls')
     result={'status':'running'}
     try:
-        before=({'valid':False,**{k:controls['b'][k] for k in ('checks','editorial_findings','lead_review')},
+        before=({k:transfer_controls['relationship'][k] for k in ('valid','checks','editorial_findings','lead_review')} if transfer_controls else {'valid':False,**{k:controls['b'][k] for k in ('checks','editorial_findings','lead_review')},
                  'reused_control':str(prior/'result.json')+'#b'} if reuse_controls else json.loads((prior/'after.json').read_text()) if reuse_repair else review(initial,'before'))
         if reuse_repair:
             before=json.loads((prior/'after.json').read_text())
             before['reused_control']=str(prior/'after.json')
-        if reuse_controls or reuse_repair:write(root/'before.json',before)
+        if transfer_controls:before['reused_control']=str(transfer_root/'result.json')+'#relationship'
+        if transfer_controls or reuse_controls or reuse_repair:write(root/'before.json',before)
         lead_id='block-0002'
         human={'check_key':'coverage','severity':'blocking','block_ids':[lead_id],
             'problem':'気持ちの流れはあるが、何の相手を探す話か冒頭で分からない。末尾も制作側の説明であり、自然な読者への案内に整える必要がある。',
@@ -163,7 +184,10 @@ def main():
         (root/'merged-article.md').write_text(candidate)
         after=review(lead,'after')
         direct_text='登録メールが届かないときは、メールアドレスと迷惑メールフォルダを確認し、登録画面から一度再送してください。それでも届かなければサポートへ問い合わせます。'
-        if reuse_controls:
+        if transfer_controls:
+            direct={k:transfer_controls['direct'][k] for k in ('valid','checks','editorial_findings','lead_review')}
+            direct['reused_control']=str(transfer_root/'result.json')+'#direct';write(root/'direct.json',direct)
+        elif reuse_controls:
             direct={'valid':True,**{k:controls['c'][k] for k in ('checks','editorial_findings','lead_review')},
                     'reused_control':str(prior/'result.json')+'#c'}
             write(root/'direct.json',direct)

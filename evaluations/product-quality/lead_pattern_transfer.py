@@ -1,4 +1,4 @@
-"""Two synthetic writing-stage transfer controls under the same partial allowance.
+"""Scoped lead transfer controls under the same partial allowance.
 
 Uses the real shared writer and coverage request; not fresh research/normal-flow QA.
 """
@@ -43,7 +43,7 @@ def main():
         QUALITY_BUDGET_DIR=str(root/'ledger'),QUALITY_TOTAL_LIMIT_USD=str(cap))
     sys.path.insert(0,str(BACKEND))
     from pipeline import db,ai,quality_budget as qb,tiered_research as tr
-    from pipeline import step_article,editorial_blueprint as bp,focused_quality as fq
+    from pipeline import step_article,step_outline,editorial_blueprint as bp,focused_quality as fq
     from pipeline import article_design as ad,editorial_findings as ef
     def forbidden(*a,**kw):raise RuntimeError('Production DB forbidden')
     db._base=db._headers=forbidden
@@ -79,16 +79,40 @@ def main():
          'reader_context':'仕事後に学び直したいが、小さな疑問を一人で抱えると先へ進めなくなるという仮説。目標は疑問を解きながら自分でも学べる感覚を得ること。全読者の経験ではない。',
          'answer_requirements':['学び直しの方法を選ぶ主題が冒頭から分かる','望む変化や具体的な事情から、方法を比べる意味へ自然につながる','本文で比較する前に講座へ推薦を決めず、数値・経験・効果を創作しない']}
     ]
-    write(root/'manifest.json',{'scope':'Synthetic writing-stage transfer, not normal-flow reproducibility',
+    auto_plan='--auto-plan' in sys.argv
+    if '--cases-file' in sys.argv:
+        cases=json.loads(Path(sys.argv[sys.argv.index('--cases-file')+1]).read_text())
+        if not cases or len({c['id'] for c in cases})!=len(cases):
+            raise RuntimeError('Cases must have unique IDs')
+    write(root/'manifest.json',{'scope':'Scoped lead planning and writing transfer, not full normal-flow reproducibility' if auto_plan else 'Synthetic writing-stage transfer, not normal-flow reproducibility',
         'prior_trial':str(prior),'prior_calls_sha256':sha(past),'prior_usage_usd':expense,'cap_usd':cap,
         'cases':cases,'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (BACKEND/'pipeline').glob('*.py')},
+        'automatic_lead_direction':auto_plan,'expected_behavior_withheld_from_generation':True,
+        'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         'handwritten_lead_examples_in_generation':False,'production_changes':False})
     result={'status':'running','cases':[]}
     try:
         for case in cases:
+            # Real editorial requirements belong in both planning and writing.
+            # Only the evaluator's anticipated rhetorical choice is withheld.
+            generation={k:v for k,v in case.items() if k!='expected_behavior'}
+            if auto_plan:
+                generation.pop('editorial_direction',None)
+                plan_request=dict(model=step_outline.MODEL,max_tokens=900,
+                    system=step_outline.SYSTEM_PROMPT+'\n'+bp.POLICY,
+                    output_config=bp.model_output_config(bp.obj({'lead_direction':bp.STRING})),
+                    messages=[{'role':'user','content':json.dumps({
+                        'scope':'リード方針だけをlead_directionへ返す部分設計。今回必要な働き、その理由、具体的な素材を短く示す。完成リード・例文は作らない。',
+                        **generation},ensure_ascii=False)}])
+                with qb.scope('lead-pattern-transfer','outline'):plan_response=measured(client,**plan_request)
+                direction=json.loads(ai.message_text(plan_response))['lead_direction'].strip()
+                if not direction:raise RuntimeError('Empty lead direction')
+                generation['lead_direction']=direction
+                write(root/(case['id']+'-plan.json'),{'lead_direction':direction})
+                print(case['id'],'planned',flush=True)
             request=dict(model=step_article.MODEL,max_tokens=1000,system=step_article.SYSTEM_PROMPT,
                 output_config=bp.model_output_config(bp.obj({'lead':bp.STRING})),
-                messages=[{'role':'user','content':json.dumps({'scope':'与えられた試験条件から記事のリードだけを1案JSONのleadへ返す。',**case},ensure_ascii=False)}])
+                messages=[{'role':'user','content':json.dumps({'scope':'与えられた試験条件から記事のリードだけを1案JSONのleadへ返す。',**generation},ensure_ascii=False)}])
             with qb.scope('lead-pattern-transfer','article'):response=measured(client,**request)
             lead=json.loads(ai.message_text(response))['lead'].strip();text='# '+case['title']+'\n\n'+lead
             need={'id':'d1','role':'primary','scope':'導入のみ','depends_on':[],'research_ids':['q1'],
@@ -100,6 +124,7 @@ def main():
             checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],text)
             findings=ef.checked_findings(value,checks,text);checks=ad.checked_result(checks,value,design,text)
             result['cases'].append({'id':case['id'],'lead':lead,'lead_chars':len(lead),
+                'lead_direction':generation.get('lead_direction',generation.get('editorial_direction')),
                 'valid':all(c['status']!='fail' for c in checks),'checks':checks,
                 'lead_review':value.get('lead_review'),'editorial_findings':findings})
             write(root/'result.json',result);print(case['id'],result['cases'][-1]['valid'],flush=True)
