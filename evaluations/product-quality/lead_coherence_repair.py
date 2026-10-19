@@ -80,6 +80,10 @@ def main():
     original=(source/'merged-article-v2.md').read_text();body_start=original.index('\n## ')
     title=original.split('\n',1)[0]
     initial=json.loads((prior/'proposal.json').read_text())['lead']
+    initial_override=None
+    if '--initial-proposal' in sys.argv:
+        initial_override=Path(sys.argv[sys.argv.index('--initial-proposal')+1]).resolve()
+        initial=json.loads(initial_override.read_text())['lead']
     transfer_controls=None
     if transfer_root:
         transfer_manifest=json.loads((transfer_root/'manifest.json').read_text())
@@ -119,6 +123,12 @@ def main():
             'アプリの推薦は後続の比較章へ任せ、リードは本文で得られる判断の見通しへつなぐ']
     if '--request-feedback' in sys.argv:
         feedback=Path(sys.argv[sys.argv.index('--request-feedback')+1]).read_text().strip()
+    reference=None
+    if '--editorial-reference' in sys.argv:
+        reference=json.loads(Path(sys.argv[sys.argv.index('--editorial-reference')+1]).read_text())
+        if not reference.get('reference_text') or not reference.get('scope'):
+            raise RuntimeError('Editorial reference needs text and its authorized scope')
+        feedback+='\n\n【ユーザーが方向性を評価した参照原稿と今回の修正範囲】\n'+json.dumps(reference,ensure_ascii=False)
     def review(lead,name,decision=need,keyword='セカンドパートナー 探し方'):
         scoped=title+'\n\n'+lead if name!='direct' else '# 登録メールが届かないとき\n\n'+lead
         design=None
@@ -149,7 +159,9 @@ def main():
         'before_review_reused':bool(transfer_root) or '--reuse-repair-controls' in sys.argv,
         'reused_transfer_controls':str(transfer_root) if transfer_root else None,
         'request_feedback_sha256':sha(feedback),'initial_lead_sha256':sha(initial),
-        'handwritten_lead_examples_in_request':False})
+        'initial_override':str(initial_override) if initial_override else None,
+        'editorial_reference':reference,'handwritten_lead_examples_in_request':bool(reference),
+        'scope_limitation':'Reference-guided revision, not zero-shot generation proof' if reference else None})
     reuse_controls='--reuse-trial-controls' in sys.argv
     if reuse_controls:
         saved=json.loads((prior/'result.json').read_text())
@@ -162,12 +174,21 @@ def main():
             raise RuntimeError('Expected failed generated lead and passed direct control')
     reuse_repair='--reuse-repair-controls' in sys.argv
     if reuse_repair:
+        if initial_override:raise RuntimeError('Changed initial text cannot reuse its before review')
         saved=json.loads((prior/'result.json').read_text())
         if saved.get('status')!='completed' or saved.get('pending_calls')!=0:
             raise RuntimeError('Only completed repair controls can be reused')
         if any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest
                for name,digest in pm['pipeline_sha256'].items()):
             raise RuntimeError('Control policy changed; cannot reuse repair controls')
+    reuse_direct='--reuse-direct-control' in sys.argv
+    if reuse_direct:
+        saved=json.loads((prior/'result.json').read_text())
+        if (saved.get('status')!='completed' or saved.get('pending_calls')!=0
+            or not json.loads((prior/'direct.json').read_text())['valid']
+            or any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest
+                   for name,digest in pm['pipeline_sha256'].items())):
+            raise RuntimeError('Only unchanged, completed direct control can be reused')
     result={'status':'running'}
     try:
         before=({k:transfer_controls['relationship'][k] for k in ('valid','checks','editorial_findings','lead_review')} if transfer_controls else {'valid':False,**{k:controls['b'][k] for k in ('checks','editorial_findings','lead_review')},
@@ -210,6 +231,8 @@ def main():
         raw=ai.message_text(response)
         candidate,binding=ca.apply_reviewed_edits(text,raw,packet,report,[],facts,outline,None,{},bind_sections(text,outline))
         lead=candidate.split('\n\n',1)[1].split('\n## ',1)[0].strip()
+        if reference and reference.get('preserve_prefix') and not lead.startswith(reference['reference_text']):
+            raise RuntimeError('Preferred opening was changed despite the scoped reference')
         if candidate[candidate.index('\n## '):]!=original[body_start:]:raise RuntimeError('Non-lead article body changed')
         write(root/'proposal.json',{'lead':lead,'characters':len(lead)})
         (root/'merged-article.md').write_text(candidate)
@@ -222,7 +245,7 @@ def main():
             direct={'valid':True,**{k:controls['c'][k] for k in ('checks','editorial_findings','lead_review')},
                     'reused_control':str(prior/'result.json')+'#c'}
             write(root/'direct.json',direct)
-        elif reuse_repair:
+        elif reuse_repair or reuse_direct:
             direct=json.loads((prior/'direct.json').read_text())
             direct['reused_control']=str(prior/'direct.json');write(root/'direct.json',direct)
         else:
