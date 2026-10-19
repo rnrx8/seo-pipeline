@@ -7,10 +7,17 @@ import sys
 
 from reader_depth_followup import BACKEND, sha, write
 from stage6_replay import capture
+from editorial_reference import load_accepted_reference, reference_feedback
 
 
 def main():
     prior, root = (Path(v).resolve() for v in sys.argv[1:3])
+    accepted_reference=None
+    if '--accepted-reference' in sys.argv:
+        if '--editorial-reference' in sys.argv:
+            raise RuntimeError('Choose one explicit editorial reference')
+        accepted_reference=load_accepted_reference(
+            sys.argv[sys.argv.index('--accepted-reference')+1], 'セカンドパートナー 探し方')
     transfer_root=Path(sys.argv[sys.argv.index('--lead-transfer-controls')+1]).resolve() if '--lead-transfer-controls' in sys.argv else None
     history_root=Path(sys.argv[sys.argv.index('--cost-history-root')+1]).resolve() if '--cost-history-root' in sys.argv else transfer_root or prior
     parent=history_root;calls=[];visited=set()
@@ -123,12 +130,12 @@ def main():
             'アプリの推薦は後続の比較章へ任せ、リードは本文で得られる判断の見通しへつなぐ']
     if '--request-feedback' in sys.argv:
         feedback=Path(sys.argv[sys.argv.index('--request-feedback')+1]).read_text().strip()
-    reference=None
+    reference=accepted_reference
     if '--editorial-reference' in sys.argv:
         reference=json.loads(Path(sys.argv[sys.argv.index('--editorial-reference')+1]).read_text())
         if not reference.get('reference_text') or not reference.get('scope'):
             raise RuntimeError('Editorial reference needs text and its authorized scope')
-        feedback+='\n\n【ユーザーが方向性を評価した参照原稿と今回の修正範囲】\n'+json.dumps(reference,ensure_ascii=False)
+    feedback=reference_feedback(feedback,reference)
     def review(lead,name,decision=need,keyword='セカンドパートナー 探し方'):
         scoped=title+'\n\n'+lead if name!='direct' else '# 登録メールが届かないとき\n\n'+lead
         design=None
