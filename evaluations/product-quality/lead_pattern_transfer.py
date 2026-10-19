@@ -16,7 +16,9 @@ def main():
     prior,root=(Path(v).resolve() for v in sys.argv[1:3])
     previous=json.loads((prior/'result.json').read_text())
     manifest=json.loads((prior/'manifest.json').read_text())
-    if previous.get('status')!='completed' or previous.get('pending_calls')!=0:
+    budget_stopped=(previous.get('status')=='stopped' and previous.get('error_type')=='ContentQualityError'
+        and '予算上限' in previous.get('error',''))
+    if (previous.get('status')!='completed' and not budget_stopped) or previous.get('pending_calls')!=0:
         raise RuntimeError('Previous lead trial is incomplete')
     histories=[];parent=prior
     while parent:
@@ -34,7 +36,16 @@ def main():
     if any(c['status']=='pending' for c in past):raise RuntimeError('Prior request is pending')
     expense=sum(c.get('cost_usd',c['reserved_usd']) for c in past)
     if abs(expense-previous['combined_partial_usage_usd'])>1e-8:raise RuntimeError('Allowance history mismatch')
-    cap=7.5-expense
+    approved_cap=7.5
+    authorization=None
+    if '--budget-authorization' in sys.argv:
+        authorization=json.loads(Path(sys.argv[sys.argv.index('--budget-authorization')+1]).read_text())
+        if (authorization.get('status')!='approved' or authorization.get('previous_cap_usd')!=7.5
+            or authorization.get('additional_cap_usd')!=1.5 or not authorization.get('user_reply')):
+            raise RuntimeError('Explicit additional budget approval is required')
+        approved_cap=authorization['previous_cap_usd']+authorization['additional_cap_usd']
+    cap=approved_cap-expense
+    if authorization:cap=min(cap,authorization['additional_cap_usd'])
     if cap<=0:raise RuntimeError('Allowance exhausted')
     root.mkdir(parents=True,exist_ok=True)
     with (root/'started.json').open('x') as f:json.dump({'prior_usd':expense,'this_cap_usd':cap},f)
@@ -86,6 +97,7 @@ def main():
             raise RuntimeError('Cases must have unique IDs')
     write(root/'manifest.json',{'scope':'Scoped lead planning and writing transfer, not full normal-flow reproducibility' if auto_plan else 'Synthetic writing-stage transfer, not normal-flow reproducibility',
         'prior_trial':str(prior),'prior_calls_sha256':sha(past),'prior_usage_usd':expense,'cap_usd':cap,
+        'approved_partial_cap_usd':approved_cap,'budget_authorization':authorization,
         'cases':cases,'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (BACKEND/'pipeline').glob('*.py')},
         'automatic_lead_direction':auto_plan,'expected_behavior_withheld_from_generation':True,
         'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -117,9 +129,13 @@ def main():
             lead=json.loads(ai.message_text(response))['lead'].strip();text='# '+case['title']+'\n\n'+lead
             need={'id':'d1','role':'primary','scope':'導入のみ','depends_on':[],'research_ids':['q1'],
                   'question':case['keyword'],'answer_requirements':case['answer_requirements']}
+            direction=generation.get('lead_direction',generation.get('editorial_direction'))
+            scoped_design={'version':ad.VERSION,'blueprint_sha256':sha({'lead_direction':direction}),
+                'reader_decisions':[need],'sections':[],
+                'lead_direction':direction or '今回の主題と読む理由、読後の助けを伝える'}
             req,design=capture(text,need,'coverage',facts=case['facts'],extra_requirements={
                 'keyword':case['keyword'],'custom_prompt':case['request'],
-                'evaluation_scope':'生成された導入だけを確認。架空条件に基づく対照試験。未提示の本文やサービスを要求しない。'})
+                'evaluation_scope':'生成された導入だけを確認する部分試験。与えた資料と読者文脈に照合し、未提示の本文やサービスを要求しない。'},design=scoped_design)
             with qb.scope('lead-pattern-transfer','quality'):value,usage=tr.checked_request('lead-pattern-transfer',case['id'],req)
             checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],text)
             findings=ef.checked_findings(value,checks,text);checks=ad.checked_result(checks,value,design,text)
@@ -135,7 +151,7 @@ def main():
         calls=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
         cost=sum(c.get('cost_usd',c['reserved_usd']) for c in calls)
         result.update(new_usage_usd=cost,prior_usage_usd=expense,combined_partial_usage_usd=expense+cost,
-            pending_calls=sum(c['status']=='pending' for c in calls),approved_partial_cap_usd=7.5,production_changes=False)
+            pending_calls=sum(c['status']=='pending' for c in calls),approved_partial_cap_usd=approved_cap,production_changes=False)
         write(root/'result.json',result)
         print(json.dumps({k:v for k,v in result.items() if k!='cases'},ensure_ascii=False),flush=True)
 

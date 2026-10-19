@@ -12,7 +12,8 @@ from stage6_replay import capture
 def main():
     prior, root = (Path(v).resolve() for v in sys.argv[1:3])
     transfer_root=Path(sys.argv[sys.argv.index('--lead-transfer-controls')+1]).resolve() if '--lead-transfer-controls' in sys.argv else None
-    parent=transfer_root or prior;calls=[];visited=set()
+    history_root=Path(sys.argv[sys.argv.index('--cost-history-root')+1]).resolve() if '--cost-history-root' in sys.argv else transfer_root or prior
+    parent=history_root;calls=[];visited=set()
     while parent:
         if str(parent) in visited:raise RuntimeError('Repeated cost history')
         visited.add(str(parent))
@@ -30,7 +31,15 @@ def main():
         else:parent=None
     if any(c['status']=='pending' for c in calls):raise RuntimeError('Pending earlier requests')
     previous_cost=sum(c.get('cost_usd',c['reserved_usd']) for c in calls)
-    cap=7.5-previous_cost
+    approved_cap=7.5
+    authorization=None
+    if '--budget-authorization' in sys.argv:
+        authorization=json.loads(Path(sys.argv[sys.argv.index('--budget-authorization')+1]).read_text())
+        if (authorization.get('status')!='approved' or authorization.get('previous_cap_usd')!=7.5
+            or authorization.get('additional_cap_usd')!=1.5 or not authorization.get('user_reply')):
+            raise RuntimeError('Explicit additional budget approval is required')
+        approved_cap=authorization['previous_cap_usd']+authorization['additional_cap_usd']
+    cap=approved_cap-previous_cost
     if cap<=0:raise RuntimeError('Approved allowance exhausted')
     root.mkdir(parents=True,exist_ok=True)
     with (root/'started.json').open('x') as f:json.dump({'prior_usage_usd':previous_cost,'cap_usd':cap},f)
@@ -77,13 +86,22 @@ def main():
         transfer_result=json.loads((transfer_root/'result.json').read_text())
         if transfer_result.get('status')!='completed' or transfer_result.get('pending_calls')!=0:
             raise RuntimeError('Transfer controls must be complete')
-        if any(hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest
-               for name,digest in transfer_manifest['pipeline_sha256'].items()):
+        changed={name for name,digest in transfer_manifest['pipeline_sha256'].items()
+                 if hashlib.sha256((BACKEND/'pipeline'/name).read_bytes()).hexdigest()!=digest}
+        comparison='--compare-repair-policy' in sys.argv
+        if changed and not (comparison and changed=={'step_content_audit.py'}):
             raise RuntimeError('Cannot reuse transfer controls after policy changes')
+        if comparison and changed!={'step_content_audit.py'}:
+            raise RuntimeError('Repair-policy comparison must change only the repair module')
         transfer_controls={c['id']:c for c in transfer_result['cases']}
         if transfer_controls['relationship']['valid'] or not transfer_controls['direct']['valid']:
             raise RuntimeError('Expected failed relationship lead and passed direct control')
         initial=transfer_controls['relationship']['lead']
+    selected_direction=transfer_controls['relationship']['lead_direction'] if transfer_controls else None
+    if '--lead-direction-file' in sys.argv:
+        selected_direction=json.loads(Path(sys.argv[sys.argv.index('--lead-direction-file')+1]).read_text())['lead_direction']
+        if not isinstance(selected_direction,str) or not selected_direction.strip():
+            raise RuntimeError('Selected lead direction must be non-empty')
     text=title+'\n\n'+initial+original[body_start:]
     outline=json.loads((context_root/'outline.json').read_text())['content_text']
     normal_source=Path(json.loads((source/'manifest.json').read_text())['source'])
@@ -103,9 +121,14 @@ def main():
         feedback=Path(sys.argv[sys.argv.index('--request-feedback')+1]).read_text().strip()
     def review(lead,name,decision=need,keyword='セカンドパートナー 探し方'):
         scoped=title+'\n\n'+lead if name!='direct' else '# 登録メールが届かないとき\n\n'+lead
+        design=None
+        if selected_direction and name!='direct':
+            design={'version':ad.VERSION,'blueprint_sha256':sha(selected_direction),
+                'reader_decisions':[decision],'sections':[],
+                'lead_direction':selected_direction}
         request,design=capture(scoped,decision,'coverage',facts='この検査は導入だけ。新しい数値・機能の断定は不要。',
             extra_requirements={'keyword':keyword,'evaluation_scope':'導入だけを検査。本文・表・商品紹介・まとめの省略は欠陥ではない。',
-                'custom_prompt':feedback if name!='direct' else '短い直接操作の回答。感情描写は不要。','measured_lead_chars':len(lead)})
+                'custom_prompt':feedback if name!='direct' else '短い直接操作の回答。感情描写は不要。','measured_lead_chars':len(lead)},design=design)
         with qb.scope('lead-coherence-repair','quality'):value,usage=tr.checked_request('lead-coherence-repair',name,request)
         checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],scoped)
         findings=ef.checked_findings(value,checks,scoped)
@@ -114,9 +137,13 @@ def main():
         write(root/(name+'.json'),r)
         return r
     write(root/'manifest.json',{'scope':'One normal lead-only repair; explicit real keyword in scoped QA; not whole article QA',
-        'prior_trial':str(transfer_root or prior),'context_trial':str(prior),
+        'prior_trial':str(history_root),'context_trial':str(prior),
+        'baseline_transfer_controls':str(transfer_root) if transfer_root else None,
+        'repair_policy_comparison':'--compare-repair-policy' in sys.argv,
+        'selected_lead_direction':selected_direction,
         'previous_calls_sha256':sha(calls),'previous_partial_usage_usd':previous_cost,
-        'this_cap_usd':cap,'approved_partial_cap_usd':7.5,'source_body_raw_sha256':hashlib.sha256(original.encode()).hexdigest(),
+        'this_cap_usd':cap,'approved_partial_cap_usd':approved_cap,'budget_authorization':authorization,
+        'source_body_raw_sha256':hashlib.sha256(original.encode()).hexdigest(),
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
         'expected':{'before':None if '--reuse-repair-controls' in sys.argv else False,'after':True,'direct':True},
         'before_review_reused':bool(transfer_root) or '--reuse-repair-controls' in sys.argv,
@@ -173,6 +200,10 @@ def main():
             report['checks'][0].update(status='fail',reason=human['problem'],affected_blocks=[{'id':lead_id,'reason':human['required_change']}])
         write(root/'consolidated-findings.json',report)
         reqs={'keyword':'セカンドパートナー 探し方','custom_prompt':feedback,'intent_value_context':needs}
+        if selected_direction:
+            reqs['article_design']={'version':ad.VERSION,'blueprint_sha256':sha(selected_direction),
+                'reader_decisions':[need],'sections':[],
+                'lead_direction':selected_direction}
         request,packet=ca.prepare_content_repair(client,job_id='lead-coherence-repair',text=text,report=report,
             requirements=reqs,sources='[]',facts=facts,contract={},issues=[])
         with qb.scope('lead-coherence-repair','article'):response=measured(client,**request)
@@ -205,7 +236,7 @@ def main():
         current=[c for p in (root/'ledger').glob('*.json') for c in json.loads(p.read_text())['calls']]
         cost=sum(c.get('cost_usd',c['reserved_usd']) for c in current)
         result.update(new_usage_usd=cost,previous_partial_usage_usd=previous_cost,
-            combined_partial_usage_usd=previous_cost+cost,approved_partial_cap_usd=7.5,
+            combined_partial_usage_usd=previous_cost+cost,approved_partial_cap_usd=approved_cap,
             pending_calls=sum(c['status']=='pending' for c in current),production_changes=False)
         write(root/'result.json',result)
         print(json.dumps(result,ensure_ascii=False),flush=True)
