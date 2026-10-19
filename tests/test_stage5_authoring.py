@@ -56,7 +56,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             request=send.call_args.kwargs
             self.assertIn(question,request['messages'][0]['content'])
             self.assertIn(ap.LEAD_POLICY,request['system'])
-            self.assertIn('比較・選択',request['system']);self.assertIn('手順・定義',request['system']);self.assertIn('相談・悩み',request['system'])
+            self.assertEqual(request['system'].count(ap.LEAD_POLICY),1)
 
     def test_company_priority_is_shared_without_asserting_rank(self):
         companies=[{'name':'B','recommend_level':2},{'name':'A','recommend_level':5},{'name':'C','recommend_level':0}]
