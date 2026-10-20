@@ -113,7 +113,7 @@ def validate(value, sources, *, product_material_ids=(), has_product=False, has_
     if fit['cta_role']=='appropriate' and (not has_cta or fit['role'] not in ('useful','conditional')):
         raise ContentQualityError('読者価値に接続しないCTAを配置できません。')
     if require_exploration or 'exploration' in value:
-        exploration.validate(value, sources)
+        exploration.validate(value, sources, require_hypothesis_relations=require_exploration)
     return value
 
 

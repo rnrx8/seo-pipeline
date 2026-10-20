@@ -70,13 +70,26 @@ class IntentExplorationTests(unittest.TestCase):
                 value['exploration']['branches'][0]['links'][0]['support'].update(change)
                 with self.assertRaises(ContentQualityError): self.check(value, sources)
 
-    def test_observed_fragment_can_be_cited_but_not_silent_or_invented(self):
+    def test_new_reader_relationship_stays_hypothesis_despite_exact_source_quote(self):
         _, _, sources, value = self.fixture()
         ref = value['exploration']['branches'][0]['links'][0]['support']
         ref.update(kind='observed', source='serp', quote=sources['serp'])
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+        # Historical records keep their original labels; they are not silently
+        # rewritten or upgraded to fresh analysis under the tightened method.
+        ie.validate(value, sources)
+        ref['kind'] = 'hypothesis'
         self.check(value, sources)
         ref['quote'] = ''
+        self.check(value, sources)
+
+    def test_alternative_reader_preference_cannot_be_observed_in_new_analysis(self):
+        _, _, sources, value = self.fixture()
+        ref = value['exploration']['branches'][0]['alternative']['support']
+        ref.update(kind='observed', source='serp', quote=sources['serp'])
         with self.assertRaises(ContentQualityError): self.check(value, sources)
+        ref['kind'] = 'hypothesis'
+        self.check(value, sources)
 
     def test_missing_links_alternative_material_or_usage_cannot_pass(self):
         for key, bad in (('links', []), ('alternative', {}), ('concrete_material', ''), ('article_effect', '')):

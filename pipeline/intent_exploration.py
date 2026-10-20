@@ -18,7 +18,7 @@ POLICY = '''【検索意図を探索してから、記事で答える問いを�
 5. 根源的欲求の名前ではなく、途中で見つけた具体的な事情・得たい体験・生活への影響をconcrete_materialへ残す。article_effectには、その理解で回答・比較軸・説明順序・推薦・具体例がどう変わるかを書く。数字・体験・多数派の実態を具体性のために創作しない。説明用の場面は場面例と分かるようにする。
 6. selectedの各問いへhypothesis_idsで採用するbranchを結び、reader_situation・background_emotion・desired_state・barrierをその文脈に沿ってまとめる。問いへの直接回答と、欲求が生まれた背景の両方を残し、似た仮説をまとめても具体的な事情を消さない。desired_stateは望む生活・体験、after_readingはこの記事で進める一歩として区別する。
 exploration.modeは通常exploratory。単純な操作・定義・案内で深い感情が答えを変えない場合だけdirectとし、scope_reasonに理由を残す。directでもKW分解、必要な文脈、代替の視点は確認する。exploratoryは通常2〜4枝、最大6枝。linksは各枝2〜6件を目安に、directは必要な関係だけでよい。全文の心理解説や全仮説の採用を求めない。
-各supportのkindはobserved/hypothesis。観測は入力keyword・serp・requestの短い連続引用に限る。引用の中に同じ単語があるだけでは、from→toの関係やalternative.differenceまで観測済みとはしない。引用がその関係・差異を直接述べていない場合はhypothesisとし、確認できた前提と推定した部分をreasonで区別する。機能の有無や利用条件などの未確認事項はunknownsへ残し、推測で確定しない。推定・説明用場面はhypothesisとし、sourceとquoteを空にしてもreasonを残す。入力で観測した語句と、そこから推測した心理は区別する。
+探索のlinksとalternativeは、この記事の読者について立てる設計仮説なので、support.kindはhypothesisとする。入力で観測した原文はsource・quote、そこから読者の事情や関係を推定した理由と限界はreasonへ分ける。SERPがその心理や利点を述べていても、検索者本人の事情・因果関係が確認できたことにはならない。引用は入力keyword・serp・requestの短い連続引用に限り、同じ単語の存在だけで関係・差異全体を裏付けない。機能の有無や利用条件などの未確認事項はunknownsへ残し、推測で確定しない。出典のある原文を保持することと、設計仮説を検証済みにすることを区別する。
 出力前に、語の分解→複数の事情→理由/結果→根源的欲求→代替視点→具体的素材→記事への使い方を確認する。形式が埋まることと、背景の説明が十分であることを同一視しない。analysisにも採用した背景のつながり・別の仮説・不明点・記事への影響を簡潔に示す。'''
 
 
@@ -55,9 +55,13 @@ def model_schema():
     unconstrained nested objects exceeded the provider's grammar limit when
     combined with reader-needs; a string avoids multiplying those grammars.
     """
+    schema = copy.deepcopy(SCHEMA)
+    properties = schema['properties']['branches']['items']['properties']
+    for support in (properties['links']['items']['properties']['support'], properties['alternative']['properties']['support']):
+        support['properties']['kind']['enum'] = ['hypothesis']
     return {'type': 'string', 'description':
             'JSON-encoded exploration object. Serialize the full object as this string; do not omit fields. '
-            'It must match this JSON schema: ' + json.dumps(SCHEMA, ensure_ascii=False, separators=(',', ':'))}
+            'It must match this JSON schema: ' + json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}
 
 
 def _shape(value, schema):
@@ -104,7 +108,7 @@ def _support(ref, sources):
         _fail('観測には入力の引用が必要です。')
 
 
-def validate(value, sources):
+def validate(value, sources, *, require_hypothesis_relations=False):
     """Check completeness/provenance/links, never certify semantic depth."""
     decode(value)
     exploration = value.get('exploration')
@@ -147,6 +151,8 @@ def validate(value, sources):
                     or link.get('question') not in ('why', 'outcome') or link['from'].strip() == link['to'].strip()):
                 _fail('理由・結果の関係が空または同語反復です。')
             _support(link.get('support'), sources)
+            if require_hypothesis_relations and link['support']['kind'] != 'hypothesis':
+                _fail('引用があっても読者の背景・欲求の関係は設計仮説として扱ってください。')
         root = branch.get('root_desire')
         if (not isinstance(root, dict) or root.get('category') not in
                 SCHEMA['properties']['branches']['items']['properties']['root_desire']['properties']['category']['enum']
@@ -159,6 +165,8 @@ def validate(value, sources):
                 or not _text(alternative.get('difference'))):
             _fail('代替の視点がありません。')
         _support(alternative.get('support'), sources)
+        if require_hypothesis_relations and alternative['support']['kind'] != 'hypothesis':
+            _fail('引用の観測と、読者が代替を選ぶ理由の仮説を区別してください。')
         if any(not _text(branch.get(k)) for k in ('concrete_material', 'article_effect')):
             _fail('具体的素材と記事への使い方がありません。')
     if used_parts != set(parts):
