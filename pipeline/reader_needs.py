@@ -52,7 +52,7 @@ FIT = obj({'role':{'type':'string','enum':['useful','conditional','not_useful','
 
 
 def output_schema(*, new_product):
-    props = {'exploration':exploration.SCHEMA,'selected':arr(NEED),
+    props = {'exploration':exploration.model_schema(),'selected':arr(NEED),
              'excluded':arr(obj({'question':STR,'reason':STR})), 'product_fit':FIT, 'analysis':STR}
     if new_product: props['product_understanding'] = UNDERSTANDING
     return {'format':{'type':'json_schema','schema':obj(props)}}

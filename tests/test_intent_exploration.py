@@ -29,6 +29,29 @@ class IntentExplorationTests(unittest.TestCase):
         del value['exploration']
         with self.assertRaises(ContentQualityError): self.check(value, sources)
 
+    def test_wire_schema_uses_json_text_and_local_validation_restores_exact_shape(self):
+        schema = ie.model_schema()
+        self.assertEqual(schema['type'], 'string')
+        self.assertNotIn('properties', schema)
+        self.assertIn('hypothesis', schema['description'])
+        self.assertIn('enum', ie.SCHEMA['properties']['mode'])
+        _, _, sources, value = self.fixture()
+        original = copy.deepcopy(value['exploration'])
+        value['exploration'] = json.dumps(original)
+        self.check(value, sources)
+        self.assertEqual(value['exploration'], original)
+        value['exploration']['branches'][0]['root_desire']['category'] = 'unsupported_value'
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
+    def test_encoded_exploration_rejects_bad_json_or_shape_without_paid_repair(self):
+        for bad in ('{bad json', '[]', '{}'):
+            _, _, sources, value = self.fixture()
+            value['exploration'] = bad
+            with self.assertRaises(ContentQualityError): self.check(value, sources)
+        _, _, sources, value = self.fixture()
+        value['exploration']['branches'][0]['extra'] = 'untrusted extra'
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
     def test_new_method_does_not_relabel_legacy_saved_analysis(self):
         brief, _, sources, value = fixtures()
         legacy = rn.record(value, brief=brief, intent_sources=sources)

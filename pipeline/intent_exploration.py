@@ -4,6 +4,7 @@ The saved method is separate from the reader-needs format so existing articles
 remain usable without being presented as having passed the new analysis method.
 """
 import copy
+import json
 
 from .content_quality import ContentQualityError
 
@@ -47,6 +48,42 @@ SCHEMA = obj({'version': {'type': 'string', 'enum': [VERSION]},
               'scope_reason': STR, 'keyword_parts': arr(STR), 'branches': arr(BRANCH)})
 
 
+def model_schema():
+    """Encode this nested subdocument as JSON text to bound wire grammar size.
+
+    The canonical shape is still enforced locally before saving/handoff. Even
+    unconstrained nested objects exceeded the provider's grammar limit when
+    combined with reader-needs; a string avoids multiplying those grammars.
+    """
+    return {'type': 'string', 'description':
+            'JSON-encoded exploration object. Serialize the full object as this string; do not omit fields. '
+            'It must match this JSON schema: ' + json.dumps(SCHEMA, ensure_ascii=False, separators=(',', ':'))}
+
+
+def _shape(value, schema):
+    """Validate the small supported schema vocabulary without a new dependency."""
+    kind = schema['type']
+    if kind == 'object':
+        if not isinstance(value, dict) or set(value) != set(schema['properties']):
+            _fail('探索オブジェクトの必須欄・余分な欄を確認してください。')
+        for key, child in schema['properties'].items(): _shape(value[key], child)
+    elif kind == 'array':
+        if not isinstance(value, list): _fail('探索配列の形式が不正です。')
+        for item in value: _shape(item, schema['items'])
+    elif kind == 'string':
+        if not isinstance(value, str): _fail('探索テキストの形式が不正です。')
+        if 'enum' in schema and value not in schema['enum']: _fail('探索の区分が不正です。')
+
+
+def decode(value):
+    """Normalize wire encoding only; never edit generated wording or conclusions."""
+    if isinstance(value.get('exploration'), str):
+        try: value['exploration'] = json.loads(value['exploration'])
+        except ValueError as error: _fail('探索のJSONテキストを読み取れません。')
+    _shape(value.get('exploration'), SCHEMA)
+    return value
+
+
 def _fail(detail):
     raise ContentQualityError('検索意図の探索記録が不十分です: ' + detail)
 
@@ -69,6 +106,7 @@ def _support(ref, sources):
 
 def validate(value, sources):
     """Check completeness/provenance/links, never certify semantic depth."""
+    decode(value)
     exploration = value.get('exploration')
     if not isinstance(exploration, dict) or exploration.get('version') != VERSION:
         _fail('現方式の探索結果がありません。')
