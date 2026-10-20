@@ -145,6 +145,16 @@ class IntentExplorationTests(unittest.TestCase):
         exploration['mode'] = 'exploratory'
         with self.assertRaises(ContentQualityError): self.check(value, sources)
 
+    def test_unselected_hypothesis_may_stop_early_without_inventing_more_depth(self):
+        _, _, sources, value = self.fixture()
+        excluded = copy.deepcopy(value['exploration']['branches'][0])
+        excluded.update(id='h_excluded', links=excluded['links'][:1])
+        excluded['root_desire']['stop_reason'] = '主対象外の候補なので採用せず、ここで探索を止める。'
+        value['exploration']['branches'].append(excluded)
+        self.check(value, sources)
+        value['selected'][0]['hypothesis_ids'].append('h_excluded')
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
     def test_selected_material_survives_planning_writing_and_repair_without_raw_quotes(self):
         brief, _, sources, value = self.fixture()
         branch = value['exploration']['branches'][0]

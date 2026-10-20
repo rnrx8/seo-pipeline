@@ -11,10 +11,10 @@ from .content_quality import ContentQualityError
 VERSION = 'intent-exploration-v1'
 POLICY = '''【検索意図を探索してから、記事で答える問いを選ぶ】
 次の手順を同じ主分析の中で実施し、explorationに簡潔な編集上の仮説・関係を記録する。内部の思考実況や長い独白は出力しない。
-1. KWを意味のある単語へ分ける。複合語も必要なら分け、各語を選んだ理由を考える。「おすすめ」「探し方」だけから始めず、対象そのものを求める理由も探る。keyword_partsは元KWに実在する連続文字列だけ。
+1. KWを、対象・行為・条件や修飾・評価を表す意味のある単語へ分ける。複合語の中に役割や限定を表す語がある場合は、それも分け、なぜその条件を付けて対象を求めるかを考える。固有の商品名や意味を失う分割はしない。「おすすめ」「探し方」だけから始めず、対象そのものと、その条件を選んだ理由から探索する。keyword_partsは元KWに実在する連続文字列だけ。
 2. 各語について5W1H（いつ・どこで・誰が・何を・なぜ・どうする）から事情ときっかけを広げる。同じ人の全事情を一つに合成せず、別の事情は別のbranchへ分ける。重要な違いがあれば複数の仮説を残し、採用前から一つの典型像へ絞らない。各branchのcontextで不明な軸は空文字、unknownsに不明点を残す。
-3. 「それはなぜ」「それで何が変わる」を重ね、具体的な事情・満たされないことから、求める変化と根源的な欲求までのつながりをlinksへ簡潔に残す。各リンクはfromに対する問いとtoの関係を表し、根拠・仮説の区別をsupportに付ける。背景の深掘りは、直前に出た事情・満たされないこと・望む変化を次の問いで受け止め、なぜその対象や情報を求めるかを説明する。途中で方法の利点や商品推薦へ切り替えて深掘りの代わりにしない。手段の比較・推薦への使い方はarticle_effectへ分ける。固定の5回ではなく、説明の飛躍を残さない深さまで行う。マズローの生理・安全・所属・承認・自己実現を探索の目安にする。分類名だけに飛ばず、root_desire.meaningでその人が得たい状態を説明する。推測できない場合はunknown、操作の直接回答に深層心理が関係しない場合はnot_applicableとしてstop_reasonを説明する。
-4. 反対・代替の視点から、なぜ別の対象や既存の手段ではないのかも検討し、alternativeへ候補と違いを残す。別案を避ける理由が入力から決まらなければ、その不明点を明示し、利用者全員の不満・経験を作らない。商品やCTAの指定から背景を逆算しない。
+3. 方法を問うKWでも、「方法が分からない理由」と「そもそもその対象・関係・行為を求める理由」を分け、主な背景の枝では後者から掘る。出会う・買う・選ぶ場所が少ないことだけを、その対象を求める動機の代わりにしない。「それはなぜ」「それで何が変わる」を重ね、具体的な事情・満たされないことから、求める変化と根源的な欲求までのつながりをlinksへ簡潔に残す。各リンクはfromに対する問いとtoの関係を表し、根拠・仮説の区別をsupportに付ける。背景の深掘りは、直前に出た事情・満たされないこと・望む変化を次の問いで受け止め、なぜその対象や情報を求めるかを説明する。途中で方法の利点や商品推薦へ切り替えて深掘りの代わりにしない。手段の比較・推薦への使い方はarticle_effectへ分ける。固定の5回ではなく、説明の飛躍を残さない深さまで行う。マズローの生理・安全・所属・承認・自己実現を探索の目安にする。分類名だけに飛ばず、root_desire.meaningでその人が得たい状態を説明する。推測できない場合はunknown、操作の直接回答に深層心理が関係しない場合はnot_applicableとしてstop_reasonを説明する。
+4. 反対・代替の視点から、なぜ別の対象や既存の手段ではないのかも検討し、alternativeへ候補と違いを残す。入手経路どうしの比較だけで終わらず、新たな対象や関係を求めずに既存の状態・関係・手段で満たす選択も、KWの限定や役割に応じて検討する。別案を避ける理由が入力から決まらなければ、その不明点を明示し、利用者全員の不満・経験を作らない。商品やCTAの指定から背景を逆算しない。
 5. 根源的欲求の名前ではなく、途中で見つけた具体的な事情・得たい体験・生活への影響をconcrete_materialへ残す。article_effectには、その理解で回答・比較軸・説明順序・推薦・具体例がどう変わるかを書く。数字・体験・多数派の実態を具体性のために創作しない。説明用の場面は場面例と分かるようにする。
 6. selectedの各問いへhypothesis_idsで採用するbranchを結び、reader_situation・background_emotion・desired_state・barrierをその文脈に沿ってまとめる。問いへの直接回答と、欲求が生まれた背景の両方を残し、似た仮説をまとめても具体的な事情を消さない。desired_stateは望む生活・体験、after_readingはこの記事で進める一歩として区別する。
 exploration.modeは通常exploratory。単純な操作・定義・案内で深い感情が答えを変えない場合だけdirectとし、scope_reasonに理由を残す。directでもKW分解、必要な文脈、代替の視点は確認する。exploratoryは通常2〜4枝、最大6枝。linksは各枝2〜6件を目安に、directは必要な関係だけでよい。全文の心理解説や全仮説の採用を求めない。
@@ -125,6 +125,8 @@ def validate(value, sources, *, require_hypothesis_relations=False):
     branches = exploration.get('branches')
     if not isinstance(branches, list) or not 1 <= len(branches) <= 6:
         _fail('仮説の枝が不足または過大です。')
+    selected_ids = {ref for need in value.get('selected', [])
+                    for ref in need.get('hypothesis_ids', []) if isinstance(ref, str)}
     ids, used_parts = set(), set()
     for branch in branches:
         if not isinstance(branch, dict) or not _text(branch.get('id')) or branch['id'] in ids:
@@ -144,7 +146,9 @@ def validate(value, sources, *, require_hypothesis_relations=False):
         if any(not context[k].strip() for k in context) and not unknowns:
             _fail('文脈の不明点が記録されていません。')
         links = branch.get('links')
-        if not isinstance(links, list) or not (2 if mode == 'exploratory' else 1) <= len(links) <= 6:
+        adopted = 'selected' not in value or branch['id'] in selected_ids
+        minimum = 2 if mode == 'exploratory' and adopted else 1
+        if not isinstance(links, list) or not minimum <= len(links) <= 6:
             _fail('理由・結果のつながりが不足または過大です。')
         for link in links:
             if (not isinstance(link, dict) or not _text(link.get('from')) or not _text(link.get('to'))
