@@ -5,6 +5,7 @@ from .ai import create_with_retry, get_step_config, message_text
 from .db import get_artifact, upsert_artifact
 from .production_brief import prepare, model_product_input, product_record
 from .reader_needs import POLICY, output_schema, validate, record, VERSION as NEEDS_VERSION
+from .intent_exploration import VERSION as METHOD_VERSION
 
 MODEL, MAX_TOKENS = get_step_config("search_intent")
 
@@ -101,7 +102,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         raise ContentQualityError('検索意図分析が正常終了していません。古い読者理解を流用しません。')
     value = json.loads(message_text(message))
     validate(value, sources, product_material_ids=[m['id'] for m in product_input['materials']],
-             has_product=bool(brief['product']), has_cta=bool(brief['cta']))
+             has_product=bool(brief['product']), has_cta=bool(brief['cta']), require_exploration=True)
     if new_product:
         product = product_record(value['product_understanding'], product_input)
     else:
@@ -111,7 +112,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         meta={'input_sha256':product['input_sha256'], 'cache_status':cache_status, 'fact_status':'supplied_not_verified'})
     needs = record(value, brief=brief, intent_sources=sources)
     upsert_artifact(job_id=job_id, step='reader_needs', content_type='application/json',
-        content_text=json.dumps(needs, ensure_ascii=False), meta={'version':NEEDS_VERSION})
+        content_text=json.dumps(needs, ensure_ascii=False), meta={'version':NEEDS_VERSION, 'analysis_method_version':METHOD_VERSION,
+              'analysis_method_sha256':needs['analysis_method_sha256']})
     return upsert_artifact(job_id=job_id, step='search_intent', content_type='text/markdown',
         content_text=value['analysis'], meta={'model':MODEL, 'reader_needs_version':NEEDS_VERSION,
+        'analysis_method_version':METHOD_VERSION, 'analysis_method_sha256':needs['analysis_method_sha256'],
         'input_tokens':message.usage.input_tokens, 'output_tokens':message.usage.output_tokens})

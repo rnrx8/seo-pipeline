@@ -3,6 +3,7 @@ import copy
 import json
 from .content_quality import ContentQualityError
 from .production_brief import fingerprint
+from . import intent_exploration as exploration
 
 VERSION = 'reader-needs-v1'
 
@@ -13,7 +14,7 @@ AI生成のtone・answer_order・product_fit.reasonも編集上の候補であ�
 原分析は履歴として保持し、計画の修正時に書き換え・合格への付け替えを要求しない。計画確認では採用するreader_decisionsとitemsを判定し、原分析の情報源条件をそのまま転記していないことだけを矛盾・修正漏れと扱わない。主な疑問や必要な回答を落とした場合は通常どおり指摘する。後工程も原分析の候補を採用済み条件へ戻さず、検証済み回答と適用条件を使う。'''
 POLICY = '''検索者の状況と作り手の価値を理解し、読者が納得して判断・行動できる記事を設計する。
 検索への直接回答を先に定め、商品選びは必要な場合にその後へ接続する。方法を選ぶ問いには、条件に合う方法の推奨と選定理由まで含める。公平な比較は全候補を均等に勧めることや推薦を避けることではない。商材やCTAの指定から悩みを捏造しない。
-顕在の問い、現在の事情・きっかけ、背景・感情、望む状態、判断の障壁、必要な回答と伝え方を一組にする。背景を扱うときは、なぜ今その望みが生じ、現在の状態では何が満たされず、その情報・手段を探しているのかまでつなげる。望む状態と無関係な事情を足さず、背景を特定できない場合は不明点として残す。背景はreader_situation・background_emotion、望む変化はdesired_stateに保持し、観測と仮説の区別はsupportへ残す。比較・方法選択でも、背景を費用・手間・リスクなどの項目名だけで済ませず、なぜそれが気になるのか、得たい関係・体験や守りたい生活・自尊心など、選ぶ理由を変える望みを必要な範囲で仮説として捉える。独立した心理解説の章を省く判断と、比較・推薦に必要な短い状況理解を省く判断は分ける。深掘り本数やマズロー到達を合格基準にせず、採用した理解が比較軸・説明・具体例・対処や次の一歩をどう変えるか示す。
+顕在の問い・状況・背景感情・望む状態・判断の障壁・必要回答を、下記の探索手順を踏まえて一組にする。心理や欲求の名前だけでなく、その事情でその情報・手段が必要になる理由を残す。比較・方法選択でも、その比較軸が気になる理由と得たい体験を扱う。独立した心理解説の章を省く判断と、比較・推薦に必要な短い状況理解を省く判断は分ける。
 観測は入力SERPやユーザー指定の実際の短い連続引用だけに限定する。support.sourceは入力の参照IDkeyword・serp・request、または空文字だけを使う。見出し・順位・URLなどの説明はreasonへ書き、sourceへ自由な資料名を作らない。観測のquoteは該当入力からの短い連続引用にする。query_hintsはモデルの推定であり観測根拠ではない。sourceを空文字にする仮説・場面例はquoteも空文字にする。
 support.field=contextはreader_situationとbackground_emotion、desired_stateは望む状態、barrierは障壁に対応する。それぞれを記述したら、その内容自体を観測・仮説に区分したsupportを必ず残す。見出しに不安があることと、検索者本人がその不安を抱くことは別。見出しの観測で心理・生活状況を観測済みにしない。仮説ならkind=hypothesisで、その推定理由をreasonへ書く。exampleに場面例を書いたら、その例に対応するkind=illustrationもsupportへ必ず残す。SERPタイトルの問いを観測できても、読者全員の感情・属性を観測したことにはならない。心理は仮説、例は説明用場面として区別し、根拠の強さと不明点を言葉で説明する。推定年齢・性別のヒントを読者全員の属性へ変換しない。
 採用する主要な問いだけにidを付け、採用しない仮説と理由も残す。全員の心理・全商材の説明・すべての感情への共感を要求しない。手順や定義の検索には必要な温度感を選び、記事の判断に関係しない比較や心理解説を追加しない。
@@ -25,7 +26,7 @@ analysisは画面に表示する簡潔なMarkdownレポート。selectedの問�
 
 
 from .authoring_policy import SELECTION_POLICY
-POLICY += '\n' + ANSWER_SCOPE_POLICY + SELECTION_POLICY
+POLICY += '\n' + exploration.POLICY + '\n' + ANSWER_SCOPE_POLICY + SELECTION_POLICY
 
 
 def obj(properties):
@@ -44,19 +45,20 @@ SUPPORT = obj({'field':{'type':'string','enum':['question','context','desired_st
                'source':{'type':'string','enum':['','keyword','serp','request']},'quote':STR,'reason':STR})
 NEED = obj({**{k:STR for k in ('id','question','reader_situation','background_emotion','desired_state','barrier',
                               'answer_order','tone','example','after_reading','adoption_reason','confidence_reason')},
-            'answer_requirements':arr(STR),'support':arr(SUPPORT)})
+            'answer_requirements':arr(STR),'support':arr(SUPPORT),'hypothesis_ids':arr(STR)})
 FIT = obj({'role':{'type':'string','enum':['useful','conditional','not_useful','none']},'reason':STR,
            'need_ids':arr(STR),'material_ids':arr(STR),
            'cta_role':{'type':'string','enum':['appropriate','defer','omit']}})
 
 
 def output_schema(*, new_product):
-    props = {'analysis':STR,'selected':arr(NEED), 'excluded':arr(obj({'question':STR,'reason':STR})), 'product_fit':FIT}
+    props = {'exploration':exploration.SCHEMA,'selected':arr(NEED),
+             'excluded':arr(obj({'question':STR,'reason':STR})), 'product_fit':FIT, 'analysis':STR}
     if new_product: props['product_understanding'] = UNDERSTANDING
     return {'format':{'type':'json_schema','schema':obj(props)}}
 
 
-def validate(value, sources, *, product_material_ids=(), has_product=False, has_cta=False):
+def validate(value, sources, *, product_material_ids=(), has_product=False, has_cta=False, require_exploration=False):
     if not isinstance(value,dict) or not isinstance(value.get('analysis'),str) or not value['analysis'].strip():
         raise ContentQualityError('検索意図の分析本文がありません。')
     needs = value.get('selected')
@@ -110,13 +112,20 @@ def validate(value, sources, *, product_material_ids=(), has_product=False, has_
         raise ContentQualityError('有用な商材の読者価値・資料参照がありません。')
     if fit['cta_role']=='appropriate' and (not has_cta or fit['role'] not in ('useful','conditional')):
         raise ContentQualityError('読者価値に接続しないCTAを配置できません。')
+    if require_exploration or 'exploration' in value:
+        exploration.validate(value, sources)
     return value
 
 
 def record(value, *, brief, intent_sources):
-    return {'version':VERSION, 'brief_sha256':fingerprint(brief),
+    result = {'version':VERSION, 'brief_sha256':fingerprint(brief),
             'source_sha256':fingerprint(intent_sources),
             **{k:copy.deepcopy(value[k]) for k in ('selected','excluded','product_fit')}}
+    if 'exploration' in value:
+        exploration.validate(value, intent_sources)
+        result['exploration'] = copy.deepcopy(value['exploration'])
+        result['analysis_method_sha256'] = fingerprint(exploration.POLICY)
+    return result
 
 
 def load(job_id, brief=None):
@@ -134,6 +143,8 @@ def load(job_id, brief=None):
                            'request':json.dumps(brief['request'],ensure_ascii=False)}
         if value.get('source_sha256') != fingerprint(current_sources):
             raise ContentQualityError('読者理解の参照SERP・依頼が変わっています。分析から確認してください。')
+        if 'exploration' in value:
+            exploration.validate(value, current_sources)
     return value
 
 
@@ -149,6 +160,10 @@ def validate_plan_links(plan, needs):
 
 def editorial_context(brief, needs):
     if not needs: return {}
+    selected = copy.deepcopy(needs['selected'])
+    if 'exploration' in needs:
+        for need in selected:
+            need['motivation_context'] = exploration.for_need(needs['exploration'], need)
     return {'version':VERSION, 'answer_scope_policy':ANSWER_SCOPE_POLICY, 'request':copy.deepcopy((brief or {}).get('request',{})),
-            'reader_needs':copy.deepcopy(needs['selected']), 'product_fit':copy.deepcopy(needs['product_fit']),
+            'reader_needs':selected, 'product_fit':copy.deepcopy(needs['product_fit']),
             'fact_boundary':'心理・商品適合は設計上の仮説。商品機能の断定は同じ資料の検証済み回答だけを使う。'}

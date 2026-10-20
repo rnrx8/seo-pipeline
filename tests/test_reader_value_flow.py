@@ -212,6 +212,8 @@ class ReaderValueFlowTests(unittest.TestCase):
     def test_analysis_plan_review_and_writer_packet_share_the_same_intent_and_answer(self):
         from pipeline.generation_context import decision_bundle
         brief,material,sources,value=fixtures();records={}
+        from intent_exploration_fixtures import attach_exploration
+        value=attach_exploration(value,sources['keyword'])
         plan=plan_fixture();plan.pop('reader_design')
         verdict={'valid':True,'issues':[],
             'claim_checks':{'q1':{'answer_scope':'手段を選ぶ','source_requirement':'general_guidance','official_check_required':False}},
@@ -245,6 +247,8 @@ class ReaderValueFlowTests(unittest.TestCase):
         self.assertEqual(parsed['reader_decisions'][0]['research_ids'],['q1'])
         self.assertEqual(parsed['decisions'][0]['id'],'q1')
         self.assertEqual(parsed['reader_design']['reader_needs'][0]['after_reading'],value['selected'][0]['after_reading'])
+        self.assertEqual(parsed['reader_design']['reader_needs'][0]['motivation_context'][0]['motivation_links'][0]['to'],
+                         value['exploration']['branches'][0]['links'][0]['to'])
         self.assertEqual(len(accepted['items']),1)  # Emotion and examples did not add obligations.
 
     def test_prepared_product_cache_is_reused_only_for_the_exact_registered_inputs(self):
@@ -292,6 +296,8 @@ class ReaderValueFlowTests(unittest.TestCase):
 
     def run_analysis(self, *, cached=False, stop='end_turn'):
         brief,material,sources,value=fixtures();records={}
+        from intent_exploration_fixtures import attach_exploration
+        value=attach_exploration(value,sources['keyword'])
         product=pb.product_record(value['product_understanding'],material) if cached else None
         if cached: del value['product_understanding']
         def save(**data):
@@ -312,6 +318,10 @@ class ReaderValueFlowTests(unittest.TestCase):
         self.assertIn('reader_needs',records);self.assertIn('product_context',records)
         self.assertEqual(json.loads(records['intent_chains']['content_text'])['chains'],[])
         self.assertEqual(json.loads(records['reader_needs']['content_text'])['selected'][0]['id'],'i01')
+        saved=json.loads(records['reader_needs']['content_text'])
+        self.assertEqual(saved['exploration']['version'],intent.METHOD_VERSION)
+        self.assertEqual(records['search_intent']['meta']['analysis_method_version'],intent.METHOD_VERSION)
+        self.assertEqual(records['search_intent']['meta']['analysis_method_sha256'],saved['analysis_method_sha256'])
 
     def test_cached_product_does_not_send_the_raw_material_again(self):
         _,calls=self.run_analysis(cached=True)
