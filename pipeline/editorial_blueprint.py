@@ -5,8 +5,9 @@ import copy
 import hashlib
 import json
 import re
+from .lead_authoring import READER_FOCUS_SCHEMA, PLANNING_POLICY as READER_FOCUS_POLICY, checked_focus, focus_context
 
-VERSION = 'editorial-blueprint-v2-reader-progression'
+VERSION = 'editorial-blueprint-v3-reader-focus'
 POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
 sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
@@ -19,8 +20,9 @@ H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し
 主回答の概要から必要な詳細まで連続して説明し、その後に個別の商品選択や補足へ進む。方法選びが問いなら、概要に条件に合う方法の短い推奨と理由を示し、比較と各方法で確かめられる設計にする。この推奨は主回答であり、下位の商品紹介による置き換えと混同しない。必要な前提は先に置ける。商品名一覧で方法の違いと向く状況の回答を代替しない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで個別商品の長い推薦・登録誘導へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
 omissionsには省く内容と読者判断を損なわない理由を記録する。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
-lead_directionは次の3点、合計300字以内の編集メモとする。「宛先と現在地」には、主に誰へ語りかけるか、その人が既に考えていること・まだ分からないことを記す。年齢や性別だけの人物設定を作らず、未整理の気持ちと理解済みの知識も区別する。「届ける一歩と流れ」には、その人が自分向けと受け取れる入口から、次に知りたい問いと本文を読む理由へどう進めるかを記す。必要ならcontext・motivation_linksから選んだ出来事と本人の実感をその流れに結びつける。心理が不要なら直接の疑問と答えを使う。説明したい分析項目ごとに文を割り当てたり、読者にとって既に前提の動機を長く解説したりしない。「本文へ任せる内容」には、この入口ではまだ答えず本文で扱う事項を記す。分析の全候補や制約を再掲せず、完成リードや例文は作らない。心理は仮説として元の事情を保ち、主読者以外へも全員の実態と断定しない。原分析のtone・answer_orderは宛先と記事目的に合わせて選び、個別事情を創作しない。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
+lead_directionは、選んだreader_focusの人に何を届け、本文へどう進め、何を本文へ任せるかという編集判断を150字程度で記す。宛先の紹介や背景の再要約、完成リード・例文は作らない。原分析のtone・answer_orderは宛先と記事目的に合わせて選ぶ。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
+POLICY += '\n' + READER_FOCUS_POLICY
 REVIEW_POLICY = '''【編集設計の個別確認】
 blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
@@ -68,7 +70,8 @@ SECTION_SCHEMA = obj({
     'reader_progression':nullable(PROGRESSION_SCHEMA),'example':STRING,
     'format':{'type':'string','enum':['文章','箇条書き','番号付きリスト','比較表','データ表']},
     'items':STRINGS,'cta':STRING,'budget':BUDGET_SCHEMA})
-SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},'lead_direction':STRING,
+SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},
+    'reader_focus':READER_FOCUS_SCHEMA,'lead_direction':STRING,
     'sections':{'type':'array','minItems':1,'items':SECTION_SCHEMA},
     'omissions':{'type':'array','items':obj({'research_id':STRING,'reason':STRING})}})
 def model_output_config(schema):
@@ -159,6 +162,7 @@ def canonicalize_research_refs(value, ctx):
 def validate(value, ctx):
     """Structural referential integrity only; semantic acceptance belongs to review."""
     validate_shape(value,SCHEMA)
+    checked_focus(value['reader_focus'],ctx['reader_design'])
     sections=value['sections'];seen={};stack={};h2_titles=set()
     needs={n['id'] for n in ctx['reader_design'].get('reader_needs',[])}
     decisions={d['id']:d for d in ctx['reader_decisions']};questions={q['id']:q for q in ctx['topics']}
@@ -219,6 +223,12 @@ def trace(value, ctx):
 def render(value, ctx):
     lines=['# 記事構成案','', '### タイトル案','']
     lines += ['- '+t for t in value['titles']]
+    focus=focus_context(value['reader_focus'],ctx['reader_design'])
+    lines += ['', '### 記事の宛先と読み始める時点', '']
+    for key,label in [('situation','中心の事情（仮説）'),('felt_response','本人の実感（仮説）'),
+                      ('desired_experience','望む具体的な体験'),('current_understanding','既に考えていること'),
+                      ('open_question','今答えを必要とする問い')]:
+        if focus[key]:lines.append('- '+label+'：'+focus[key])
     lines += ['', '### リード文の設計方針','',value['lead_direction'],'']
     def field(name, val):lines.append('- '+name+'：'+val)
     for s in value['sections']:
@@ -353,11 +363,12 @@ def apply_review(report, value, ctx):
 
 def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
-    expected={'edits','delete_ids','section_order'}|({'lead_direction'} if allow_lead else set())
+    expected={'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
     if set(response)!=expected:fail('編集設計の局所修正形式が不正です。')
     if allow_lead:
         lead=response['lead_direction']
-        if not isinstance(lead,str) or not lead.strip() or lead==value['lead_direction']:
+        candidate['reader_focus']=checked_focus(response['reader_focus'],ctx['reader_design'])
+        if not isinstance(lead,str) or not lead.strip() or (lead==value['lead_direction'] and candidate['reader_focus']==value['reader_focus']):
             fail('指摘されたリード設計が未修正または空です。')
         candidate['lead_direction']=lead
     for edit in response['edits']:
@@ -388,7 +399,7 @@ def repair_config(*, allow_lead=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
-    if allow_lead:fields['lead_direction']=STRING
+    if allow_lead:fields.update(lead_direction=STRING,reader_focus=READER_FOCUS_SCHEMA)
     return model_output_config(obj(fields))
 
 
@@ -396,7 +407,8 @@ def review_context(artifact):
     value=require_projection(artifact)
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
-    return {'version':VERSION,'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
+    return {'version':VERSION,'reader_focus':focus_context(value['reader_focus'],ctx['reader_design']),
+        'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
         'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}
@@ -415,8 +427,8 @@ def lead_block_ids(artifact):
     value=require_projection(artifact);text=artifact['content_text']
     lead=value['lead_direction']
     if not lead.strip():return []
-    start=text.index(lead,text.index('### リード文の設計方針'))
-    end=start+len(lead);cursor=0;ids=set()
+    end=text.index(lead,text.index('### リード文の設計方針'))+len(lead)
+    start=text.index('### 記事の宛先と読み始める時点');cursor=0;ids=set()
     for block in content_blocks(text):
         a=text.index(block['text'],cursor);cursor=a+len(block['text'])
         if a<end and cursor>start:ids.add(block['id'])
@@ -489,7 +501,7 @@ def repair(job_id, keyword, report, artifact, client):
         system=REVIEW_RESOLUTION_POLICY+READER_PRESENTATION_POLICY+EVIDENCE_POLICY+POLICY+'''
 今回は局所修正。editsには指摘箇所と同じ誤りを直す節だけを全フィールドで返す。全文再出力は禁止。
 既存節のうちtarget_section_ids以外は読取専用。タイトル案・省略理由は維持する。
-lead_edit_allowed=trueの場合だけlead_directionに指摘を解決する導入方針を返す。それ以外はリードを変更せず、lead_directionキーも返さない。リードだけの修正ならeditsは空配列でよい。
+lead_edit_allowed=trueの場合だけlead_directionとreader_focusを返す。指摘された宛先・背景・流れを直し、指摘のない読者選択は維持する。それ以外はどちらも変更せずキーも返さない。リードだけの修正ならeditsは空配列でよい。
 structural=trueのときだけ関連節の追加・削除・順序・階層変更を許可する。新しい節には未使用IDを付ける。
 section_orderは追加・移動・削除が必要なときのみ修正後全IDを順に返し、変更不要なら空配列。delete_idsも不要なら空配列。
 主回答の説明と根拠・条件・必須論点を維持し、文字数合わせの水増し・追加調査・未確認の断定をしない。''',

@@ -56,6 +56,45 @@ class LeadAuthoringTest(unittest.TestCase):
             with self.subTest(ref=ref), self.assertRaises(ContentQualityError):
                 focus_context({**self.focus, 'motivation_ref': ref}, self.design)
 
+    def test_focus_is_shared_by_rendered_outline_and_article_review(self):
+        from test_editorial_blueprint import fixture, artifact
+        from pipeline import editorial_blueprint as bp, article_design
+        _, _, _, ctx, value = fixture()
+        ctx['reader_design']['reader_needs'][0]['motivation_context'] = self.design['reader_needs'][0]['motivation_context']
+        value['reader_focus'] = {**self.focus, 'motivation_ref':
+            {'need_id': 'i01', 'hypothesis_id': 'b1', 'link_index': 0}, 'felt_response': '通るたびに少し邪魔に感じる'}
+        saved = artifact(value, ctx)
+        self.assertIn('床に置くと通りづらい', saved['content_text'])
+        self.assertIn('通るたびに少し邪魔に感じる', saved['content_text'])
+        expected = article_design.design_context(saved)['reader_focus']
+        self.assertEqual(expected, bp.review_context(saved)['reader_focus'])
+        self.assertEqual(expected['situation'], '床に置くと通りづらい')
+
+    def test_focus_change_invalidates_old_review_and_requires_targeted_permission(self):
+        from test_editorial_blueprint import fixture, artifact, verdict
+        from pipeline import editorial_blueprint as bp
+        _, _, _, ctx, value = fixture()
+        saved = artifact(value, ctx)
+        reviewed = bp.review_context(saved)
+        report = {**verdict(reviewed), 'blueprint_review_context': reviewed}
+        changed_focus = {**value['reader_focus'], 'open_question': '送信できる条件を知りたい'}
+        response = {'edits': [], 'delete_ids': [], 'section_order': [],
+                    'lead_direction': value['lead_direction'], 'reader_focus': changed_focus}
+        with self.assertRaises(ContentQualityError):
+            bp.apply_edits(value, response, ctx, structural=False, targets=[])
+        candidate = bp.apply_edits(value, response, ctx, structural=False, targets=[], allow_lead=True)
+        self.assertEqual(candidate['sections'], value['sections'])
+        self.assertNotEqual(candidate['reader_focus'], value['reader_focus'])
+        with self.assertRaises(ContentQualityError):
+            bp.require_review(report, artifact(candidate, ctx))
+
+    def test_final_style_review_preserves_natural_short_reader_experience(self):
+        from pipeline import step_article, step_review
+        from pipeline.readability import PROSE_STYLE_POLICY
+        for system in (step_article.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT):
+            self.assertEqual(system.count(PROSE_STYLE_POLICY), 1)
+        self.assertNotIn('本文（見出し・表・リスト以外）でです・ます調でない箇所を検出', step_review.SYSTEM_PROMPT)
+
 
 if __name__ == '__main__':
     unittest.main()

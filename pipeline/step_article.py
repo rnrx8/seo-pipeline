@@ -14,7 +14,7 @@ from .content_contract import contract_prompt, reference_prompt
 from .quality_warnings import warn
 from .db import get_artifact, get_company_settings, get_job, get_service_by_id, get_cta_by_id, upsert_artifact
 from .step_structure_guard import deduplicate_service_h2s, validate_structure
-from .readability import READABILITY_POLICY, SENTENCE_STYLE_POLICY
+from .readability import READABILITY_POLICY, SENTENCE_STYLE_POLICY, PROSE_STYLE_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("article")
 
@@ -27,8 +27,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 【執筆ルール】
 
 ▼ 文体
-- 本文はです・ます調に統一（見出し・表・リストは除く）
-""" + SENTENCE_STYLE_POLICY + """
+""" + PROSE_STYLE_POLICY + '\n' + SENTENCE_STYLE_POLICY + """
 - 不要な修飾語・接続詞は削除する（ただし「削っても意味が通じ、かつ読んだ時の温度感が変わらないもの」だけ削る）
 
 ▼ H1（タイトル）

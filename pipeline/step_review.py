@@ -9,7 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
-from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT, SENTENCE_STYLE_POLICY
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT, SENTENCE_STYLE_POLICY, PROSE_STYLE_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -54,8 +54,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
    - """ + SENTENCE_STYLE_POLICY + """
 
 7. 文体チェック
-   - 本文（見出し・表・リスト以外）でです・ます調でない箇所を検出
-   - です・ます調に修正する
+   - """ + PROSE_STYLE_POLICY + """
 
 ### 【見出しの可読性】
 8. H2見出しの可読性チェック（記事完成後、全H2を通しで点検）
