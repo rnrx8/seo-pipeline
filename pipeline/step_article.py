@@ -507,7 +507,7 @@ def _build_extra_instructions(job: dict) -> str:
 
 
 def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
-    """Scoped edit, plus at most one length correction; never a QA pass."""
+    """Write the final lead, with at most one length correction; never a QA pass."""
     from .editorial_blueprint import require_projection, validate_shape, fingerprint
     from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, lead_char_limit, WRITE_SCHEMA
     value = require_projection(outline)

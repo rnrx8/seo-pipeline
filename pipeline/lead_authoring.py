@@ -94,18 +94,6 @@ def focus_context(value, reader_design):
             'open_question': selected['open_question']}
 
 
-def writing_payload(*, keyword, title, reader_focus,
-                    reader_design, request, article_purpose, article_contents,
-                    next_section_excerpt, facts):
-    """Use an explicit focus and actual coverage, never the whole article prompt."""
-    focus = focus_context(reader_focus, reader_design)
-    return {'keyword': keyword, 'title': title, 'reader_focus': focus,
-            'request': request,
-            'article_purpose': article_purpose,
-            'article_contents': copy.deepcopy(article_contents),
-            'next_section_excerpt': next_section_excerpt, 'facts': facts}
-
-
 def writer_request(payload, *, model, max_tokens=1200):
     return {'model': model, 'max_tokens': max_tokens, 'system': WRITING_SYSTEM,
             'messages': [{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}],
@@ -154,7 +142,7 @@ def replace_lead(text, lead):
 
 
 def editing_payload(text, value, ctx, keyword, requirements):
-    start, end = lead_span(text)
+    lead_span(text)
     titles = re.findall(r'^##\s+([^\n]+)$', text, re.M)
     h2 = list(re.finditer(r'^##\s+', text, re.M))
     next_section = text[h2[0].start():h2[1].start() if len(h2) > 1 else len(text)]

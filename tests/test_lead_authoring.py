@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import patch
 
 from pipeline.content_quality import ContentQualityError
-from pipeline.lead_authoring import checked_focus, writer_request, writing_payload
+from pipeline.lead_authoring import checked_focus, writer_request, editing_payload, LEAD_DIRECTIONS
 
 
 class LeadAuthoringTest(unittest.TestCase):
@@ -31,11 +31,9 @@ class LeadAuthoringTest(unittest.TestCase):
     def test_writer_receives_selected_focus_and_actual_article_not_raw_analysis(self):
         self.design['internal_evaluation'] = 'not authoring material'
         original = copy.deepcopy(self.focus)
-        payload = writing_payload(keyword='壁 取り付け', title='壁を傷つけない取り付け方',
-            reader_focus=self.focus,
-            reader_design=self.design, request='短いリード', article_purpose='方法を選べる',
-            article_contents=['取り付け方'], next_section_excerpt='## 取り付け方\n耐荷重を確認します。',
-            facts='確認した耐荷重を守る')
+        payload = editing_payload('# 壁を傷つけない取り付け方\n\n旧リード。\n\n## 取り付け方\n耐荷重を確認します。',
+            {'reader_focus':self.focus,'lead_direction':LEAD_DIRECTIONS['direct_answer']},
+            {'reader_design':self.design},'壁 取り付け',{'custom_prompt':'短いリード'})
         request = writer_request(payload, model='test-model')
         self.focus['open_question'] = 'changed after request'
         self.assertEqual(payload['reader_focus']['open_question'], original['open_question'])
