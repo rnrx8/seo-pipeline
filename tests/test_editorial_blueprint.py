@@ -34,7 +34,7 @@ def fixture():
     value={'titles':['閲覧と送信の利用条件を比較'],
            'reader_focus':{'need_ids':['i01'],'motivation_ref':None,'felt_response':'',
                'current_understanding':'利用したい動作は決まっている','open_question':'どのプランが必要か','desired_experience':''},
-           'lead_direction':'知りたい条件と記事で分かることを簡潔に示す',
+           'lead_direction':bp.LEAD_DIRECTIONS['direct_answer'],
            'sections':[section],'omissions':[]}
     return plan,pages,matrix,ctx,value
 

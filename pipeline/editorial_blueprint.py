@@ -5,9 +5,9 @@ import copy
 import hashlib
 import json
 import re
-from .lead_authoring import READER_FOCUS_SCHEMA, PLANNING_POLICY as READER_FOCUS_POLICY, checked_focus, focus_context
+from .lead_authoring import READER_FOCUS_SCHEMA, DIRECTION_SCHEMA, LEAD_DIRECTIONS, PLANNING_POLICY as READER_FOCUS_POLICY, checked_focus, focus_context
 
-VERSION = 'editorial-blueprint-v3-reader-focus'
+VERSION = 'editorial-blueprint-v4-reader-route'
 POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
 sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
@@ -20,7 +20,7 @@ H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し
 主回答の概要から必要な詳細まで連続して説明し、その後に個別の商品選択や補足へ進む。方法選びが問いなら、概要に条件に合う方法の短い推奨と理由を示し、比較と各方法で確かめられる設計にする。この推奨は主回答であり、下位の商品紹介による置き換えと混同しない。必要な前提は先に置ける。商品名一覧で方法の違いと向く状況の回答を代替しない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで個別商品の長い推薦・登録誘導へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
 omissionsには省く内容と読者判断を損なわない理由を記録する。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
-lead_directionは、選んだreader_focusの人に何を届け、本文へどう進め、何を本文へ任せるかという編集判断を150字程度で記す。宛先の紹介や背景の再要約、完成リード・例文は作らない。原分析のtone・answer_orderは宛先と記事目的に合わせて選ぶ。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
+lead_directionはschemaの4つの入口（体験・望む変化・判断の難しさ・直接回答）から、reader_focusの人へ合う展開を一つ選ぶ。具体的な事情・実感・望み・今の問いはreader_focusから引き継ぎ、別欄で再要約して別の事情を足さない。文章の穴埋めテンプレートではなく説明の入口の選択であり、実際の言葉・文数・人称は素材と記事目的に合わせる。予告は実際の章の回答と読後判断へ合わせ、何を先に答え何を本文へ任せるかはユーザー指定と記事目的を守る。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
 POLICY += '\n' + READER_FOCUS_POLICY
 REVIEW_POLICY = '''【編集設計の個別確認】
@@ -71,7 +71,7 @@ SECTION_SCHEMA = obj({
     'format':{'type':'string','enum':['文章','箇条書き','番号付きリスト','比較表','データ表']},
     'items':STRINGS,'cta':STRING,'budget':BUDGET_SCHEMA})
 SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},
-    'reader_focus':READER_FOCUS_SCHEMA,'lead_direction':STRING,
+    'reader_focus':READER_FOCUS_SCHEMA,'lead_direction':DIRECTION_SCHEMA,
     'sections':{'type':'array','minItems':1,'items':SECTION_SCHEMA},
     'omissions':{'type':'array','items':obj({'research_id':STRING,'reason':STRING})}})
 def model_output_config(schema):
@@ -399,7 +399,7 @@ def repair_config(*, allow_lead=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
-    if allow_lead:fields.update(lead_direction=STRING,reader_focus=READER_FOCUS_SCHEMA)
+    if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
     return model_output_config(obj(fields))
 
 

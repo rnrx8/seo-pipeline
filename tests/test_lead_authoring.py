@@ -136,6 +136,13 @@ class LeadAuthoringTest(unittest.TestCase):
             ('200字前後のリード',220),('リードは100字以内',100),('リード文は300〜400字',400),('500文字程度のリード',550)]:
             with self.subTest(prompt=prompt):self.assertEqual(lead_char_limit({'custom_prompt':prompt}),expected)
 
+    def test_lead_route_cannot_reintroduce_unselected_background(self):
+        from test_editorial_blueprint import fixture
+        from pipeline import editorial_blueprint as bp
+        _,_,_,ctx,value=fixture()
+        value['lead_direction']+='別の友人関係の背景も先に説明する。'
+        with self.assertRaises(ContentQualityError):bp.validate(value,ctx)
+
     def test_length_correction_is_bounded_and_keeps_original_body(self):
         from test_editorial_blueprint import fixture, artifact
         from pipeline import step_article

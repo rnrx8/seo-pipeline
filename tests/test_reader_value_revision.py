@@ -104,7 +104,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
 
     def test_lead_only_repair_preserves_chapters_and_invalidates_previous_review(self):
         plan,_,matrix,ctx,value=fixture();saved=artifact(value,ctx);report=lead_finding(saved)
-        changed='候補の閲覧と連絡を検討する読者を示し、用途によって必要プランが異なることから、この記事で利用条件を判断できるとつなぐ'
+        changed=bp.LEAD_DIRECTIONS['decision_difficulty']
         patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':changed,'reader_focus':copy.deepcopy(value['reader_focus'])}
         with ExitStack() as stack:
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))

@@ -19,6 +19,13 @@ def obj(fields):
 
 
 STRING = {'type': 'string'}
+LEAD_DIRECTIONS = {
+    'reader_experience': '中心に選んだ出来事と本人の実感から、望みと今の問い、本文で得る判断材料へ進む。',
+    'desired_change': '望む具体的な体験から、それを得るために今知りたい問いと、本文で得る判断材料へ進む。',
+    'decision_difficulty': '今決められない問いと迷う理由から、本文で何を確かめれば判断できるかへ進む。',
+    'direct_answer': '今知りたい問いへ短く答え、必要な理由・条件と本文で確認する詳細へ進む。',
+}
+DIRECTION_SCHEMA = {'type': 'string', 'enum': list(LEAD_DIRECTIONS.values())}
 READER_FOCUS_SCHEMA = obj({
     'need_ids': {'type': 'array', 'items': STRING},
     'motivation_ref': {'anyOf': [obj({'need_id': STRING, 'hypothesis_id': STRING,
