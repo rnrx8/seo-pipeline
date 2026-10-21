@@ -507,36 +507,51 @@ def _build_extra_instructions(job: dict) -> str:
 
 
 def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
-    """One scoped editorial pass after the body; no QA pass is inferred."""
+    """Scoped edit, plus at most one length correction; never a QA pass."""
     from .editorial_blueprint import require_projection, validate_shape, fingerprint
-    from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, WRITE_SCHEMA
+    from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, lead_char_limit, WRITE_SCHEMA
     value = require_projection(outline)
     if value is None:
         return text, 0, 0, None
     requirements = {k:job[k] for k in ('article_purpose','target_audience','custom_prompt','tone_style','citation_style') if job.get(k)}
     requirements['learned_style_rules'] = [r['rule_text'] for r in learned_rules if r.get('rule_text')]
     payload = editing_payload(text, value, outline['meta']['blueprint_context'], keyword, requirements)
-    request = writer_request(payload, model=get_step_config('article')[0])
-    msg = create_with_retry(client, **request)
-    if getattr(msg, 'stop_reason', None) != 'end_turn':
-        raise ContentQualityError('リードの仕上げが正常終了していません。初稿は保持します。')
-    try:
-        result = json.loads(message_text(msg))
-    except (TypeError, ValueError) as exc:
-        raise ContentQualityError('リードの仕上げ形式が不正です。初稿は保持します。') from exc
-    validate_shape(result, WRITE_SCHEMA)
-    revised = replace_lead(text, result['lead'])
-    guarantees = explicit_risk_guarantees(result['lead'])
-    if guarantees:
-        raise ContentQualityError('仕上げリードに未検証の結果保証があります。初稿は保持します。')
+    limit = lead_char_limit(requirements)
+    payload['lead_max_chars'] = limit
+    attempts = []
+    total_input = total_output = 0
+    for attempt in range(2):
+        request = writer_request(payload, model=get_step_config('article')[0])
+        msg = create_with_retry(client, **request)
+        total_input += msg.usage.input_tokens
+        total_output += msg.usage.output_tokens
+        if getattr(msg, 'stop_reason', None) != 'end_turn':
+            raise ContentQualityError('リードの仕上げが正常終了していません。初稿は保持します。')
+        try:
+            result = json.loads(message_text(msg))
+        except (TypeError, ValueError) as exc:
+            raise ContentQualityError('リードの仕上げ形式が不正です。初稿は保持します。') from exc
+        validate_shape(result, WRITE_SCHEMA)
+        revised = replace_lead(text, result['lead'])
+        if explicit_risk_guarantees(result['lead']):
+            raise ContentQualityError('仕上げリードに未検証の結果保証があります。初稿は保持します。')
+        attempts.append({'request_sha256':fingerprint(request),'lead':result['lead'],'chars':len(result['lead'])})
+        if len(result['lead']) <= limit:
+            break
+        if attempt == 0:
+            payload['draft_lead'] = result['lead']
+            payload['scope_feedback'] = (f'実測{len(result["lead"])}字で、今回の上限{limit}字を超えています。'
+                '主題・原因と本人の実感・本文を読む理由を保ち、重なる説明から短く整えてください。')
     import hashlib
     start, end = lead_span(text)
     meta = {'version':VERSION, 'source_text_sha256':hashlib.sha256(text.encode()).hexdigest(),
             'request_sha256':fingerprint(request), 'reader_focus':value['reader_focus'],
+            'authoring_context':payload, 'attempts':attempts, 'max_chars':limit,
+            'status':'edited_pending_qa' if len(result['lead']) <= limit else 'needs_length_revision',
             'draft_lead':text[start:end], 'finished_lead':result['lead'],
             'body_preserved':text[_re.search(r'^##\s+',text,_re.M).start():] == revised[_re.search(r'^##\s+',revised,_re.M).start():],
             'semantically_accepted':False}
-    return revised, msg.usage.input_tokens, msg.usage.output_tokens, meta
+    return revised, total_input, total_output, meta
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -804,6 +819,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         upsert_artifact(job_id=job_id, step='article_lead_edit', content_type='application/json',
                         content_text=json.dumps(lead_edit,ensure_ascii=False),
                         meta={'model':get_step_config('article')[0], 'input_tokens':ti,'output_tokens':to,'audited':False})
+        if lead_edit['status'] != 'edited_pending_qa':
+            raise ContentQualityError('リードの長さ指定を満たせませんでした。初稿と仕上げ履歴を保持し、記事は更新しません。')
 
     delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:

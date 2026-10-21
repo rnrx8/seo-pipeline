@@ -104,6 +104,23 @@ def writer_request(payload, *, model, max_tokens=1200):
             'output_config': {'format': {'type': 'json_schema', 'schema': copy.deepcopy(WRITE_SCHEMA)}}}
 
 
+def lead_char_limit(requirements):
+    """Bound the default brief; honor explicit lead lengths, not body lengths."""
+    text = requirements.get('custom_prompt') or ''
+    for pattern in (r'リード(?:文)?[^。\n\d]{0,12}(\d{2,4})[〜～~\-](\d{2,4})(?:字|文字)',
+                    r'(\d{2,4})[〜～~\-](\d{2,4})(?:字|文字)(?:の)?リード'):
+        match = re.search(pattern, text)
+        if match and not re.search('本文|記事|全体',match.group(0)):
+            return max(int(n) for n in match.groups())
+    for pattern in (r'リード(?:文)?[^。\n\d]{0,12}(\d{2,4})(?:字|文字)(前後|程度|以内)?',
+                    r'(\d{2,4})(?:字|文字)(前後|程度|以内)?(?:の)?リード'):
+        match = re.search(pattern, text)
+        if match and not re.search('本文|記事|全体',match.group(0)):
+            target = int(match.group(1))
+            return target if match.group(2) == '以内' else (target * 11 + 9) // 10
+    return 220
+
+
 def lead_span(text):
     """Locate only the prose between the single H1 and the first H2."""
     from .content_quality import ContentQualityError

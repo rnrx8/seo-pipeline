@@ -129,6 +129,29 @@ class LeadAuthoringTest(unittest.TestCase):
         with patch.object(step_article,'create_with_retry',return_value=message),self.assertRaises(ContentQualityError):
             step_article._finish_reader_lead(None,text,saved,'利用条件',{},[])
 
+    def test_lead_limit_honors_explicit_lead_lengths_but_not_body_counts(self):
+        from pipeline.lead_authoring import lead_char_limit
+        for prompt,expected in [('本文5000字、リードは短く',220),('リードは短く、本文5000字',220),
+            ('200字前後のリード',220),('リードは100字以内',100),('リード文は300〜400字',400),('500文字程度のリード',550)]:
+            with self.subTest(prompt=prompt):self.assertEqual(lead_char_limit({'custom_prompt':prompt}),expected)
+
+    def test_length_correction_is_bounded_and_keeps_original_body(self):
+        from test_editorial_blueprint import fixture, artifact
+        from pipeline import step_article
+        _,_,_,ctx,value=fixture();saved=artifact(value,ctx)
+        text='# 条件\n\n元のリード。\n\n## 閲覧と送信\n\n本文。'
+        def message(lead):return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps({'lead':lead}))],usage=NS(input_tokens=3,output_tokens=2))
+        with patch.object(step_article,'create_with_retry',side_effect=[message('長'*221),message('短いリード。')]) as send:
+            result,ti,to,meta=step_article._finish_reader_lead(None,text,saved,'条件',{},[])
+        self.assertEqual(send.call_count,2);self.assertEqual((ti,to),(6,4))
+        self.assertEqual(meta['status'],'edited_pending_qa');self.assertTrue(meta['body_preserved'])
+        self.assertEqual(meta['draft_lead'],'元のリード。');self.assertEqual(len(meta['attempts']),2)
+        self.assertIn('実測221字',json.loads(send.call_args.kwargs['messages'][0]['content'])['scope_feedback'])
+        with patch.object(step_article,'create_with_retry',side_effect=[message('長'*221),message('長'*222)]) as send:
+            _,_,_,meta=step_article._finish_reader_lead(None,text,saved,'条件',{},[])
+        self.assertEqual(send.call_count,2);self.assertEqual(meta['status'],'needs_length_revision')
+        self.assertFalse(meta['semantically_accepted'])
+
 
 if __name__ == '__main__':
     unittest.main()
