@@ -1,4 +1,5 @@
 """Reference identity and real request handoff; no generated quality verdicts."""
+import copy
 import hashlib
 import importlib.util
 import json
@@ -112,3 +113,75 @@ class TrialEditorialReferenceTests(unittest.TestCase):
             original['custom_prompt'], self.read(self.fixture()))}
         self.assertNotEqual(cq.snapshot('本文', '', '', {}, original),
                             cq.snapshot('本文', '', '', {}, referenced))
+
+    def comparison_fixture(self):
+        reference = self.read(self.fixture())
+        candidate = '設定についての説明を読み、手順を比較します。'
+        runs = []
+        for texts in ([reference['reference_text'], candidate],
+                      [candidate, reference['reference_text']]):
+            cases = [{'id': key, 'lead': text}
+                     for key, text in zip(('case_alpha', 'case_beta'), texts)]
+            value = {'checks': [{'case_id': c['id'], 'sentence_progression': [
+                {'quote': c['lead'], 'what_the_reader_receives': '操作の案内',
+                 'why_the_next_sentence_is_needed': '次の操作へ進む'}]} for c in cases],
+                'comparison': {'preferred_case': next(c['id'] for c in cases
+                    if c['lead'] == reference['reference_text']),
+                    'reason_with_short_quotes': '必要な操作へ進む説明が先にある。'}}
+            runs.append({'cases': cases, 'result': value})
+        return reference, candidate, runs
+
+    def compare(self, reference, candidate, runs):
+        return reference_module.checked_revision_comparison(
+            '設定 確認', candidate, reference, runs)
+
+    def test_swapped_neutral_ids_are_bound_to_text_without_overwriting_qa(self):
+        reference, candidate, runs = self.comparison_fixture()
+        original = copy.deepcopy(runs)
+        result = self.compare(reference, candidate, runs)
+        self.assertEqual(result['status'], 'needs_revision')
+        self.assertEqual(result['preferences_by_bound_text'], ['reference', 'reference'])
+        self.assertFalse(result['production_qa_result_changed'])
+        self.assertEqual(runs, original)
+
+    def test_position_dependent_preference_is_inconclusive(self):
+        reference, candidate, runs = self.comparison_fixture()
+        runs[1]['result']['comparison']['preferred_case'] = 'case_alpha'
+        self.assertEqual(self.compare(reference, candidate, runs)['status'], 'inconclusive')
+
+    def test_candidate_preference_cannot_become_article_or_fresh_generation_acceptance(self):
+        reference, candidate, runs = self.comparison_fixture()
+        for run in runs:
+            run['result']['comparison']['preferred_case'] = next(
+                c['id'] for c in run['cases'] if c['lead'] == candidate)
+        result = self.compare(reference, candidate, runs)
+        self.assertEqual(result['status'], 'no_regression_detected')
+        self.assertFalse(result['full_article_accepted'])
+        self.assertFalse(result['fresh_generation_quality_accepted'])
+
+    def test_single_or_repeated_position_cannot_claim_order_independence(self):
+        reference, candidate, runs = self.comparison_fixture()
+        for invalid in (runs[:1], [runs[0], copy.deepcopy(runs[0])]):
+            with self.subTest(runs=len(invalid)), self.assertRaises(ValueError):
+                self.compare(reference, candidate, invalid)
+
+    def test_readback_cannot_quote_the_other_case_as_its_own(self):
+        reference, candidate, runs = self.comparison_fixture()
+        runs[0]['result']['checks'][0]['sentence_progression'][0]['quote'] = candidate
+        with self.assertRaises(ValueError):
+            self.compare(reference, candidate, runs)
+
+    def test_stale_prose_or_reference_cannot_inherit_a_comparison(self):
+        reference, candidate, runs = self.comparison_fixture()
+        with self.assertRaises(ValueError):
+            self.compare(reference, candidate + '追記。', runs)
+        reference['reference_text'] += '追記。'
+        with self.assertRaises(ValueError):
+            self.compare(reference, candidate, runs)
+
+    def test_comparison_remains_scoped_to_the_accepted_keyword_and_status(self):
+        reference, candidate, runs = self.comparison_fixture()
+        for key, value in [('keyword', '学習 方法'), ('source_status', 'pending')]:
+            changed = {**reference, key: value}
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.compare(changed, candidate, runs)

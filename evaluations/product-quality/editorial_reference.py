@@ -45,3 +45,68 @@ def reference_feedback(feedback, reference):
     if reference is None:
         return feedback
     return feedback + '\n\n【ユーザーが方向性を評価した参照原稿と今回の修正範囲】\n' + json.dumps(reference, ensure_ascii=False)
+
+
+def checked_revision_comparison(keyword, candidate, reference, runs):
+    """Bind two order-swapped local comparisons to exact, same-keyword prose.
+
+    A preference is a revision regression signal, never an article QA pass.
+    Human labels do not appear in either comparison's model input.
+    """
+    if (reference.get('keyword') != keyword
+            or reference.get('source_status') != 'user_accepted_lead_reference'):
+        raise ValueError('Comparison needs an accepted reference for this keyword')
+    accepted = reference.get('reference_text')
+    if (not isinstance(accepted, str) or not accepted.strip()
+            or hashlib.sha256(accepted.encode()).hexdigest() != reference.get('reference_sha256')):
+        raise ValueError('Comparison reference text no longer matches its hash')
+    if not isinstance(candidate, str) or not candidate.strip() or candidate == accepted:
+        raise ValueError('Comparison needs a distinct candidate, not the reference itself')
+    if len(runs) != 2:
+        raise ValueError('Two order-swapped comparisons are required')
+    preferred, reference_positions, reasons = [], [], []
+    for run in runs:
+        cases, value = run['cases'], run['result']
+        if (len(cases) != 2 or len({c['id'] for c in cases}) != 2
+                or {c['lead'] for c in cases} != {accepted, candidate}):
+            raise ValueError('Comparison cases do not match the frozen prose')
+        texts = {c['id']: c['lead'] for c in cases}
+        reference_positions.append(next(i for i, c in enumerate(cases) if c['lead'] == accepted))
+        rows = value.get('checks', [])
+        if (len(rows) != 2 or {r.get('case_id') for r in rows} != set(texts)):
+            raise ValueError('Comparison readbacks are missing or duplicated')
+        for row in rows:
+            spans = row.get('sentence_progression')
+            if not isinstance(spans, list) or not spans:
+                raise ValueError('Comparison needs actual quoted reader progression')
+            for span in spans:
+                quote = span.get('quote')
+                if (not isinstance(quote, str) or not quote.strip()
+                        or quote not in texts[row['case_id']]):
+                    raise ValueError('Readback quote does not belong to its source case')
+        comparison = value['comparison']
+        choice = comparison['preferred_case']
+        reason = comparison.get('reason_with_short_quotes')
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError('Comparison needs an editorial reason')
+        if choice == 'no_material_preference':
+            preferred.append('neither')
+        elif choice in texts:
+            preferred.append('reference' if texts[choice] == accepted else 'candidate')
+        else:
+            raise ValueError('Comparison preference points outside its cases')
+        reasons.append(reason)
+    if reference_positions != [0, 1] and reference_positions != [1, 0]:
+        raise ValueError('Reference must be tested in both positions')
+    status = ('needs_revision' if preferred == ['reference', 'reference']
+              else 'no_regression_detected' if preferred[0] == preferred[1]
+              else 'inconclusive')
+    return {
+        'status': status, 'scope': 'same_keyword_lead_revision_comparison_only',
+        'candidate_sha256': hashlib.sha256(candidate.encode()).hexdigest(),
+        'reference_sha256': reference['reference_sha256'],
+        'preferences_by_bound_text': preferred, 'editorial_reasons': reasons,
+        'quoted_sources_checked': True, 'both_reference_positions_checked': True,
+        'full_article_accepted': False, 'fresh_generation_quality_accepted': False,
+        'production_qa_result_changed': False,
+    }
