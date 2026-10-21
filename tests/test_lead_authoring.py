@@ -12,7 +12,7 @@ class LeadAuthoringTest(unittest.TestCase):
             'motivation_context': [{'hypothesis_id': 'b1', 'motivation_links': [
                 {'from': '壁へ掛けたい', 'question': 'why', 'to': '床に置くと通りづらい'},
                 {'from': '穴を開けたくない', 'question': 'why', 'to': '退去時の費用が気になる'}]}]}, {'id': 'i02'}]}
-        self.focus = {'need_ids': ['i01'], 'motivation_ref': None,
+        self.focus = {'need_ids': ['i01'], 'motivation_ref': None, 'felt_response': '',
                       'current_understanding': '穴を開けない方法があることは知っている',
                       'open_question': '壁を傷めず取り付けられるか', 'desired_experience': ''}
 
@@ -30,7 +30,7 @@ class LeadAuthoringTest(unittest.TestCase):
         self.design['internal_evaluation'] = 'not authoring material'
         original = copy.deepcopy(self.focus)
         payload = writing_payload(keyword='壁 取り付け', title='壁を傷つけない取り付け方',
-            reader_focus=self.focus, lead_direction='取り付けたい物から方法の違いへ進む',
+            reader_focus=self.focus,
             reader_design=self.design, request='短いリード', article_purpose='方法を選べる',
             article_contents=['取り付け方'], next_section_excerpt='## 取り付け方\n耐荷重を確認します。',
             facts='確認した耐荷重を守る')
