@@ -176,10 +176,24 @@ class IntentExplorationTests(unittest.TestCase):
             self.assertEqual(material[0]['motivation_links'][0]['to'], branch['links'][0]['to'])
             self.assertEqual(material[0]['concrete_material'], branch['concrete_material'])
             self.assertEqual(material[0]['alternative']['difference'], branch['alternative']['difference'])
+            self.assertEqual(material[0]['root_desire'], branch['root_desire'])
+            self.assertNotIn('desired_experience', material[0])
             self.assertEqual(material[0]['unknowns'], branch['unknowns'])
             self.assertEqual(material[0]['status'], 'editorial_hypothesis_not_verified')
             self.assertNotIn('quote', json.dumps(material))
         self.assertEqual(saved, original)
+
+    def test_root_classification_is_not_presented_as_a_concrete_desired_experience(self):
+        _, _, _, value = self.fixture()
+        branch = value['exploration']['branches'][0]
+        branch['root_desire'].update(category='belonging', meaning='所属の欲求', stop_reason='分析上の分類')
+        branch['concrete_material'] = '話しても受け止められず、相談をためらう。気持ちを聞いてほしい。'
+        material = ie.for_need(value['exploration'], value['selected'][0])[0]
+        self.assertEqual(material['root_desire']['meaning'], '所属の欲求')
+        self.assertEqual(material['concrete_material'], branch['concrete_material'])
+        self.assertNotIn('desired_experience', material)
+        material['root_desire']['meaning'] = '変更'
+        self.assertEqual(branch['root_desire']['meaning'], '所属の欲求')
 
     def test_record_keeps_full_exploration_with_method_identity(self):
         brief, _, sources, value = self.fixture()
