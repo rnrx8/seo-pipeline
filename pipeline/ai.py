@@ -7,7 +7,7 @@ OPUS_THINKING_ALLOWANCE = 8000
 
 # Centralized model config per step
 STEP_CONFIG: dict[str, dict] = {
-    "search_intent": {"model": "claude-opus-5-5",   "max_tokens": 6000},
+    "search_intent": {"model": "claude-opus-5-5",   "max_tokens": 10000},
     "query_attrs":   {"model": "claude-haiku-4-5-20251001", "max_tokens": 800},
     "intent_chains": {"model": "claude-haiku-4-5-20251001", "max_tokens": 3000},
     "outline":       {"model": "claude-opus-5-5",   "max_tokens": 16000},
