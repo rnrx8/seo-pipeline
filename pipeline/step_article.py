@@ -506,6 +506,39 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
+def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
+    """One scoped editorial pass after the body; no QA pass is inferred."""
+    from .editorial_blueprint import require_projection, validate_shape, fingerprint
+    from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, WRITE_SCHEMA
+    value = require_projection(outline)
+    if value is None:
+        return text, 0, 0, None
+    requirements = {k:job[k] for k in ('article_purpose','target_audience','custom_prompt','tone_style','citation_style') if job.get(k)}
+    requirements['learned_style_rules'] = [r['rule_text'] for r in learned_rules if r.get('rule_text')]
+    payload = editing_payload(text, value, outline['meta']['blueprint_context'], keyword, requirements)
+    request = writer_request(payload, model=get_step_config('article')[0])
+    msg = create_with_retry(client, **request)
+    if getattr(msg, 'stop_reason', None) != 'end_turn':
+        raise ContentQualityError('リードの仕上げが正常終了していません。初稿は保持します。')
+    try:
+        result = json.loads(message_text(msg))
+    except (TypeError, ValueError) as exc:
+        raise ContentQualityError('リードの仕上げ形式が不正です。初稿は保持します。') from exc
+    validate_shape(result, WRITE_SCHEMA)
+    revised = replace_lead(text, result['lead'])
+    guarantees = explicit_risk_guarantees(result['lead'])
+    if guarantees:
+        raise ContentQualityError('仕上げリードに未検証の結果保証があります。初稿は保持します。')
+    import hashlib
+    start, end = lead_span(text)
+    meta = {'version':VERSION, 'source_text_sha256':hashlib.sha256(text.encode()).hexdigest(),
+            'request_sha256':fingerprint(request), 'reader_focus':value['reader_focus'],
+            'draft_lead':text[start:end], 'finished_lead':result['lead'],
+            'body_preserved':text[_re.search(r'^##\s+',text,_re.M).start():] == revised[_re.search(r'^##\s+',revised,_re.M).start():],
+            'semantically_accepted':False}
+    return revised, msg.usage.input_tokens, msg.usage.output_tokens, meta
+
+
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
@@ -764,6 +797,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             warn("Structure repair introduced [hypothesis] content")
 
+    article_text, ti, to, lead_edit = _finish_reader_lead(client, article_text, outline, keyword, job, learned_rules)
+    total_input += ti
+    total_output += to
+    if lead_edit is not None:
+        upsert_artifact(job_id=job_id, step='article_lead_edit', content_type='application/json',
+                        content_text=json.dumps(lead_edit,ensure_ascii=False),
+                        meta={'model':get_step_config('article')[0], 'input_tokens':ti,'output_tokens':to,'audited':False})
+
     delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
@@ -783,6 +824,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "output_tokens": total_output,
             "parts": 3,
             **reader_meta,
+            'lead_edit_version':lead_edit['version'] if lead_edit else None,
             "section_map": bind_sections(article_text, outline_text, contract),
             "structure_repaired": structure_repaired,
             "duplicate_service_h2s_removed": duplicate_service_h2s_removed,

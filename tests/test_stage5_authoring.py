@@ -239,7 +239,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             'content_contract':{'content_text':json.dumps(contract)},'search_intent':{'content_text':'old','meta':{'reader_needs_version':'new'}},
             'research_validation':{'content_text':json.dumps(readiness)},'service_map':{'content_text':json.dumps(bp.placement(a))}}
         def save(**kw):artifacts[kw['step']]={'id':'saved',**kw};return artifacts[kw['step']]
-        index=iter(chunks)
+        index=iter([*chunks,json.dumps({'lead':'閲覧と送信の条件を整理します。'},ensure_ascii=False)])
         def send(*args,**kw):return NS(stop_reason='end_turn',content=[NS(type='text',text=next(index))],usage=NS(input_tokens=1,output_tokens=1))
         with ExitStack() as stack:
             stack.enter_context(patch.object(step_article,'get_artifact',side_effect=lambda j,k:artifacts[k]))
@@ -254,8 +254,11 @@ class Stage5AuthoringTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article.time,'sleep'))
             model=stack.enter_context(patch.object(step_article,'create_with_retry',side_effect=send))
             result=step_article.run('job','条件')
-        self.assertEqual(model.call_count,3)
+        self.assertEqual(model.call_count,4)
         self.assertIn('article_draft',artifacts)
+        self.assertIn('article_lead_edit',artifacts)
+        lead_edit=json.loads(artifacts['article_lead_edit']['content_text'])
+        self.assertTrue(lead_edit['body_preserved']);self.assertFalse(lead_edit['semantically_accepted'])
         self.assertEqual([e['blueprint_id'] for e in result['meta']['section_map']['entries']],['s01','s02','s03'])
         self.assertTrue(all(s['status']=='mapped_not_semantically_verified' for s in result['meta']['reader_correspondence']['sections']))
         actual=json.dumps(model.call_args_list[0].kwargs,ensure_ascii=False)

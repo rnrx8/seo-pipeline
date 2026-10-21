@@ -1,6 +1,8 @@
 import copy
 import json
 import unittest
+from types import SimpleNamespace as NS
+from unittest.mock import patch
 
 from pipeline.content_quality import ContentQualityError
 from pipeline.lead_authoring import checked_focus, writer_request, writing_payload
@@ -94,6 +96,38 @@ class LeadAuthoringTest(unittest.TestCase):
         for system in (step_article.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT):
             self.assertEqual(system.count(PROSE_STYLE_POLICY), 1)
         self.assertNotIn('本文（見出し・表・リスト以外）でです・ます調でない箇所を検出', step_review.SYSTEM_PROMPT)
+
+    def test_lead_replacement_keeps_title_body_and_spacing_exactly(self):
+        from pipeline.lead_authoring import replace_lead
+        prefix='# 壁へ取り付ける方法\n\n'
+        body='\n\n## 取り付け方\n\n| 方法 | 制限 |\n|---|---|\n| A | B |\n\n### 確認点\n\n本文。\n'
+        text=prefix+'元のリード。'+body
+        self.assertEqual(replace_lead(text,'新しいリード。'),prefix+'新しいリード。'+body)
+        for bad in ('', '## 新しい章\n本文', '```html\n本文\n```'):
+            with self.subTest(bad=bad),self.assertRaises(ContentQualityError):replace_lead(text,bad)
+        for bad_text in ('タイトルなし\n\n## 章\n本文', '# タイトル\n\n本文だけ', '# タイトル\n\n## 章\n本文'):
+            with self.subTest(text=bad_text),self.assertRaises(ContentQualityError):replace_lead(bad_text,'新稿。')
+
+    def test_final_lead_call_is_bounded_source_linked_and_not_a_semantic_pass(self):
+        from test_editorial_blueprint import fixture, artifact
+        from pipeline import step_article
+        _,_,_,ctx,value=fixture();saved=artifact(value,ctx)
+        text='# 利用条件\n\n元のリード。\n\n## 閲覧と送信\n\n本文。\n\n## まとめ\n\n既存のまとめ。'
+        message=NS(stop_reason='end_turn',content=[NS(type='text',text='{"lead":"用途に合う条件を確かめます。"}')],usage=NS(input_tokens=3,output_tokens=2))
+        with patch.object(step_article,'create_with_retry',return_value=message) as send:
+            result,ti,to,meta=step_article._finish_reader_lead(None,text,saved,'利用条件',
+                {'custom_prompt':'サービス名は次章へ','tone_style':'丁寧'},[{'rule_text':'自然な短文'}])
+        self.assertEqual(send.call_count,1);self.assertEqual((ti,to),(3,2))
+        sent=json.loads(send.call_args.kwargs['messages'][0]['content'])
+        self.assertEqual(sent['draft_lead'],'元のリード。')
+        self.assertEqual(sent['requirements']['learned_style_rules'],['自然な短文'])
+        self.assertNotIn('既存のまとめ',sent['next_section_excerpt'])
+        self.assertEqual(sent['article_contents'],['閲覧と送信','まとめ'])
+        self.assertTrue(meta['body_preserved']);self.assertFalse(meta['semantically_accepted'])
+        self.assertIn('既存のまとめ',result)
+        message.stop_reason='max_tokens'
+        with patch.object(step_article,'create_with_retry',return_value=message),self.assertRaises(ContentQualityError):
+            step_article._finish_reader_lead(None,text,saved,'利用条件',{},[])
 
 
 if __name__ == '__main__':

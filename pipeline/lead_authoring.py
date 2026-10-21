@@ -5,8 +5,12 @@ No accepted prose or query-specific template is included in fresh generation.
 """
 import copy
 import json
+import re
 
 from .authoring_policy import LEAD_POLICY
+from .readability import PROSE_STYLE_POLICY
+
+VERSION = 'focused-lead-edit-v1'
 
 
 def obj(fields):
@@ -36,7 +40,7 @@ felt_responseには当人の短い気持ちだけを日常語で記す。出来�
 
 WRITING_SYSTEM = '''あなたは記事の導入を担当する編集者です。完成本文へつながるリードだけをJSONで返してください。
 reader_focusは語りかける相手と、その人が読み始める時点。各欄を順に文章へ変換するチェックリストではありません。その人を記事の外から紹介するのではなく、本人の考えや実感から自然に書き始めます。既に考えていることを長く解説せず、前の文を読んだその人へ次の文を届ける一つの文章として書いてください。
-説明文はです・ます調を基本にします。読者自身の短い実感や望みを表す部分には、文脈が自然なら常体・体言止めを使えます。短い実感を「〜ことがあります」「〜と感じる人がいます」の説明へ一律に変換する必要はありません。視点を保ち、書き手自身の体験談にはしません。
+''' + PROSE_STYLE_POLICY + '''
 数値・固有の事実・結果の保証を創作せず、本文にない回答を予告しないでください。見出し・表・CTA・編集メモは出力しません。
 ''' + LEAD_POLICY
 
@@ -98,3 +102,46 @@ def writer_request(payload, *, model, max_tokens=1200):
     return {'model': model, 'max_tokens': max_tokens, 'system': WRITING_SYSTEM,
             'messages': [{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}],
             'output_config': {'format': {'type': 'json_schema', 'schema': copy.deepcopy(WRITE_SCHEMA)}}}
+
+
+def lead_span(text):
+    """Locate only the prose between the single H1 and the first H2."""
+    from .content_quality import ContentQualityError
+    h1 = list(re.finditer(r'^#\s+([^\n]+)$', text, re.M))
+    h2 = re.search(r'^##\s+([^\n]+)$', text, re.M)
+    if len(h1) != 1 or not h2 or h1[0].end() >= h2.start():
+        raise ContentQualityError('リードだけを編集するためのタイトル・本文境界が不明です。')
+    gap = text[h1[0].end():h2.start()]
+    start = h1[0].end() + len(gap) - len(gap.lstrip())
+    end = h2.start() - len(gap) + len(gap.rstrip())
+    if start >= end:
+        raise ContentQualityError('仕上げ対象のリードがありません。')
+    return start, end
+
+
+def replace_lead(text, lead):
+    from .content_quality import ContentQualityError
+    if (not isinstance(lead, str) or not lead.strip()
+            or re.search(r'^\s*(?:#{1,6}\s|```|\|)', lead, re.M)):
+        raise ContentQualityError('リード以外の構造を仕上げ稿へ混入できません。')
+    start, end = lead_span(text)
+    return text[:start] + lead.strip() + text[end:]
+
+
+def editing_payload(text, value, ctx, keyword, requirements):
+    start, end = lead_span(text)
+    titles = re.findall(r'^##\s+([^\n]+)$', text, re.M)
+    h2 = list(re.finditer(r'^##\s+', text, re.M))
+    next_section = text[h2[0].start():h2[1].start() if len(h2) > 1 else len(text)]
+    focus = focus_context(value['reader_focus'], ctx['reader_design'])
+    return {'keyword': keyword, 'reader_focus': focus,
+            'title': re.search(r'^#\s+([^\n]+)$', text, re.M).group(1),
+            'article_contents': titles, 'next_section_excerpt': next_section,
+            'requirements': copy.deepcopy(requirements), 'draft_lead': text[start:end],
+            'editing_task': '原稿を最初から最後まで通読し、この読者へ届く一続きの導入へ仕上げる。'
+                '出来事と本人の実感は残し、重なる説明や既に知っている概念の解説を整理する。'
+                '主題・望み・ためらい・本文を読む理由が自然につながるよう整える。'
+                '途中から読者を第三者へ解説したり、書き手の告白になったりしない。'
+                '元の条件の意味を変えず、予告を本文と照合し、結果を保証しない。'
+                '通常は180〜220字程度。ユーザーのリードの明示的な長さ指定を優先する。'
+                '改善が不要なら原稿を保つ。'}
