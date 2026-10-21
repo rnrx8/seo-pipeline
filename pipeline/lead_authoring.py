@@ -10,7 +10,7 @@ import re
 from .authoring_policy import LEAD_POLICY
 from .readability import PROSE_STYLE_POLICY
 
-VERSION = 'focused-lead-edit-v1'
+VERSION = 'focused-lead-v2-after-body'
 
 
 def obj(fields):
@@ -154,12 +154,13 @@ def editing_payload(text, value, ctx, keyword, requirements):
     return {'keyword': keyword, 'reader_focus': focus,
             'title': re.search(r'^#\s+([^\n]+)$', text, re.M).group(1),
             'article_contents': titles, 'next_section_excerpt': next_section,
-            'requirements': copy.deepcopy(requirements), 'draft_lead': text[start:end],
-            'editing_task': '原稿を最初から最後まで通読し、この読者へ届く一続きの導入へ仕上げる。'
-                '出来事と本人の実感は残し、重なる説明や既に知っている概念の解説を整理する。'
+            'lead_direction': value['lead_direction'],
+            'requirements': copy.deepcopy(requirements),
+            'editing_task': '読者設計と実際の本文に合わせ、リードを専用に執筆する。'
+                '出来事と本人の実感を結び、重なる説明や既に知っている概念の解説を整理する。'
                 '主題・望み・ためらい・本文を読む理由が自然につながるよう整える。'
                 '読者の事情と書き手の立場を区別し、読み手を案内する文章にする。'
                 '元の条件の意味を変えず、予告は本文で比較・確認・判断できることを約束する。'
                 '本文を読んだ後の成果や状況の実現を保証する予告にしない。'
                 '通常は180〜220字程度。ユーザーのリードの明示的な長さ指定を優先する。'
-                '改善が不要なら原稿を保つ。'}
+                '出力前に一段落として通読してから完成稿を返す。'}
