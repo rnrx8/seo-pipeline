@@ -64,17 +64,20 @@ def checked_focus(value, reader_design):
 
 
 def focus_context(value, reader_design):
-    focus = checked_focus(value, reader_design)
-    ref = focus.pop('motivation_ref')
+    selected = checked_focus(value, reader_design)
+    ref = selected['motivation_ref']
     needs = {n['id']: n for n in reader_design['reader_needs']}
     if ref is not None:
         branch = next(b for b in needs[ref['need_id']]['motivation_context']
                       if b['hypothesis_id'] == ref['hypothesis_id'])
-        focus['motivating_experience'] = copy.deepcopy(branch['motivation_links'][ref['link_index']])
-        focus['motivation_ref'] = ref
+        situation = branch['motivation_links'][ref['link_index']]['to']
     else:
-        focus['reader_situations'] = [needs[i].get('reader_situation', '') for i in focus['need_ids']]
-    return focus
+        situation = '／'.join(needs[i].get('reader_situation', '') for i in selected['need_ids'])
+    # Keep provenance in the saved design. The writer needs the actual situation,
+    # not the analyst's "a reader wants ... why?" frame or internal labels.
+    return {'situation': situation, 'desired_experience': selected['desired_experience'],
+            'current_understanding': selected['current_understanding'],
+            'open_question': selected['open_question']}
 
 
 def writing_payload(*, keyword, title, reader_focus, lead_direction,
@@ -85,7 +88,7 @@ def writing_payload(*, keyword, title, reader_focus, lead_direction,
     if not isinstance(lead_direction, str) or not lead_direction.strip():
         raise ValueError('The lead needs its editorial direction')
     return {'keyword': keyword, 'title': title, 'reader_focus': focus,
-            'lead_direction': lead_direction, 'request': request,
+            'request': request,
             'article_purpose': article_purpose,
             'article_contents': copy.deepcopy(article_contents),
             'next_section_excerpt': next_section_excerpt, 'facts': facts}

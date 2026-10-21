@@ -47,8 +47,9 @@ class LeadAuthoringTest(unittest.TestCase):
         from pipeline.lead_authoring import focus_context
         self.focus['motivation_ref'] = {'need_id': 'i01', 'hypothesis_id': 'b1', 'link_index': 0}
         projected = focus_context(self.focus, self.design)
-        self.assertEqual(projected['motivating_experience']['to'], '床に置くと通りづらい')
+        self.assertEqual(projected['situation'], '床に置くと通りづらい')
         self.assertNotIn('退去時', json.dumps(projected, ensure_ascii=False))
+        self.assertNotIn('motivation_ref', projected)
         for ref in ({'need_id': 'i02', 'hypothesis_id': 'b1', 'link_index': 0},
                     {'need_id': 'i01', 'hypothesis_id': 'b9', 'link_index': 0},
                     {'need_id': 'i01', 'hypothesis_id': 'b1', 'link_index': 2}):
