@@ -94,11 +94,17 @@ class ResearchFindingResolutionTests(unittest.TestCase):
         self.assertNotEqual(req.material_revision(pages,'same answers'),previous)
 
     def test_changed_material_requires_fresh_full_audit_without_repeating_collection(self):
+        for attempt in (2,3):
+            with self.subTest(attempt=attempt):
+                self._check_changed_material(attempt)
+
+    def _check_changed_material(self,attempt):
         plan,pages,value=research_fixture()
-        failed={'valid':False,'attempt':3,'policy_sha256':req.matrix_policy(),
+        failed={'valid':False,'attempt':attempt,'policy_sha256':req.matrix_policy(),
             'plan_sha256':req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
             'material_revision':req.material_revision(pages,'old incomplete answers'),
-            'coverage_issues':[]}
+            'gaps':[{'id':'q1','reason':'previous missing source'}],
+            'coverage_issues':[{'id':'q1','reason':'previous missing source','repair_kind':'source'}]}
         self.records['research_matrix']={'content_text':json.dumps(failed)}
         artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'new source-backed answers'}}
         with patch.object(req,'load_plan',return_value=plan),patch('pipeline.research_collection.recover_empty_collections',return_value=False), \

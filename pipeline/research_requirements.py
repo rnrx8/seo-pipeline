@@ -765,15 +765,16 @@ def verify(job_id, keyword, api_key=None):
     from .research_collection import recover_empty_collections
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
     previous_value=json.loads(previous['content_text']) if previous else {}
+    material_updated=(previous_value.get('valid') is False and not failed_material_unchanged(job_id,previous_value))
     if (previous_value.get('valid') is False and previous_value.get('attempt')==3 and previous_value.get('policy_sha256')==matrix_policy()
             and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
-            and failed_material_unchanged(job_id,previous_value)):
+            and not material_updated):
         raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
     resolution=False
-    if (previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
+    if (not material_updated and previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
             and previous_value['attempt']>=2):
         resolution=resolve_current_findings(job_id,keyword,plan_value,previous_value,api_key)
-    pending=None if recovered or resolution else resume_research_gaps(previous,plan_value)
+    pending=None if recovered or resolution or material_updated else resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
     supplement=get_optional_artifact(job_id,'research_supplement')
     # A policy update invalidates verdicts, not the already-used retrieval budget.
