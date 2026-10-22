@@ -102,6 +102,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=output_config,
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
+        from .tiered_research import structured_review_output_limit
+        request['max_tokens']=structured_review_output_limit(request)
         from .ai import tiered_review_enabled
         trace=[]
         phase_model=model
@@ -146,13 +148,18 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if design:
             from .article_design import checked_result
             decision_response=json.loads(raw)
-            checks=checked_result(checks,decision_response,design,text)
+            checks=checked_result(checks,decision_response,design,text,outline=outline)
             if editorial is not None:
                 editorial += findings.decision_findings(decision_response, design)
+                from .article_progression import checked as checked_progression,findings as progression_findings
+                editorial += progression_findings(checked_progression(
+                    decision_response,design,payload['reader_correspondence'],text))
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
             phase['decision_reviews']=decision_response['decision_reviews']
+            if 'reader_progression_reviews' in decision_response:
+                phase['reader_progression_reviews']=decision_response['reader_progression_reviews']
             if 'lead_direction' in design:phase['lead_review']=decision_response['lead_review']
             phase['reader_correspondence']=payload['reader_correspondence']
         if editorial is not None:

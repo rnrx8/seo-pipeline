@@ -32,6 +32,8 @@ def decision_result(design, text, missing=None):
     if 'lead_direction' in design:
         from pipeline.lead_review import KEYS
         result['lead_review']={key:{'status':'pass','reason':'合成したリード確認結果','affected_blocks':[]} for key in KEYS}
+    result['reader_progression_reviews']={s['id']:{'status':'pass','reason':'この章の具体的な説明を確認する合成応答','affected_blocks':[]}
+        for s in design.get('sections',[]) if s.get('reader_progression')}
     return result
 
 

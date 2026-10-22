@@ -537,7 +537,7 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
             from .article_design import checked_result
             design=context['requirements']['article_design']
             phase=phases['coverage']
-            verified=checked_result(phase.get('checks',[]),phase,design,context['text'])
+            verified=checked_result(phase.get('checks',[]),phase,design,context['text'],outline=context['outline'])
             from . import editorial_findings as findings
             for role in ROLES:
                 if role == 'evidence': continue

@@ -83,8 +83,9 @@ def structured_review_output_limit(request):
  if request.get('model') not in ('gpt-6-luna','gpt-6.1-sol'):return original
  props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
  rows=props.get('blueprint_reviews',{}).get('properties',{})
- if not rows:return original
+ if not rows and not props.get('reader_progression_reviews'):return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())
+ verdicts+=len(props.get('decision_reviews',{}).get('properties',{}))
  verdicts+=len(props.get('reader_progression_reviews',{}).get('properties',{}))
  verdicts+=len(props.get('lead_review',{}).get('properties',{}))
  return max(original,min(32000,4000+400*verdicts))
