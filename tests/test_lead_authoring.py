@@ -58,6 +58,18 @@ class LeadAuthoringTest(unittest.TestCase):
             with self.subTest(ref=ref), self.assertRaises(ContentQualityError):
                 focus_context({**self.focus, 'motivation_ref': ref}, self.design)
 
+    def test_question_and_goal_keep_the_selected_source_not_persona_summary(self):
+        from pipeline.lead_authoring import focus_context
+        self.design['reader_needs'][0].update(question='壁を傷めず、どこへどう取り付けるか',
+            desired_state='床に物を置かず、通りやすい部屋にする')
+        self.design['reader_needs'][1].update(question='別の問い', desired_state='別の状態')
+        self.focus['current_understanding']='方法を調べている'
+        projected=focus_context(self.focus,self.design)
+        self.assertEqual(projected['questions'],['壁を傷めず、どこへどう取り付けるか'])
+        self.assertEqual(projected['desired_states'],['床に物を置かず、通りやすい部屋にする'])
+        self.assertNotIn('別の問い',json.dumps(projected,ensure_ascii=False))
+        self.assertNotIn('別の状態',json.dumps(projected,ensure_ascii=False))
+
     def test_focus_is_shared_by_rendered_outline_and_article_review(self):
         from test_editorial_blueprint import fixture, artifact
         from pipeline import editorial_blueprint as bp, article_design

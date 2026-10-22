@@ -10,7 +10,7 @@ import re
 from .readability import PROSE_STYLE_POLICY
 from .authoring_policy import LEAD_POLICY
 
-VERSION = 'focused-lead-v4-clear-reader-relations'
+VERSION = 'focused-lead-v5-source-linked-question'
 
 
 def obj(fields):
@@ -85,9 +85,14 @@ def focus_context(value, reader_design):
         situation = branch['motivation_links'][ref['link_index']]['to']
     else:
         situation = '／'.join(needs[i].get('reader_situation', '') for i in selected['need_ids'])
-    # Keep provenance in the saved design. The writer needs the actual situation,
-    # not the analyst's "a reader wants ... why?" frame or internal labels.
-    return {'situation': situation, 'felt_response': selected['felt_response'],
+    # Keep the selected question and goal verbatim. A compressed persona can
+    # otherwise lose what is being sought while retaining only a desired feeling.
+    # Other branches and the analyst's iterative why-questions stay internal.
+    return {'questions': [needs[i]['question'] for i in selected['need_ids']
+                          if needs[i].get('question')],
+            'desired_states': [needs[i]['desired_state'] for i in selected['need_ids']
+                               if needs[i].get('desired_state')],
+            'situation': situation, 'felt_response': selected['felt_response'],
             'desired_experience': selected['desired_experience'],
             'current_understanding': selected['current_understanding'],
             'open_question': selected['open_question']}
