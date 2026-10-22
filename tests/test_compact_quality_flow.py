@@ -255,17 +255,15 @@ class CompactQualityFlowTests(unittest.TestCase):
                 return value,usage
             with self.assertRaises(cq.ContentQualityError):self.run_evidence(send)
 
-    def test_known_source_trailing_slash_does_not_require_another_model_response(self):
+    def test_unfetched_non_root_trailing_slash_is_not_the_same_source(self):
         calls=[]
         def send(job,step,request):
             calls.append(step)
             value,usage=self.reply(request,review=step.endswith('screen'))
             value['review']['source_urls']=[self.pages[0]['url']+'/']
             return value,usage
-        checks,_,trace=self.run_evidence(send)
-        self.assertTrue(all(c['status']=='pass' for c in checks))
-        self.assertEqual(len(calls),2)
-        self.assertEqual(trace[0]['review']['source_urls'],[self.pages[0]['url']])
+        with self.assertRaises(cq.ContentQualityError):self.run_evidence(send)
+        self.assertEqual(len(calls),1)
 
     def test_document_hash_does_not_trigger_paid_sampling(self):
         calls=[]

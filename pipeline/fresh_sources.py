@@ -79,7 +79,9 @@ def normalize_url(url):
         p = urlsplit(url.rstrip('.,。、;；`'))
         if p.scheme not in ('http', 'https') or not p.hostname or p.username or p.password:
             return ''
-        return urlunsplit((p.scheme, p.netloc.lower(), p.path.rstrip('/'), p.query, ''))
+        # Only the empty root and '/' are equivalent HTTP paths. A trailing
+        # slash on a non-root path may select a different resource (or a 404).
+        return urlunsplit((p.scheme, p.netloc.lower(), '' if p.path == '/' else p.path, p.query, ''))
     except (ValueError, AttributeError):
         return ''
 
