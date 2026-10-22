@@ -74,7 +74,7 @@ class ReaderPresentationTests(unittest.TestCase):
             self.assertEqual(bool(featured), purpose == 'cv')
             if featured:
                 self.assertEqual(featured[0]['service_name'], 'Aケース')
-                self.assertTrue(any('第一候補' in s for s in featured[0]['requirements']))
+                self.assertTrue(any('推薦内容' in s for s in featured[0]['requirements']))
                 self.assertTrue(any('表' in s for s in featured[0]['requirements']))
 
     def test_existing_five_roles_receive_settings_and_cv_contract_without_new_call(self):
