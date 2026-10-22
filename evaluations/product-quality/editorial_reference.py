@@ -5,6 +5,7 @@ This does not discover approvals, write artifacts, or promote prose to evidence.
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -47,6 +48,27 @@ def reference_feedback(feedback, reference):
     return feedback + '\n\n【ユーザーが方向性を評価した参照原稿と今回の修正範囲】\n' + json.dumps(reference, ensure_ascii=False)
 
 
+def quote_belongs_to(quote, text):
+    """Accept verbatim spans or adjacent Japanese-quoted spans, in source order.
+
+    Reviewers may put presentation brackets around a quotation. Each enclosed
+    fragment must still exist exactly in the same case; no prose is rewritten.
+    """
+    if not isinstance(quote, str) or not quote.strip():
+        return False
+    if quote in text:
+        return True
+    if not re.fullmatch(r'(?:「[^「」]+」)+', quote):
+        return False
+    cursor = 0
+    for fragment in re.findall(r'「([^「」]+)」', quote):
+        start = text.find(fragment, cursor)
+        if start < 0:
+            return False
+        cursor = start + len(fragment)
+    return True
+
+
 def checked_revision_comparison(keyword, candidate, reference, runs):
     """Bind two order-swapped local comparisons to exact, same-keyword prose.
 
@@ -81,8 +103,7 @@ def checked_revision_comparison(keyword, candidate, reference, runs):
                 raise ValueError('Comparison needs actual quoted reader progression')
             for span in spans:
                 quote = span.get('quote')
-                if (not isinstance(quote, str) or not quote.strip()
-                        or quote not in texts[row['case_id']]):
+                if not quote_belongs_to(quote, texts[row['case_id']]):
                     raise ValueError('Readback quote does not belong to its source case')
         comparison = value['comparison']
         choice = comparison['preferred_case']

@@ -171,6 +171,26 @@ class TrialEditorialReferenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.compare(reference, candidate, runs)
 
+    def test_presentation_brackets_bind_each_verbatim_fragment_without_editing_raw(self):
+        reference, candidate, runs = self.comparison_fixture()
+        runs[0]['result']['checks'][0]['sentence_progression'][0]['quote'] = (
+            '「利用前に必要な設定を確かめ」「目的に合う操作を選びます」')
+        raw = copy.deepcopy(runs)
+        self.assertEqual(self.compare(reference, candidate, runs)['status'], 'needs_revision')
+        self.assertEqual(runs, raw)
+
+    def test_wrapped_fragments_do_not_allow_fabrication_other_case_or_reordering(self):
+        reference, candidate, runs = self.comparison_fixture()
+        for quote in ('「利用前に必要な設定を確認」',
+                      '「利用前に必要な設定を確かめ」「手順を比較します」',
+                      '「目的に合う操作を選びます」「利用前に必要な設定を確かめ」',
+                      '「利用前に必要な設定を確かめ」という説明', '「」',
+                      '「利用前に必要な…設定を確かめ」'):
+            changed = copy.deepcopy(runs)
+            changed[0]['result']['checks'][0]['sentence_progression'][0]['quote'] = quote
+            with self.subTest(quote=quote), self.assertRaises(ValueError):
+                self.compare(reference, candidate, changed)
+
     def test_stale_prose_or_reference_cannot_inherit_a_comparison(self):
         reference, candidate, runs = self.comparison_fixture()
         with self.assertRaises(ValueError):
