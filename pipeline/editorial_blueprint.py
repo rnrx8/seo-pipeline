@@ -10,7 +10,7 @@ from .lead_authoring import READER_FOCUS_SCHEMA, DIRECTION_SCHEMA, LEAD_DIRECTIO
 VERSION = 'editorial-blueprint-v4-reader-route'
 POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
-sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
+sectionsは記事順の平坦な配列。idは階層にかかわらずsに数字だけを続けた一意なID（s01等）、parent_idは直前の親のID（H2は空文字）。
 記事の主な宛先と読み始める時点の理解・迷いを、ユーザーのターゲット指定と採用した主要な問いから選ぶ。その人が知りたいことを起点に、各節のquestion/conclusion/answer_elementsへ問い・結論・説明事項、reader_progressionへ章の前後の変化を設計する。章の開始状態は前章で分かったことを引き継ぎ、同じ人を毎章初学者へ戻さない。主な宛先を定めても関連する読者や必要な問いを切り捨てず、条件の違いは該当章で扱う。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
 need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。need_idsには部分的に扱う関連ニーズも含められ、そのすべての判断をこの節で完了させる必要はない。decision_idsに対応する分析IDは保持する。計画のresearch_idsは調査の案内であり、他の質問の採用済み主張を関連する判断へ再利用してよい。関連性と回答の十分さは独立確認で評価する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
 H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。感情が選び方に関わる章は、beforeに何を得たい・守りたいからためらうのかを必要な範囲で具体化し、answer_elementsでそれに応える説明・具体策・特徴の作用を割り当てる。afterへ「安心」「期待」と書くだけで、その変化を生む説明を設計済みとしない。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
