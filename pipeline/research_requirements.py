@@ -738,6 +738,26 @@ def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
     state['status']='completed';save()
     return True
 
+def material_revision(pages, facts):
+    """Bind retries to actual source/answer changes, not refetch timestamps."""
+    from .research_collection import source_fingerprint
+    by_url={p['url']:p for p in pages}
+    return digest(json.dumps({'sources':source_fingerprint(by_url,sorted(by_url)),
+                              'facts':facts},ensure_ascii=False,sort_keys=True))
+
+
+def failed_material_unchanged(job_id, previous):
+    if not previous.get('material_revision') and not (
+            previous.get('attempts_sha256') and previous.get('facts_sha256')):
+        return True  # Legacy failure without a bound input remains protected.
+    source_text=get_artifact(job_id,'fresh_sources')['content_text']
+    facts=get_artifact(job_id,'fact_sheet')['content_text']
+    if previous.get('material_revision'):
+        return previous['material_revision']==material_revision(json.loads(source_text),facts)
+    return (previous['attempts_sha256']==digest(source_text)
+            and previous['facts_sha256']==digest(facts))
+
+
 def verify(job_id, keyword, api_key=None):
     """Resolve specific findings without dropping questions or unbounded replay."""
     plan_value=load_plan(job_id)
@@ -746,7 +766,8 @@ def verify(job_id, keyword, api_key=None):
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
     previous_value=json.loads(previous['content_text']) if previous else {}
     if (previous_value.get('valid') is False and previous_value.get('attempt')==3 and previous_value.get('policy_sha256')==matrix_policy()
-            and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))):
+            and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
+            and failed_material_unchanged(job_id,previous_value)):
         raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
     resolution=False
     if (previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
@@ -787,7 +808,8 @@ def verify(job_id, keyword, api_key=None):
             facts=accepted_facts(value,plan_value)
             upsert_artifact(job_id=job_id,step='fact_sheet',content_type='text/markdown',content_text=facts,
                 meta={**original.get('meta',{}),'canonical_research_answers':True})
-        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1, plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
+        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1,
+                     material_revision=material_revision(pages,facts), plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
                      sources_sha256=digest(sources), attempts_sha256=digest(get_artifact(job_id,'fresh_sources')['content_text']), facts_sha256=digest(facts))
         for step in (f'research_matrix_{attempt+1}','research_matrix'):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),

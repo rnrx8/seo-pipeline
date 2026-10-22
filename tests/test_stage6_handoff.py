@@ -85,6 +85,32 @@ class ResearchFindingResolutionTests(unittest.TestCase):
             with self.assertRaises(req.ContentQualityError):req.verify('j','kw')
         self.fetch.assert_not_called();self.assertFalse(self.saves)
 
+    def test_refetch_time_alone_does_not_authorize_another_failed_audit(self):
+        pages=copy.deepcopy(self.pages)
+        previous=req.material_revision(pages,'same answers')
+        pages[0]['fetched_at']='2099-01-01T00:00:00Z'
+        self.assertEqual(req.material_revision(pages,'same answers'),previous)
+        pages[0]['text'] += ' new source content'
+        self.assertNotEqual(req.material_revision(pages,'same answers'),previous)
+
+    def test_changed_material_requires_fresh_full_audit_without_repeating_collection(self):
+        plan,pages,value=research_fixture()
+        failed={'valid':False,'attempt':3,'policy_sha256':req.matrix_policy(),
+            'plan_sha256':req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
+            'material_revision':req.material_revision(pages,'old incomplete answers'),
+            'coverage_issues':[]}
+        self.records['research_matrix']={'content_text':json.dumps(failed)}
+        artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'new source-backed answers'}}
+        with patch.object(req,'load_plan',return_value=plan),patch('pipeline.research_collection.recover_empty_collections',return_value=False), \
+             patch.object(req,'refresh_dynamic_sources'),patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
+             patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
+             patch('pipeline.research_verification.audit_matrix',return_value=(value,SimpleNamespace(input_tokens=1,output_tokens=1))) as audit:
+            saved=req.verify('j','kw')
+        self.fetch.assert_not_called();self.assertEqual(audit.call_count,1)
+        self.assertTrue(saved['meta']['valid'])
+        self.assertEqual(json.loads(saved['content_text'])['material_revision'],
+                         req.material_revision(pages,json.loads(saved['content_text']).get('facts','new source-backed answers')))
+
 
 class PlanProjectionRefreshTests(unittest.TestCase):
     def test_rebuilds_projection_before_independent_review_and_preserves_original(self):
