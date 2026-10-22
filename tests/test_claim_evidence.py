@@ -40,6 +40,8 @@ class ClaimEvidenceTests(unittest.TestCase):
         props=req.MATRIX_SCHEMA['format']['schema']['properties']['items']['items']['properties']
         for key in ('answer','publication_conditions','status','basis'):self.assertNotIn(key,props)
         self.assertIn('conditions',props['claims']['items']['required'])
+        for key in ('text','subject','operation'):
+            self.assertEqual(props['claims']['items']['properties'][key]['minLength'],1)
 
     def test_two_operations_keep_their_own_plan_and_source_mapping(self):
         plan,pages,value=fixture();second=copy.deepcopy(value['items'][0]['claims'][0])
