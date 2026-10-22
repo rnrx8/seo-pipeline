@@ -10,7 +10,7 @@ import re
 from .readability import PROSE_STYLE_POLICY
 from .authoring_policy import LEAD_POLICY
 
-VERSION = 'focused-lead-v6-source-question-and-subject'
+VERSION = 'focused-lead-v7-connected-reader-goal'
 
 
 def obj(fields):
@@ -151,6 +151,10 @@ def editing_payload(text, value, ctx, keyword, requirements):
     h2 = list(re.finditer(r'^##\s+', text, re.M))
     next_section = text[h2[0].start():h2[1].start() if len(h2) > 1 else len(text)]
     focus = focus_context(value['reader_focus'], ctx['reader_design'])
+    connection = ('望む体験を、その主題の対象や行動を求める理由として書く。'
+                  'その対象や行動を求める気持ちを受けて、探す・選ぶ際の迷い、本文を読む理由へ進む。'
+                  if value['lead_direction'] in (LEAD_DIRECTIONS['reader_experience'], LEAD_DIRECTIONS['desired_change'])
+                  else '今答えを必要とする問いと判断の迷いを、本文で得られる回答へつなぐ。')
     return {'keyword': keyword, 'reader_focus': focus,
             'title': re.search(r'^#\s+([^\n]+)$', text, re.M).group(1),
             'article_contents': titles, 'next_section_excerpt': next_section,
@@ -159,7 +163,7 @@ def editing_payload(text, value, ctx, keyword, requirements):
             'editing_task': 'questionsで今回の主題の対象・行動を、desired_statesでその人の望む状態を確かめ、実際の本文へつながるリードを執筆する。'
                 '設計の短い要約で主題や関係する人の立場が曖昧な場合は、元の問いと望む状態の意味を保って言葉を選ぶ。'
                 '出来事と本人の実感を結び、重なる説明や既に知っている概念の解説を整理する。'
-                '主題・望み・ためらい・本文を読む理由が自然につながるよう整える。'
+                + connection +
                 '読者の事情と書き手の立場を区別し、読み手を案内する文章にする。'
                 '元の条件の意味を変えず、予告は本文で比較・確認・判断できることを約束する。'
                 '本文を読んだ後の成果や状況の実現を保証する予告にしない。'
