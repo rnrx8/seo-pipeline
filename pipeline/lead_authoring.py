@@ -10,7 +10,7 @@ import re
 from .readability import PROSE_STYLE_POLICY
 from .authoring_policy import LEAD_POLICY
 
-VERSION = 'focused-lead-v5-source-linked-question'
+VERSION = 'focused-lead-v6-source-question-and-subject'
 
 
 def obj(fields):
@@ -156,7 +156,8 @@ def editing_payload(text, value, ctx, keyword, requirements):
             'article_contents': titles, 'next_section_excerpt': next_section,
             'lead_direction': value['lead_direction'],
             'requirements': copy.deepcopy(requirements),
-            'editing_task': '読者設計と実際の本文に合わせ、リードを専用に執筆する。'
+            'editing_task': 'questionsで今回の主題の対象・行動を、desired_statesでその人の望む状態を確かめ、実際の本文へつながるリードを執筆する。'
+                '設計の短い要約で主題や関係する人の立場が曖昧な場合は、元の問いと望む状態の意味を保って言葉を選ぶ。'
                 '出来事と本人の実感を結び、重なる説明や既に知っている概念の解説を整理する。'
                 '主題・望み・ためらい・本文を読む理由が自然につながるよう整える。'
                 '読者の事情と書き手の立場を区別し、読み手を案内する文章にする。'
