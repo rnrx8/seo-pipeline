@@ -147,6 +147,11 @@ def validate(value, sources, *, require_hypothesis_relations=False):
         _fail('仮説の枝が不足または過大です。')
     selected_ids = {ref for need in value.get('selected', [])
                     for ref in need.get('hypothesis_ids', []) if isinstance(ref, str)}
+    motivation_ids = {b['id'] for b in branches if isinstance(b, dict)
+                      and b.get('root_desire', {}).get('category') in
+                      ('physiological', 'safety', 'belonging', 'esteem', 'self_actualization')
+                      and ('selected' not in value or b.get('id') in selected_ids)
+                      and isinstance(b.get('links'), list) and len(b['links']) >= 2}
     ids, used_parts = set(), set()
     for branch in branches:
         if not isinstance(branch, dict) or not _text(branch.get('id')) or branch['id'] in ids:
@@ -167,7 +172,9 @@ def validate(value, sources, *, require_hypothesis_relations=False):
             _fail('文脈の不明点が記録されていません。')
         links = branch.get('links')
         adopted = 'selected' not in value or branch['id'] in selected_ids
-        minimum = 2 if mode == 'exploratory' and adopted else 1
+        supporting_condition = (branch.get('root_desire', {}).get('category') == 'not_applicable'
+                                and bool(motivation_ids - {branch['id']}))
+        minimum = 2 if mode == 'exploratory' and adopted and not supporting_condition else 1
         if not isinstance(links, list) or not minimum <= len(links) <= 6:
             _fail('理由・結果のつながりが不足または過大です。')
         for link in links:

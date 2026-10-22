@@ -155,6 +155,35 @@ class IntentExplorationTests(unittest.TestCase):
         value['selected'][0]['hypothesis_ids'].append('h_excluded')
         with self.assertRaises(ContentQualityError): self.check(value, sources)
 
+    def test_supporting_condition_needs_no_invented_second_motivation_link(self):
+        _, _, sources, value = self.fixture()
+        supporting = copy.deepcopy(value['exploration']['branches'][0])
+        supporting.update(id='h_condition', links=supporting['links'][:1])
+        supporting['links'][0].update(**{'from': '利用前に条件を確認したい', 'to': '対応範囲を知って方法を選びたい'})
+        supporting['root_desire'].update(category='not_applicable', meaning='', stop_reason='利用条件の確認であり心理の深掘りは不要')
+        value['exploration']['branches'].append(supporting)
+        value['selected'][0]['hypothesis_ids'].append('h_condition')
+        self.check(value, sources)
+        supporting['links'] = []
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
+    def test_selected_motivation_cannot_use_supporting_condition_exception(self):
+        _, _, sources, value = self.fixture()
+        branch = copy.deepcopy(value['exploration']['branches'][0])
+        branch.update(id='h_motivation', links=branch['links'][:1])
+        value['exploration']['branches'].append(branch)
+        value['selected'][0]['hypothesis_ids'].append('h_motivation')
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
+    def test_unselected_motivation_cannot_justify_a_shallow_selected_condition(self):
+        _, _, sources, value = self.fixture()
+        branch = copy.deepcopy(value['exploration']['branches'][0])
+        branch.update(id='h_condition', links=branch['links'][:1])
+        branch['root_desire'].update(category='not_applicable', meaning='', stop_reason='条件の確認')
+        value['exploration']['branches'].append(branch)
+        value['selected'][0]['hypothesis_ids'] = ['h_condition']
+        with self.assertRaises(ContentQualityError): self.check(value, sources)
+
     def test_selected_material_survives_planning_writing_and_repair_without_raw_quotes(self):
         brief, _, sources, value = self.fixture()
         branch = value['exploration']['branches'][0]
