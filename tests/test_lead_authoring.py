@@ -42,6 +42,8 @@ class LeadAuthoringTest(unittest.TestCase):
         self.assertNotIn('internal_evaluation', request['messages'][0]['content'])
         self.assertEqual(sent['article_contents'], ['取り付け方'])
         self.assertEqual(request['output_config']['format']['schema']['required'], ['lead'])
+        from pipeline.authoring_policy import LEAD_POLICY
+        self.assertEqual(request['system'].count(LEAD_POLICY), 1)
 
     def test_selected_cause_is_projected_verbatim_without_other_branches(self):
         from pipeline.lead_authoring import focus_context
