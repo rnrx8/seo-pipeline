@@ -70,6 +70,27 @@ class EditorialRoutingTests(unittest.TestCase):
         self.assertEqual(packet['target_block_ids'], [candidate['id']])
         self.assertFalse(packet['source_documents'])
 
+    def test_lead_location_reaches_only_language_without_title_or_body(self):
+        text = '# 記事\n\n導入の一段落。\n\n導入の続き。\n\n## 使い方\n\n本文です。'
+        requests = []
+        def send(job, step, request):
+            role = step.removeprefix('tiered_article_')
+            requests.append((role, json.loads(request['messages'][0]['content'])))
+            return {'checks': [{'key': key, 'status': 'pass', 'reason': '文脈による許容', 'affected_blocks': []}
+                               for key in focused_quality.ROLES[role]]}, SimpleNamespace(input_tokens=0, output_tokens=0)
+        with patch('pipeline.ai.tiered_review_enabled', return_value=True), \
+             patch('pipeline.quality_context.compact_enabled', return_value=False), \
+             patch('pipeline.tiered_research.checked_request', side_effect=send):
+            report = focused_quality.audit_article(None, text=text, facts='', outline='', contract={},
+                requirements={'editorial_rules': self.rules}, sources='')
+        self.assertEqual(len(requests), 5)
+        self.assertTrue(report['valid'])
+        for role, payload in requests:
+            self.assertEqual('lead_block_ids' in payload, role == 'language')
+            if role == 'language':
+                selected = [b['text'] for b in payload['article_blocks'] if b['id'] in payload['lead_block_ids']]
+                self.assertEqual(selected, ['導入の一段落。', '導入の続き。'])
+
 
 class SentenceCandidateTests(unittest.TestCase):
     def test_threshold_visible_characters_and_separate_sentences(self):
