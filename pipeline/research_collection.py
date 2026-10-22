@@ -6,7 +6,7 @@ from .db import get_optional_artifact, upsert_artifact
 from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL, ResearchResponseError
 from .content_quality import digest, ContentQualityError
 
-COLLECTION_CONTEXT_VERSION = 'collection-context-v1'
+COLLECTION_CONTEXT_VERSION = 'collection-context-v2-source-fallback'
 
 
 def collection_context(plan, question_ids):
@@ -164,7 +164,7 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         focused = (prompt + '\n## 記事内の役割分担（調査対象を区別する参照情報）\n' + json.dumps(article_context,ensure_ascii=False)
             + '\n他の質問は今回の回答対象ではない。同じ一般名で呼ばれる対象も、記事で分けた範囲を保ち、隣の質問の資料・回答で今回の問いを代替しない。'
             + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
-            + '\n必須の回答と主要な比較条件から確認する。同じ対象の関連資料をまとめて読み、補助質問ごとに個別検索を義務にしない。補助情報が関連資料にもなければ、探索済み範囲と記事から省く候補を記録し、判定は後段へ渡す。未探索・取得失敗を探索済みとしない。'
+            + '\n必須の回答と主要な比較条件から確認する。同じ対象の関連資料をまとめて読み、補助質問ごとに個別検索を義務にしない。方法・カテゴリの説明で実例が指定されていない場合は、一候補の取得失敗をカテゴリ全体の情報不足にせず、別の適切な実例を確認する。特定の商品・サービスが指定された問いを、別の対象の事実で代替しない。補助情報が関連資料にもなければ、探索済み範囲と記事から省く候補を記録し、判定は後段へ渡す。未探索・取得失敗を探索済みとしない。'
             + '\n出力は記事本文や資料の全文転記ではなく、担当質問への執筆用根拠メモとする。質問IDごとに、直接の回答、回答に必要な対象・プラン・期間等の条件、根拠の順に短く記録する。'
               'すべての担当質問を一巡して回答し、資料の掲載項目を網羅するために一問の説明を膨らませない。代表プランを尋ねる質問にはその料金・利用条件を答え、全プラン・全期間の表は質問が求める場合に限る。'
               '同じ事実・引用を複数の質問で再掲せず、初出の質問IDを参照する。取得資料の本文は別途保存されるため、メモに転記しない情報まで削除されたと考えない。'
