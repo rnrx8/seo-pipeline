@@ -48,6 +48,9 @@ def review_schema(plan):
         'official_check_required':{'type':'boolean'}},
         'required':['answer_scope','source_requirement','official_check_required'], 'additionalProperties':False}
     ids = [q['id'] for q in plan['items']]
+    # Decision-level findings belong to overall; only question IDs can be
+    # addressed as individual research obligations by the repair stage.
+    root['properties']['issues']['items']['properties']['id']['enum'] = [*ids, 'overall']
     root['properties']['claim_checks'] = {'type':'object', 'properties':{key:copy.deepcopy(check) for key in ids},
                                           'required':ids, 'additionalProperties':False}
     root['required'].append('claim_checks')

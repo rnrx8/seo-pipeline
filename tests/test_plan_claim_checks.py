@@ -20,6 +20,18 @@ class PlanClaimChecksTests(unittest.TestCase):
         self.assertIn('claim_checks', schema['required'])
         self.assertEqual(set(schema['properties']['claim_checks']['required']), {'initial','legal'})
 
+    def test_issue_target_cannot_use_a_reader_decision_id(self):
+        from pipeline.editorial_blueprint import validate_shape
+        original = copy.deepcopy(self.plan)
+        schema = review_schema(self.plan)['format']['schema']
+        issue = schema['properties']['issues']['items']
+        for identifier in ('initial', 'legal', 'overall'):
+            validate_shape({'id': identifier, 'reason': '修正が必要'}, issue)
+        for identifier in ('i02', 'unlisted-question'):
+            with self.assertRaises(ContentQualityError):
+                validate_shape({'id': identifier, 'reason': '修正が必要'}, issue)
+        self.assertEqual(self.plan, original)
+
     def test_overall_pass_cannot_hide_question_classification_mismatch(self):
         original = copy.deepcopy(self.plan)
         validate_claim_checks(self.value, self.plan)
