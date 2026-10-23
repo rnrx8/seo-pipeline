@@ -19,7 +19,7 @@ ROLE_INSTRUCTIONS = {
     'coverage': '重要論点と記事目的の達成専任。requirements、content_contract、調査計画と本文を照合し、各重要な疑問への実質的な回答を確認する。共通提示基準「検索語・結論・推奨理由」の検索語・推薦理由・検索意図への接続を担当し、構成自体の漏れも確認する。未調査を非公表として通さない。',
     'language': '文章の自然さ専任。全段落を前後の文脈と読んで主述・指示語・不自然な語の組合せ・文の途切れ・文体/表記を検査。lead_block_idsはリードの所在であり、欠陥の候補ではない。その範囲を一続きに読み、誰が何を誰にするか、誰の状態を誰が知るかが実際の文から定まるか確認する。H1・後続本文・資料から意図を補って読めたことにしない。自然に一意に読める主語省略は許容し、人物の対応が変わる複数の読みが成立する場合は該当語句と各読みを示す。記事全体の重複や表示形式は他工程の担当。好みの言い換えや感情の原文例を欠陥と扱わない。',
     'consistency': '記事全体の整合性専任。対策・手順の提案と結果の保証を本文の文脈で区別し、共通のunsupported_guarantees基準に従って表現の強さを判断する。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。使いたい機能の利用条件と、契約・設定・手順を勧める時点も照合し、先に必要な機能がある読者へ一律の後回しを勧めていないか確認する。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
-    'organization': '情報整理と読みやすさ専任。共通提示基準「章の設計と引継ぎ」に従い、見出しの回答範囲・独立章の必要性・複数論点の分け方も評価する。構成に存在することを適切さの根拠にせず、構成変更が必要なら本文の言い換えと区別して指摘する。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
+    'organization': '情報整理と読みやすさ専任。共通提示基準「章の設計と引継ぎ」に従い、見出しの回答範囲・独立章の必要性・複数論点の分け方も評価する。section_plan（旧形式ではoutline）の問い・予定回答と実際の本文を照合し、設計にある説明を本文が書き切れていない場合はarticle、回答範囲・順序・階層そのものの修正が必要な場合はoutlineへ指摘する。文字数不足だけで構成の不備と決めず、既存の設計範囲で必要な説明を補えるか確認する。構成に存在することを適切さの根拠にせず、構成変更が必要なら本文の言い換えと区別して指摘する。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
 }
 
 
@@ -70,6 +70,13 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             payload['long_sentence_candidates'] = long_sentence_candidates(text)
             from .lead_review import article_block_ids
             payload['lead_block_ids'] = article_block_ids(text)
+        if role == 'organization':
+            sections = requirements.get('article_design', {}).get('sections', [])
+            if sections:
+                fields = ('id', 'parent_id', 'level', 'title', 'question', 'conclusion', 'answer_elements')
+                payload['section_plan'] = [{k: s[k] for k in fields} for s in sections]
+            else:
+                payload['outline'] = outline
         if role in ('evidence','coverage'):
             payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources

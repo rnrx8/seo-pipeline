@@ -91,6 +91,41 @@ class EditorialRoutingTests(unittest.TestCase):
                 selected = [b['text'] for b in payload['article_blocks'] if b['id'] in payload['lead_block_ids']]
                 self.assertEqual(selected, ['導入の一段落。', '導入の続き。'])
 
+    def test_organization_receives_section_scope_without_research_or_reader_analysis(self):
+        import test_stage5_authoring as stage5
+        report, requests, context = stage5.Stage5AuthoringTests().audit_fixture('tiered', 'legacy')
+        expected = context['requirements']['article_design']['sections']
+        fields = ('id', 'parent_id', 'level', 'title', 'question', 'conclusion', 'answer_elements')
+        self.assertEqual(len(requests), 5)
+        self.assertTrue(report['valid'])
+        for role, request in zip(focused_quality.ROLES, requests):
+            payload = json.loads(request['messages'][0]['content'])
+            self.assertEqual('section_plan' in payload, role == 'organization')
+            if role == 'organization':
+                self.assertEqual(payload['section_plan'], [{k: s[k] for k in fields} for s in expected])
+                for key in ('article_design', 'intent_value_context', 'intent_analysis', 'research_plan'):
+                    self.assertNotIn(key, payload['requirements'])
+                self.assertNotIn('source_documents', payload)
+
+    def test_legacy_organization_receives_original_outline_without_extra_review(self):
+        outline = '### H2：用途を選ぶ\n予定回答：用途ごとの違いを説明する。'
+        requests = []
+
+        def send(job, step, request):
+            role = step.removeprefix('tiered_article_')
+            requests.append((role, json.loads(request['messages'][0]['content'])))
+            return {'checks': [{'key': key, 'status': 'pass', 'reason': '本文と予定内容を確認',
+                               'affected_blocks': []} for key in focused_quality.ROLES[role]]}, SimpleNamespace(input_tokens=0, output_tokens=0)
+
+        with patch('pipeline.ai.tiered_review_enabled', return_value=True), \
+             patch('pipeline.quality_context.compact_enabled', return_value=False), \
+             patch('pipeline.tiered_research.checked_request', side_effect=send):
+            focused_quality.audit_article(None, text='## 用途を選ぶ\n\n用途の違い。',
+                facts='', outline=outline, contract={}, requirements={}, sources='')
+        self.assertEqual(len(requests), 5)
+        organization = next(payload for role, payload in requests if role == 'organization')
+        self.assertEqual(organization['outline'], outline)
+
 
 class SentenceCandidateTests(unittest.TestCase):
     def test_threshold_visible_characters_and_separate_sentences(self):
