@@ -395,12 +395,16 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_config(*, allow_lead=False):
+def repair_schema(*, allow_lead=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
     if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
-    return model_output_config(obj(fields))
+    return obj(fields)
+
+
+def repair_config(*, allow_lead=False):
+    return model_output_config(repair_schema(allow_lead=allow_lead))
 
 
 def review_context(artifact):
