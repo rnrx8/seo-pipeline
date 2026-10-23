@@ -28,10 +28,11 @@ def require_article_repair_scope(report):
                 and f.get('stage_to_fix') in ('research', 'outline')]
     if upstream:
         stages = sorted({f['stage_to_fix'] for f in upstream})
-        raise ContentQualityError(
+        from .editorial_recovery import UpstreamRepairRequired
+        raise UpstreamRepairRequired(
             '本文の局所修正では解決できない指摘があります。修正先: '
             + ', '.join(stages)
-            + '。content_auditの指摘と原稿を保持しました。該当工程を修正・再確認してから本文を更新してください。')
+            + '。content_auditの指摘と原稿を保持しました。該当工程を修正・再確認してから本文を更新してください。', report)
 
 
 def repair_output_limit(data, minimum, counter):
