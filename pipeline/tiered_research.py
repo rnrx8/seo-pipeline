@@ -78,10 +78,13 @@ def stable_review_request(request):
 
 
 def structured_review_output_limit(request):
- """Reserve space for every required blueprint verdict, including reasoning."""
+ """Reserve space for every required question/blueprint verdict and reasoning."""
  original=request['max_tokens']
  if request.get('model') not in ('gpt-6-luna','gpt-6.1-sol'):return original
  props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
+ questions=props.get('items',{}).get('properties',{})
+ if questions and request['model']=='gpt-6.1-sol':
+  original=max(original,min(32000,2000+900*len(questions)))
  rows=props.get('blueprint_reviews',{}).get('properties',{})
  if not rows and not props.get('reader_progression_reviews'):return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())

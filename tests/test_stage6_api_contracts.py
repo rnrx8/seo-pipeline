@@ -36,6 +36,31 @@ class Stage6ApiContractTests(unittest.TestCase):
         expected={**request,'max_tokens':14800}
         self.assertEqual(send.call_args.kwargs,expected)
 
+    def test_wide_research_adjudication_fits_observed_complete_response(self):
+        from pipeline.research_requirements import MATRIX_SCHEMA
+        from pipeline.source_spans import span_schema
+        request={'model':'gpt-6.1-sol','max_tokens':10000,'system':'unchanged evidence criteria',
+            'messages':[{'role':'user','content':'unchanged source excerpts and candidate claims'}],
+            'output_config':span_schema(MATRIX_SCHEMA,['q'+str(i) for i in range(15)])}
+        original=copy.deepcopy(request)
+        def complete(*args,**sent):
+            # The real 15-question subscription response used 11,000 tokens;
+            # the corresponding native API request must be able to finish it.
+            self.assertGreater(sent['max_tokens'],11000)
+            self.assertEqual({k:v for k,v in sent.items() if k!='max_tokens'},
+                             {k:v for k,v in original.items() if k!='max_tokens'})
+            return NS(stop_reason='end_turn',content=[NS(type='text',text='{}')],
+                      usage=NS(input_tokens=1,output_tokens=11000))
+        with patch.object(tr,'cached_result',return_value=None), \
+             patch.object(tr,'get_optional_artifact',return_value=None), \
+             patch.object(tr,'upsert_artifact'),patch.object(tr,'create_with_retry',side_effect=complete) as send:
+            tr.checked_request('j','tiered_adjudication_3',request)
+        self.assertEqual(send.call_count,1)
+        self.assertEqual(request,original)
+        with patch.object(tr,'cached_result',return_value={'completed':True}),patch.object(tr,'create_with_retry') as send:
+            result,_=tr.checked_request('j','tiered_adjudication_3',request)
+        self.assertTrue(result['completed']);send.assert_not_called()
+
     def test_api_schema_uses_supported_bounds_and_keeps_literal_enums(self):
         raw=copy.deepcopy(bp.SCHEMA)
         sent=bp.OUTPUT_CONFIG['format']['schema']
