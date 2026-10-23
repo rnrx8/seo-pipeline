@@ -13,7 +13,7 @@ from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
-POLICY_VERSION = 'content-quality-v16-app-editorial-requirements'
+POLICY_VERSION = 'content-quality-v17-heading-scope-records'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -537,6 +537,10 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
         if context and context.get('requirements',{}).get('article_design'):
             from .article_design import checked_result
             design=context['requirements']['article_design']
+            from .heading_scope import groups as heading_groups, checked as checked_scopes
+            scopes = heading_groups(context['text'], context['outline'], design)
+            if checked_scopes(phases['organization'], scopes, context['text']):
+                raise ContentQualityError('親見出しと子節の回答範囲の確認が未合格です。')
             phase=phases['coverage']
             verified=checked_result(phase.get('checks',[]),phase,design,context['text'],outline=context['outline'])
             from . import editorial_findings as findings

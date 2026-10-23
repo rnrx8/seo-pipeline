@@ -7,11 +7,13 @@ import fcntl
 import os
 import tempfile
 from pathlib import Path
+from contextvars import ContextVar
 
 from .content_quality import ContentQualityError
 from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact
 
 VERSION = 'editorial-recovery-v1'
+AUDIT_RECOVERY = ContextVar('editorial_recovery_audit', default=False)
 
 
 class UpstreamRepairRequired(ContentQualityError):
@@ -190,8 +192,12 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         state.update(status='running', current_step=key)
         save(job_id, 'editorial_recovery', state)
         try:
-            with strict_checks(), scope(job_id, 'research_validation' if key == 'outline_repair' else key):
-                fn(job_id, keyword, api_key=api_key)
+            token = AUDIT_RECOVERY.set(key == 'content_audit')
+            try:
+                with strict_checks(), scope(job_id, 'research_validation' if key == 'outline_repair' else key):
+                    fn(job_id, keyword, api_key=api_key)
+            finally:
+                AUDIT_RECOVERY.reset(token)
             hashes = current_hashes(job_id)
             allowed = {'article': {'article', 'cta_inject', 'review', 'fact_review', 'content_audit'},
                        'outline': {'outline_repair', 'structure_guard', 'research_validation'},

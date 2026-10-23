@@ -211,6 +211,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
     first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
     attempt_limit = 2
+    from .editorial_recovery import AUDIT_RECOVERY
+    from .quality_budget import spending_limits_enabled
+    # A new writer run after an upstream correction may need a final local
+    # correction. Keep it bounded; trial spending/call caps still take precedence.
+    if AUDIT_RECOVERY.get() and not spending_limits_enabled():
+        attempt_limit = 3
     from .ai import tiered_review_enabled
     from .quality_budget import JOB
     if tiered_review_enabled() and JOB.get():
@@ -220,7 +226,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             if extension.get('additional_article_passes'):
                 if extension['additional_article_passes'] != 1 or not extension.get('user_message'):
                     raise ContentQualityError('追加の修正・再確認の承認が不正です。')
-                attempt_limit += 1
+                attempt_limit = max(attempt_limit, 3)
     upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
     for attempt in range(first_attempt, attempt_limit):
