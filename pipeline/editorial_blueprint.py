@@ -463,7 +463,10 @@ def repair_targets(artifact, report):
         targets.update(s['id'] for s in value['sections'] if s['title']==title)
     # Unlocalized legacy audit checks explicitly scope to the current design,
     # not an unrelated prose block; unrelated sections remain read-only by policy.
-    if not targets and not lead_repair_allowed(artifact,report):targets={s['id'] for s in value['sections']}
+    unlocalized = any(c['status']=='fail' and c['key']!='coverage' and not c.get('affected_blocks')
+                      for c in report['checks'])
+    if unlocalized or (not targets and not lead_repair_allowed(artifact,report)):
+        targets.update(s['id'] for s in value['sections'])
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     if structural:
         # Changing a chapter's question can require reparenting its children.

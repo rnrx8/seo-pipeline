@@ -205,6 +205,17 @@ class ReaderProgressionTests(unittest.TestCase):
         report={'checks':[],'blueprint_issues':[{'section_ids':['s02']}]}
         self.assertEqual(bp.repair_targets(artifact(value,ctx),report),['s01','s02','s03'])
 
+    def test_unlocalized_evidence_failure_is_not_lost_beside_localized_coverage(self):
+        _,_,_,ctx,value=chain()
+        unrelated=copy.deepcopy(value['sections'][-1]);unrelated.update(id='s04',title='別の補助説明')
+        value['sections'].append(unrelated)
+        report={'checks':[{'key':'coverage','status':'fail','reason':'読後理解を修正'}],
+                'blueprint_issues':[{'section_ids':['s02'],'repair_kind':'editorial'}]}
+        self.assertNotIn('s04',bp.repair_targets(artifact(value,ctx),report))
+        report['checks'].append({'key':'evidence_support','status':'fail',
+                                'reason':'別の節にも原文条件の復元が必要'})
+        self.assertEqual(bp.repair_targets(artifact(value,ctx),report),['s01','s02','s03','s04'])
+
     def test_actual_local_repair_keeps_progression_and_requires_new_review(self):
         plan,_,matrix,ctx,value=chain();a=artifact(value,ctx);edited=copy.deepcopy(value['sections'][1])
         a['meta']['editorial_policy'] = 'old-policy-before-authorized-repair'

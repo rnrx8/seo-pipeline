@@ -252,7 +252,7 @@ checksはkey,reason,statusの順で書いたオブジェクトの配列。status
 stage=articleでは資料の誤りに追従せず、原文と一致する完成本文はpassとする。
 not_applicableはcomparison_conditionsとmetric_scope、およびstage=researchのprose_qualityとredundancyだけに使えます。
 reasonは対象の見出し・問題の引用・比較した数値や条件・不足情報を具体的に記載。
-疑わしいというだけで失敗にせず、資料と照合して判定してください。
+疑わしいというだけで失敗にせず、資料と照合して判定する。必要な回答を失わず、過剰な断定・補助的な比較を採用資料の範囲へ限定したり、原文の条件を復元したりすれば説明が成立する場合は、資料不足ではなく現在の説明の修正として扱う。構成のblueprint_reviewsとreader_progression_reviewsでも、この場合はanswer_missingとし、既存根拠で直せる範囲をreasonへ示す。evidence_missingは、主要な回答に必要な事実が未確認で、構成の編集だけでは必要な回答を成立させられない場合に限る。
 
 coverage: 検索意図・ユーザー指定を満たすか。「N選」はN個の実在する別の対象に
 同じ必須比較項目と選択に足る説明が必要。名称だけの列挙、同一サービスの別プラン、
