@@ -13,7 +13,7 @@ from .section_identity import bind_sections, carry_sections
 from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
 from .claim_scope import scope_issues
 from .content_edits import content_blocks, apply_block_edits, validated_block_edits, REPAIR_OUTPUT_CONFIG
-from .content_quality import (ContentQualityError, audit, final_review_requirements,
+from .content_quality import (ContentQualityError, ContentPatchValidationError, audit, final_review_requirements,
                               response_text, audit_facts, source_evidence, explicit_risk_guarantees,
                               snapshot, parse_audit)
 from .db import get_artifact, get_job, upsert_artifact
@@ -114,21 +114,26 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
     covered=set().union(*groups) if groups else set()
     missed = required_ids - covered - touched
     missed_groups=[sorted(group) for group in groups if not group & touched]
+    problems = []
     if missed_groups:
-        raise ContentQualityError('指摘された問題の修正がありません: '+json.dumps(missed_groups,ensure_ascii=False))
+        problems.append('指摘された問題の修正がありません: '+json.dumps(missed_groups,ensure_ascii=False))
     if missed:
-        raise ContentQualityError('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
+        problems.append('指摘された段落が未修正です: ' + ', '.join(sorted(missed)))
     unresolved = scope_issues(candidate, facts) + readability_issues(candidate)
     unresolved += h3_volume_regressions(text, candidate, cta_plan)
     unresolved += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
     unresolved += [v for v in validate_delivery(candidate, outline, word_count_setting, contract=contract)
                    if v['key'] in ('internal_note','unfinished_table','duplicate_prose')]
     if unresolved:
-        raise ContentQualityError('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
+        from .content_edits import source_issue_locations
+        unresolved = source_issue_locations(text, candidate, edits, unresolved)
+        problems.append('修正後にも機械検査で確認できる問題が残っています: ' + json.dumps(unresolved, ensure_ascii=False))
     try:
         candidate_sections = carry_sections(text, candidate, outline, section_map, allow_h4=True)
     except ValueError as exc:
-        raise ContentQualityError(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。') from exc
+        problems.append(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。')
+    if problems:
+        raise ContentPatchValidationError('\n'.join(problems))
     return candidate, candidate_sections
 
 

@@ -22,6 +22,10 @@ class ContentQualityError(ValueError):
     """A bounded quality repair failed; do not retry the entire paid pipeline."""
 
 
+class ContentPatchValidationError(ContentQualityError):
+    """A fully saved patch is invalid and has not been applied."""
+
+
 def confirmed_facts(text: str) -> str:
     """Only explicitly confirmed paragraphs cross the research/writing boundary.
 

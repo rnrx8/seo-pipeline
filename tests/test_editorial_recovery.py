@@ -230,6 +230,40 @@ class RecoveryExecutionTests(unittest.TestCase):
                 with self.assertRaisesRegex(recovery.EditorialRecoveryError, '実行中'): recovery.run('job', 'keyword')
             self.assertEqual(events, []); audit.assert_not_called()
 
+    def test_completed_invalid_patch_can_resume_from_saved_responses_without_replaying_writer(self):
+        with ExitStack() as stack:
+            stack.enter_context(patch('pipeline.ai.tiered_review_enabled', return_value=True))
+            records, report, events, steps, audit, _, _ = self.harness(stack)
+            state = recovery.begin('job', 'keyword', report)
+            state.update(status='failed', current_step='content_audit', error_kind='patch_validation', error='未適用の修正文の検査失敗')
+            state['completed_steps'] = [k for k, _ in steps][:-1]
+            report.update(stage='article', attempt=1, policy_version=cq.POLICY_VERSION,
+                checks=[{'key': k, 'status': 'fail' if k == 'prose_quality' else 'pass', 'reason': '合成確認', 'affected_blocks': []} for k in cq.CHECKS])
+            records['content_audit'] = {'content_text': json.dumps(report)}
+            recovery.save('job', 'editorial_recovery', state)
+            for n in (0, 1):
+                text = '{"edits":[]}'
+                records[f'tiered_content_repair_1_{n}'] = {'content_text': text,
+                    'meta': {'request_sha256': 'saved-request', 'result_sha256': recovery.digest(text)}}
+            stack.enter_context(patch.object(step_content_audit, 'get_artifact', side_effect=lambda j, k: copy.deepcopy(records[k])))
+            stack.enter_context(patch('pipeline.ai.tiered_review_enabled', return_value=True))
+            recovery.run('job', 'keyword')
+            self.assertEqual(events, ['content_audit']); audit.assert_not_called()
+            self.assertIn('editorial_recovery_validation_failure_1', records)
+            self.assertEqual(json.loads(records['editorial_recovery']['content_text'])['status'], 'completed')
+
+    def test_incomplete_patch_cache_is_never_resent(self):
+        with ExitStack() as stack:
+            records, report, events, steps, audit, _, _ = self.harness(stack)
+            state = recovery.begin('job', 'keyword', report)
+            state.update(status='failed', current_step='content_audit', error_kind='patch_validation')
+            state['completed_steps'] = [k for k, _ in steps][:-1]
+            recovery.save('job', 'editorial_recovery', state)
+            stack.enter_context(patch('pipeline.ai.tiered_review_enabled', return_value=True))
+            stack.enter_context(patch.object(step_content_audit, 'failed_audit_checkpoint', return_value={'attempt': 1, 'snapshot': 'saved'}))
+            with self.assertRaisesRegex(recovery.EditorialRecoveryError, '保存完了'):recovery.run('job', 'keyword')
+            self.assertEqual(events, []); audit.assert_not_called()
+
     def test_shared_api_cli_plan_installs_recovery_and_keeps_final_gate(self):
         from pipeline.step_plan import build_step_plan
         steps = build_step_plan({'delivery_type': 'full'})

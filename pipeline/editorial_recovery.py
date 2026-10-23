@@ -173,7 +173,9 @@ def begin(job_id, keyword, report):
 def continue_recovery(job_id, keyword, state, api_key=None):
     from .quality_budget import scope
     from .quality_warnings import strict_checks
-    if state.get('version') != VERSION or state.get('status') != 'ready':
+    retry_patch = (state.get('status') == 'failed' and state.get('error_kind') == 'patch_validation'
+                   and state.get('current_step') == 'content_audit')
+    if state.get('version') != VERSION or (state.get('status') != 'ready' and not retry_patch):
         raise EditorialRecoveryError('前回の上流修正が実行中または未解決です。結果を確認するまで再送しません。')
     if state['input_signature'] != input_signature(job_id, keyword) or state['expected_hashes'] != current_hashes(job_id):
         raise EditorialRecoveryError('上流修正の保存後に資料・設定・原稿が変更されています。再送しません。')
@@ -182,8 +184,29 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         raise EditorialRecoveryError('上流修正の実行計画が変更されています。再確認が必要です。')
     completed = state.get('completed_steps')
     if (not isinstance(completed, list) or completed != state['steps'][:len(completed)]
-            or state.get('current_step') is not None):
+            or (state.get('current_step') is not None and not retry_patch)):
         raise EditorialRecoveryError('上流修正の完了記録が不整合です。未確認の工程を省略しません。')
+    if retry_patch:
+        from .ai import tiered_review_enabled
+        from .content_quality import snapshot
+        from .step_content_audit import failed_audit_checkpoint
+        if (not tiered_review_enabled() or len(completed) >= len(steps)
+                or steps[len(completed)][0] != 'content_audit'):
+            raise EditorialRecoveryError('保存応答から再開できる修正範囲ではありません。再送しません。')
+        report = failed_audit_checkpoint(job_id, snapshot(**audit_context(job_id, keyword)))
+        if not report:
+            raise EditorialRecoveryError('元原稿と対応する不合格記録がありません。修正文を再送しません。')
+        for n in (0, 1):
+            cached = get_optional_artifact(job_id, f'tiered_content_repair_{report["attempt"]}_{n}')
+            meta = (cached or {}).get('meta') or {}
+            if not cached or not meta.get('request_sha256') or meta.get('result_sha256') != digest(cached['content_text']):
+                raise EditorialRecoveryError('修正応答の保存完了を確認できません。未確定の要求は再送しません。')
+        failures = state.setdefault('validation_failures', [])
+        save(job_id, f'editorial_recovery_validation_failure_{len(failures) + 1}', state)
+        failures.append({'error': state.get('error'), 'snapshot': report['snapshot']})
+        state.update(status='ready', current_step=None)
+        for field in ('error', 'error_kind', 'error_type'):state.pop(field, None)
+        save(job_id, 'editorial_recovery', state)
     for key, fn in steps:
         if key in state['completed_steps']:
             continue
@@ -208,6 +231,8 @@ def continue_recovery(job_id, keyword, state, api_key=None):
                 raise EditorialRecoveryError('工程の処理範囲外で資料・原稿が変わりました。次の生成を停止します。')
         except Exception as exc:
             state.update(status='failed', error_type=type(exc).__name__, error=str(exc))
+            from .content_quality import ContentPatchValidationError
+            if isinstance(exc, ContentPatchValidationError):state['error_kind'] = 'patch_validation'
             save(job_id, 'editorial_recovery', state)
             raise EditorialRecoveryError('上流修正の ' + key + ' が未完了です。原稿・指摘・費用履歴を保持しました。' + str(exc)) from exc
         state['completed_steps'].append(key)
