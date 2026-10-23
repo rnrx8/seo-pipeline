@@ -207,6 +207,7 @@ class ReaderProgressionTests(unittest.TestCase):
 
     def test_actual_local_repair_keeps_progression_and_requires_new_review(self):
         plan,_,matrix,ctx,value=chain();a=artifact(value,ctx);edited=copy.deepcopy(value['sections'][1])
+        a['meta']['editorial_policy'] = 'old-policy-before-authorized-repair'
         edited['reader_progression']['marketing']['mechanism']='閲覧と送信を使う具体的な場面から、選べる価値を説明する'
         report={'checks':[{'key':'coverage','status':'fail','reason':'狙う変化と説明をつなげる'}],
             'blueprint_issues':[{'repair_kind':'editorial','section_ids':['s02']}]}
@@ -224,6 +225,12 @@ class ReaderProgressionTests(unittest.TestCase):
         self.assertEqual(result['meta']['editorial_blueprint']['sections'][0],value['sections'][0])
         self.assertIn('具体的な場面',result['content_text'])
         self.assertFalse(save.call_args_list[-2].kwargs['meta']['valid'])
+        from pipeline.outline_policy import require_current_outline
+        require_current_outline(result)
+        self.assertFalse(result['meta']['audited'])
+        self.assertEqual(a['meta']['editorial_policy'], 'old-policy-before-authorized-repair')
+        self.assertEqual(save.call_args_list[-3].kwargs['meta']['editorial_policy'],
+                         'old-policy-before-authorized-repair')
 
     def test_actual_outline_request_and_saved_projection_include_marketing_chain(self):
         from pipeline import step_outline

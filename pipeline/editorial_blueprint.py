@@ -525,8 +525,10 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
     upsert_artifact(job_id=job_id,step='research_validation',content_type='application/json',
         content_text=json.dumps({'valid':False,'status':'local_repair_requires_recheck'}),meta={'valid':False})
     from .outline_design import topic_assignments
+    from .outline_policy import current_policy
     return upsert_artifact(job_id=job_id,step='outline',content_type='text/markdown',content_text=text,
-        meta={**artifact['meta'],**metadata(candidate,ctx),'local_repaired':True,'audited':False,'topic_assignments':topic_assignments(text)})
+        meta={**artifact['meta'],**metadata(candidate,ctx),'editorial_policy':current_policy(),
+              'local_repaired':True,'audited':False,'topic_assignments':topic_assignments(text)})
 
 
 def budget_issues(value, setting):
