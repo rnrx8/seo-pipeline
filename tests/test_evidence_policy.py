@@ -392,8 +392,11 @@ class EvidencePolicyTests(unittest.TestCase):
             with self.subTest(accepted=accepted):
                 plan,_,_=fixture()
                 plan['items'].append({**plan['items'][0], 'id':'q2', 'question':'他の主要回答'})
+                plan['reader_decisions']=[dict(id='i01',question='料金と他の主要回答を知る',role='primary',
+                    scope='利用判断',depends_on=[],research_ids=['q1','q2'],answer_requirements=['料金と他の主要回答'])]
                 changes={'updates':[{**plan['items'][0], 'question':'必要な料金と期間'}],
-                         'additions':[], 'removals':[], 'candidate_services':[], 'scope_reason':'主要回答を維持'}
+                         'additions':[], 'removals':[], 'candidate_services':[], 'scope_reason':'主要回答を維持',
+                         'reader_decisions':copy.deepcopy(plan['reader_decisions'])}
                 def response(value):
                     return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(value))],
                                            usage=SimpleNamespace(input_tokens=1,output_tokens=1))
