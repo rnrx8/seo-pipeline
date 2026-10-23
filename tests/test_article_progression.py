@@ -31,6 +31,52 @@ def fixture():
 
 
 class ArticleProgressionTests(unittest.TestCase):
+    def test_distinct_child_state_survives_handoff_and_parent_pass_cannot_hide_failure(self):
+        saved, _, text, _, _ = fixture()
+        blueprint = copy.deepcopy(saved['meta']['editorial_blueprint'])
+        child = next(s for s in blueprint['sections'] if s['id'] == 's10')
+        child['reader_progression'] = {
+            'before': {'understanding': '候補を見る方法は分かっている',
+                       'open_questions': ['連絡を始める前に何を確かめるか'],
+                       'emotion': '費用をかけても用途が合わないかもしれないというためらい'},
+            'after': {'resolved_questions': ['必要な動作を選んでから契約を考えられる'],
+                      'understanding': '', 'decision': '使う動作を決めてプランを選ぶ',
+                      'action': '', 'emotion': '費用をかける理由に納得できる'},
+            'next_questions': [], 'marketing': None}
+        changed = artifact(blueprint, saved['meta']['blueprint_context'])
+        design = ad.design_context(changed)
+        mapped = ad.correspondence(text, changed['content_text'], design)
+        rows = {r['blueprint_id']: r for r in mapped['sections']}
+        self.assertEqual(next(s for s in design['sections'] if s['id'] == 's10')
+                         ['reader_progression'], child['reader_progression'])
+        config = ad.review_config(cq.audit_output_config(('coverage',), locations=True), design)
+        self.assertIn('s10', config['format']['schema']['properties']
+                      ['reader_progression_reviews']['properties'])
+        result = {
+            'decision_reviews': {d['id']: {'status': 'pass', 'reason': '全体の選び分けは成立',
+                'missing_requirements': [], 'affected_blocks': []}
+                for d in design['reader_decisions']},
+            'reader_progression_reviews': {s['id']: {'status': 'pass',
+                'reason': '合成した章の確認', 'affected_blocks': []}
+                for s in ap.sections(design)}}
+        from pipeline.lead_review import KEYS
+        result['lead_review'] = {key: {'status': 'pass', 'reason': '合成した導入確認',
+                                      'affected_blocks': []} for key in KEYS}
+        target = rows['s10']['block_ids'][-1]
+        result['reader_progression_reviews']['s10'].update(status='fail',
+            reason='親章の選定理由はあるが、この節には契約を決める説明がない',
+            affected_blocks=[{'id': target, 'reason': 'この節の費用へのためらいに応える'}])
+        checks = [{'key': 'coverage', 'status': 'pass', 'reason': '全体は成立',
+                   'affected_blocks': [], 'research_ids': []}]
+        checked = ad.checked_result(checks, result, design, text,
+                                    outline=changed['content_text'])
+        self.assertEqual(result['reader_progression_reviews']['s01']['status'], 'pass')
+        self.assertEqual(checked[0]['status'], 'fail')
+        self.assertEqual([b['id'] for b in checked[0]['affected_blocks']], [target])
+        result['reader_progression_reviews']['s10']['affected_blocks'][0]['id'] = rows['s01']['block_ids'][-1]
+        with self.assertRaises(cq.ContentQualityError):
+            ad.checked_result(checks, result, design, text, outline=changed['content_text'])
+
     def test_parent_can_use_child_answer_but_not_later_sibling(self):
         _, design, text, mapping, value = fixture()
         rows = {r['blueprint_id']: r for r in mapping['sections']}
