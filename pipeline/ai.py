@@ -99,6 +99,8 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
     if is_openai_model(kwargs.get("model")):
         from .openai_review import create_review_response
         return create_review_response(**kwargs)
+    from .blueprint_transport import prepare, validate
+    kwargs, original_blueprint_schema = prepare(kwargs)
     if kwargs.get("model") in ("claude-opus-5-5", "claude-sonnet-5-5"):
         kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
         # Existing budgets were for visible text only; reserve room for thinking.
@@ -117,6 +119,7 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
             with client.with_options(max_retries=0).messages.stream(**kwargs) as stream:
                 result=stream.get_final_message()
             settle(reservation,{**result.usage.model_dump(),'stop_reason':getattr(result,'stop_reason',None)});accounted=True
+            validate(result, original_blueprint_schema)
             return result
         finally:
             if not accounted:settle(reservation)
@@ -124,7 +127,9 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
     for attempt in range(max_retries):
         try:
             with client.messages.stream(**kwargs) as stream:
-                return stream.get_final_message()
+                result = stream.get_final_message()
+            validate(result, original_blueprint_schema)
+            return result
         except anthropic.RateLimitError:
             if attempt == max_retries - 1:
                 raise
