@@ -121,6 +121,16 @@ def current_hashes(job_id):
     return result
 
 
+def clear_pending_marker(job_id):
+    """Only called after strict same-revision QA, including old completed saves."""
+    article = get_artifact(job_id, 'article')
+    meta = article.get('meta') or {}
+    if meta.get('editorial_recovery_pending'):
+        upsert_artifact(job_id=job_id, step='article', content_type=article.get('content_type', 'text/markdown'),
+                        content_text=article['content_text'],
+                        meta={**meta, 'editorial_recovery_pending': False})
+
+
 def recovery_steps(job):
     from . import (step_research_guard, step_structure_guard, step_service_map, outline_body_repair,
                    step_cta_inject, step_review, step_fact_review, step_content_audit)
@@ -248,6 +258,7 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         state.update(status='failed', current_step='content_audit', error=str(exc))
         save(job_id, 'editorial_recovery', state)
         raise EditorialRecoveryError('修正後の全文QAが現在の原稿へ対応していません。') from exc
+    clear_pending_marker(job_id)
     state.update(status='completed', final_snapshot=report['snapshot'])
     save(job_id, 'editorial_recovery', state)
     return saved
@@ -265,6 +276,7 @@ def _run(job_id, keyword, api_key=None):
         if state.get('final_snapshot') == snapshot(**context):
             saved = get_artifact(job_id, 'content_audit')
             _require_audit_strict(json.loads(saved['content_text']), state['final_snapshot'], stage='article', context=context)
+            clear_pending_marker(job_id)
             return saved
     try:
         return step_content_audit.run(job_id, keyword, api_key=api_key)

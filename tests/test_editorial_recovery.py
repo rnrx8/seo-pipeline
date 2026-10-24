@@ -160,6 +160,21 @@ class RecoveryExecutionTests(unittest.TestCase):
             self.assertTrue(json.loads(result['content_text'])['valid'])
             self.assertEqual(events, []); self.assertEqual(records, before); audit.assert_called_once()
 
+    def test_completed_save_clears_stale_pending_marker_without_model_replay(self):
+        with ExitStack() as stack:
+            records, _, events, _, audit, _, _ = self.harness(stack)
+            recovery.run('job','keyword')
+            self.assertFalse(records['article']['meta']['editorial_recovery_pending'])
+            # A save made by the previous version can still have this flag.
+            records['article']['meta']['editorial_recovery_pending']=True
+            text=records['article']['content_text'];events.clear()
+            snapshot=json.loads(records['editorial_recovery']['content_text'])['final_snapshot']
+            result=recovery.run('job','keyword')
+            self.assertFalse(records['article']['meta']['editorial_recovery_pending'])
+            self.assertEqual(records['article']['content_text'],text)
+            self.assertEqual(json.loads(result['content_text'])['snapshot'],snapshot)
+            self.assertEqual(events,[]);audit.assert_called_once()
+
     def test_ready_checkpoint_skips_finished_steps_after_process_resume(self):
         with ExitStack() as stack:
             records, report, events, steps, audit, _, _ = self.harness(stack)
@@ -212,6 +227,7 @@ class RecoveryExecutionTests(unittest.TestCase):
             with patch.object(quality_warnings, 'warn') as warn, self.assertRaises(recovery.EditorialRecoveryError):
                 quality_warnings.scoped(recovery.run, 'content_audit')('job', 'keyword')
             self.assertEqual(json.loads(records['editorial_recovery']['content_text'])['status'], 'failed')
+            self.assertTrue(records['article']['meta']['editorial_recovery_pending'])
             warn.assert_not_called()
 
     def test_corrupt_completion_list_does_not_skip_unverified_steps(self):
