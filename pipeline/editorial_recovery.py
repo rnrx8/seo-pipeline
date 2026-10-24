@@ -122,7 +122,7 @@ def current_hashes(job_id):
 
 
 def recovery_steps(job):
-    from . import (step_research_guard, step_structure_guard, step_service_map, step_article,
+    from . import (step_research_guard, step_structure_guard, step_service_map, outline_body_repair,
                    step_cta_inject, step_review, step_fact_review, step_content_audit)
     from .ai import astra_review_enabled
     import anthropic
@@ -134,7 +134,7 @@ def recovery_steps(job):
              ('research_validation', step_research_guard.run)]
     if job.get('service_id') or job.get('cta_id'):
         steps.append(('service_map', step_service_map.run))
-    steps.append(('article', step_article.run))
+    steps.append(('article', outline_body_repair.run))
     if job.get('cta_id'):
         steps.append(('cta_inject', step_cta_inject.run))
     if not astra_review_enabled():
