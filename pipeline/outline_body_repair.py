@@ -134,17 +134,11 @@ def assemble(packet, replacements, outline):
     actual = list(HEADINGS.finditer(candidate))
     if [len(m[1]) for m in actual] != [s['level'] for s in packet['sections']]:
         fail('修正後の見出し階層が構成と一致しません。')
-    entries = []; parent = None
-    for i, (match, section) in enumerate(zip(actual, packet['sections'])):
-        level = len(match[1])
-        if level == 2:
-            parent = match[2]
-        entries.append({'id': f'section-{i:03d}', 'blueprint_id': section['id'], 'outline_index': i,
-                        'level': level, 'title': match[2], 'parent': None if level == 2 else parent})
-    # article_sections uses the immediately preceding H3 as the parent of H4.
+    # Use the same parent semantics as native delivery checks and QA binding.
     from .article_quality import article_sections
-    for entry, actual_section in zip(entries, article_sections(candidate)):
-        entry['parent'] = actual_section['parent']
+    entries = [{'id': f'section-{i:03d}', 'blueprint_id': section['id'], 'outline_index': i,
+                **{k: actual_section[k] for k in ('level', 'title', 'parent')}}
+               for i, (actual_section, section) in enumerate(zip(article_sections(candidate), packet['sections']))]
     from .content_quality import digest
     binding = {'version': 1, 'outline_sha256': digest(outline), 'entries': entries}
     if not valid_binding(candidate, outline, binding):

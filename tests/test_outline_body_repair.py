@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from pipeline import outline_body_repair as repair, editorial_recovery, step_article
 from pipeline.content_quality import ContentQualityError
-from pipeline.section_identity import bind_sections, valid_binding
+from pipeline.section_identity import bind_sections, valid_binding, carry_sections
 from test_editorial_recovery import materials
 from test_editorial_blueprint import artifact
 
@@ -70,9 +70,10 @@ class SectionReconciliationTests(unittest.TestCase):
 
     def test_neighbor_does_not_restore_an_old_heading_already_corrected_by_qa(self):
         source, before, after, report = fixture()
+        old_text=source['content_text']
         source['content_text'] = source['content_text'].replace('## 別の判断','## 校正して意味を明確にした見出し')
-        entry = next(e for e in source['meta']['section_map']['entries'] if e['blueprint_id']=='s03')
-        entry['title']='校正して意味を明確にした見出し'
+        source['meta']['section_map']=carry_sections(old_text,source['content_text'],
+            before['content_text'],source['meta']['section_map'])
         p=repair.plan(source,before,after,report)
         generated={sid:p['source_sections'][sid]['body'] for sid in p['target_section_ids']}
         candidate,binding=repair.assemble(p,generated,after['content_text'])
