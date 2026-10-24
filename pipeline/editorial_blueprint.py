@@ -362,9 +362,10 @@ def apply_review(report, value, ctx):
     return report
 
 
-def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
+def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=()):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
-    expected={'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
+    expected=({'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
+              |({'omission_edits'} if omission_targets else set()))
     if set(response)!=expected:fail('編集設計の局所修正形式が不正です。')
     if allow_lead:
         lead=response['lead_direction']
@@ -372,6 +373,15 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
         if not isinstance(lead,str) or not lead.strip() or (lead==value['lead_direction'] and candidate['reader_focus']==value['reader_focus']):
             fail('指摘されたリード設計が未修正または空です。')
         candidate['lead_direction']=lead
+    if omission_targets:
+        omissions={o['research_id']:o for o in candidate['omissions']};changed=set()
+        for edit in response['omission_edits']:
+            qid=edit['research_id']
+            if qid not in omission_targets or qid not in omissions or qid in changed:
+                fail('対象外・重複・新規の省略項目は修正できません。')
+            if not isinstance(edit['reason'],str) or not edit['reason'].strip() or edit['reason']==omissions[qid]['reason']:
+                fail('省略理由が空または未修正です。')
+            omissions[qid]['reason']=edit['reason'];changed.add(qid)
     for edit in response['edits']:
         sid=edit['id'];s=edit['section']
         if sid in seen or sid!=s['id'] or (sid not in targets and (not structural or sid in by_id)):fail('対象外・重複の節を修正できません。')
@@ -396,16 +406,17 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_schema(*, allow_lead=False):
+def repair_schema(*, allow_lead=False, allow_omissions=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
     if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
+    if allow_omissions:fields['omission_edits']={'type':'array','items':obj({'research_id':STRING,'reason':STRING})}
     return obj(fields)
 
 
-def repair_config(*, allow_lead=False):
-    return model_output_config(repair_schema(allow_lead=allow_lead))
+def repair_config(*, allow_lead=False, allow_omissions=False):
+    return model_output_config(repair_schema(allow_lead=allow_lead,allow_omissions=allow_omissions))
 
 
 def review_context(artifact):
@@ -444,6 +455,18 @@ def lead_repair_allowed(artifact, report):
     """Grant lead edits only for exact reviewed blocks in the rendered lead."""
     ids=set(lead_block_ids(artifact))
     return any(loc['id'] in ids for check in report['checks'] if check['status']=='fail' for loc in check.get('affected_blocks',[]))
+
+
+def omission_repair_targets(artifact, report):
+    """Permit reason-only corrections; preserve the adopted scope and question IDs."""
+    from .content_edits import content_blocks
+    value=require_projection(artifact);omissions=value['omissions']
+    failed=[c for c in report['checks'] if c['status']=='fail']
+    if any(c['key']!='coverage' and not c.get('affected_blocks') for c in failed):
+        return [o['research_id'] for o in omissions]
+    blocks={b['id']:b['text'] for b in content_blocks(artifact['content_text'])}
+    shown='\n'.join(blocks.get(loc['id'],'') for c in failed for loc in c.get('affected_blocks',[]))
+    return [o['research_id'] for o in omissions if '- '+o['research_id']+'：'+o['reason'] in shown]
 
 
 def repair_targets(artifact, report):
@@ -499,22 +522,24 @@ def repair(job_id, keyword, report, artifact, client):
     job=get_job(job_id)
     targets=repair_targets(artifact,report)
     allow_lead=lead_repair_allowed(artifact,report)
+    omission_targets=omission_repair_targets(artifact,report)
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     from .evidence_policy import REVIEW_RESOLUTION_POLICY
     from .reader_presentation import READER_PRESENTATION_POLICY
     from .generation_context import POLICY as EVIDENCE_POLICY
     model,limit=get_step_config('content_repair')
-    output=repair_config(allow_lead=allow_lead)
+    output=repair_config(allow_lead=allow_lead,allow_omissions=bool(omission_targets))
     request=dict(model=model,max_tokens=min(limit,6000),output_config=output,
         system=REVIEW_RESOLUTION_POLICY+READER_PRESENTATION_POLICY+EVIDENCE_POLICY+POLICY+'''
 今回は局所修正。editsには指摘箇所と同じ誤りを直す節だけを全フィールドで返す。全文再出力は禁止。
-既存節のうちtarget_section_ids以外は読取専用。タイトル案・省略理由は維持する。
+既存節のうちtarget_section_ids以外は読取専用。タイトル案は維持する。
+omission_reason_targetsがある場合だけomission_editsで指摘された既存IDの省略理由を修正できる。採否や掲載範囲を変えず、原文と不一致の「未確認」等の説明だけを正す。省略項目の追加・削除・ID変更は不可。対象のない理由は維持する。指摘に関係する修正がなければ空配列。それ以外は省略理由を維持しomission_editsも返さない。
 lead_edit_allowed=trueの場合だけlead_directionとreader_focusを返す。指摘された宛先・背景・流れを直し、指摘のない読者選択は維持する。それ以外はどちらも変更せずキーも返さない。リードだけの修正ならeditsは空配列でよい。
 structural=trueのときだけ関連節の追加・削除・順序・階層変更を許可する。新しい節には未使用IDを付ける。
 section_orderは追加・移動・削除が必要なときのみ修正後全IDを順に返し、変更不要なら空配列。delete_idsも不要なら空配列。
 主回答の説明と根拠・条件・必須論点を維持し、文字数合わせの水増し・追加調査・未確認の断定をしない。''',
         messages=[{'role':'user','content':json.dumps({'keyword':keyword,'blueprint':value,'accepted_context':ctx,
-            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
+            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'omission_reason_targets':omission_targets,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'blueprint_issues':report.get('blueprint_issues',[]),'structural_issues':report.get('structural_issues',[])},ensure_ascii=False)}])
     if tiered_review_enabled():
         from .tiered_research import checked_request
@@ -524,7 +549,7 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
         if getattr(msg,'stop_reason',None)!='end_turn':fail('編集設計の局所修正が途中で中断しました。未適用です。')
         response=json.loads(message_text(msg))
     validate_shape(response,output['format']['schema'])
-    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead)
+    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
     issues=validate_structure(text,contract,outline=True)+budget_issues(candidate,job.get('word_count_setting'))
     if issues:fail('編集設計の修正後も必須構造が不足しています: '+json.dumps(issues,ensure_ascii=False))
