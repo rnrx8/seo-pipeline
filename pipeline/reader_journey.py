@@ -36,7 +36,12 @@ def checked(value, evidence):
     def fail():raise ContentQualityError('章の受け止め・次の一歩の個別確認または引用が不整合です。')
     if not isinstance(value,dict) or set(value)!={'reader_state','attunement','guidance'}:fail()
     if not isinstance(value['reader_state'],str) or not value['reader_state'].strip():fail()
-    normalize=lambda text:re.sub(r'\s+',' ',text).strip()
+    def normalize(text):
+        # Reviewers can quote the rendered words of an inline strong span.
+        # Remove only paired, unescaped Markdown markers; retain the exact
+        # words, punctuation, source block and chapter restrictions.
+        text=re.sub(r'(?<!\\)\*\*(?=\S)([^\n]*?\S)(?<!\\)\*\*',r'\1',text)
+        return re.sub(r'\s+',' ',text).strip()
     missing=[]
     for name,states in [('attunement',('pass','fail','not_needed')),('guidance',('pass','fail'))]:
         row=value[name]

@@ -9,6 +9,26 @@ from pipeline.reader_journey import checked
 
 
 class ReaderJourneyTests(unittest.TestCase):
+    def rendered_quote(self,quote):
+        return {'reader_state':'方法を選ぶ段階',
+            'attunement':{'status':'not_needed','reason':'直接回答で足りる','evidence':[]},
+            'guidance':{'status':'pass','reason':'本文の判断に対応','evidence':[{'id':'b01','quote':quote}]}}
+
+    def test_rendered_strong_quote_preserves_exact_words(self):
+        quote='まず顔を合わせて雰囲気を確かめたい人 → 交流会。'
+        text='- **まず顔を合わせて雰囲気を確かめたい人** → 交流会。開催場所も確かめます。'
+        self.assertEqual(checked(self.rendered_quote(quote),{'b01':[text]}),[])
+
+    def test_strong_normalization_does_not_accept_changed_words_or_punctuation(self):
+        text='**まず顔を合わせたい人** → 交流会。'
+        for quote in ['必ず顔を合わせたい人 → 交流会。','まず顔を合わせたい人 は 交流会。']:
+            with self.subTest(quote=quote),self.assertRaises(cq.ContentQualityError):
+                checked(self.rendered_quote(quote),{'b01':[text]})
+
+    def test_escaped_literal_stars_are_not_silently_removed(self):
+        with self.assertRaises(cq.ContentQualityError):
+            checked(self.rendered_quote('大事な 文字 を残す。'),{'b01':[r'大事な \**文字\** を残す。']})
+
     def test_practical_answer_cannot_cancel_missing_attunement(self):
         _,design,text,mapping,value=fixture()
         row=value['reader_progression_reviews']['s01']
