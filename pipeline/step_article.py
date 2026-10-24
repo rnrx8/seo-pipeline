@@ -648,6 +648,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     word_count_setting = planning_setting(job, outline)
 
     # Load volume design from outline and service_map if available
+    blueprint_value = None
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import require_projection, context
         from .research_requirements import load_plan
@@ -699,6 +700,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # Per-part max tokens from volume design splits
     if volume_sections:
         p1_secs, p2_secs, p3_secs = _split_sections_into_parts(volume_sections)
+        from .article_design import part_reader_brief
+        part1_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p1_secs])
+        part2_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p2_secs])
+        part3_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p3_secs])
         p1_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p1_secs) if p1_secs else None)
         p2_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p2_secs) if p2_secs else None)
         p3_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p3_secs) if p3_secs else None)

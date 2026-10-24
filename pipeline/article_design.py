@@ -27,6 +27,36 @@ def design_context(artifact):
         'sections':[{k:copy.deepcopy(s[k]) for k in fields} for s in value['sections']]}
 
 
+def part_reader_brief(blueprint, h2_titles):
+    """Bring this part's own reader states beside its final writing instruction.
+
+    Use the validated design, rather than inferring feelings or copying a global
+    persona into every child. Null child progressions remain inherited context.
+    """
+    if not blueprint or not h2_titles:return ''
+    import json
+    titles=set(h2_titles);selected=False;rows=[]
+    for section in blueprint['sections']:
+        if section['level']==2:selected=section['title'] in titles
+        progression=section.get('reader_progression')
+        if not selected or not progression:continue
+        before=progression['before'];after=progression['after']
+        row={'section_id':section['id'],'heading':section['title'],
+             'question':section['question'],'answer':section['conclusion'],
+             'open_questions':before['open_questions'],
+             'reader_feeling':before['emotion'],
+             'outcome':{k:v for k,v in after.items() if v}}
+        rows.append(row)
+    if not rows:return ''
+    return ('\n\n【今回のPARTで実現する読者への回答】\n'
+        '以下はこのPARTだけの編集設計。完成文や引用ではない。reader_feelingがある章では、'
+        'その章固有の迷い・心配・期待を読者が自分のこととして理解できる言葉で短く受け止め、'
+        'answerや具体策へつなぐ。具体策の提示だけで気持ちまで受け止めた扱いにしない。'
+        '仮説は読者全員の気持ちと断定せず、分析用の語句を転記しない。'
+        'reader_feelingが空の章に感情を作り足さず、同じ共感文や固定位置を全章に課さない。\n'
+        +json.dumps(rows,ensure_ascii=False,separators=(',',':')))
+
+
 def correspondence(text, outline, design, binding=None):
     """Location mapping is diagnostic; no semantic pass is inferred from it."""
     from .section_identity import valid_binding

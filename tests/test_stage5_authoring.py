@@ -228,6 +228,8 @@ class Stage5AuthoringTests(unittest.TestCase):
 
     def test_complete_writer_saves_draft_and_exact_reader_mapping_with_cta_contract(self):
         plan,pages,matrix,ctx,value=chain();ctx['reader_design']['product_fit']['cta_role']='appropriate';plan['reader_design']['product_fit']['cta_role']='appropriate'
+        value['sections'][0]['reader_progression']['before']['emotion']='機能の違いを見落としそうで心配という仮説'
+        value['sections'][2]['reader_progression']['before']['emotion']='利用前の確認を忘れそうで気がかりという仮説'
         value['sections'][1]['cta']='用途が合い相談したい場合に、利用条件の相談へ案内する'
         a=artifact(value,ctx);full=body(value);parts=full.split('\n\n## ')
         chunks=[parts[0]+'\n\n## '+parts[1],'## '+parts[2],'## '+parts[3]]
@@ -257,6 +259,19 @@ class Stage5AuthoringTests(unittest.TestCase):
             model=stack.enter_context(patch.object(step_article,'create_with_retry',side_effect=send))
             result=step_article.run('job','条件')
         self.assertEqual(model.call_count,4)
+        # Actual normal writer requests, with no operator custom prompt: each
+        # part gets its own states without importing a different chapter's fear.
+        from pipeline.article_design import part_reader_brief
+        split=step_article._split_sections_into_parts([(s['title'],s['budget']['importance'],s['budget']['chars']) for s in value['sections']])
+        for call,sections in zip(model.call_args_list[:3],split):
+            instruction=next(m['content'] for m in reversed(call.kwargs['messages']) if m['role']=='user')
+            brief=part_reader_brief(value,[s[0] for s in sections])
+            self.assertTrue(brief)
+            self.assertIn(brief,instruction)
+            local=instruction.split('【今回のPARTで実現する読者への回答】')[-1]
+            for section in value['sections']:
+                feeling=section['reader_progression']['before']['emotion']
+                if feeling and section['title'] not in [s[0] for s in sections]:self.assertNotIn(feeling,local)
         self.assertIn('article_draft',artifacts)
         self.assertIn('article_lead_edit',artifacts)
         lead_edit=json.loads(artifacts['article_lead_edit']['content_text'])
