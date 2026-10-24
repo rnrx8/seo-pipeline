@@ -34,7 +34,7 @@ class SectionReconciliationTests(unittest.TestCase):
     def test_move_preserves_lead_and_remote_conditions_including_negation(self):
         source, before, after, report = fixture()
         p = repair.plan(source, before, after, report)
-        self.assertEqual(p['target_section_ids'], ['s01', 's02', 's03'])
+        self.assertEqual(p['target_section_ids'], ['s01', 's02'])
         generated = {sid: p['source_sections'][sid]['body'] for sid in p['target_section_ids']}
         generated['s02'] = '準備は求める関係を言葉にすることです。'
         candidate, binding = repair.assemble(p, generated, after['content_text'])
@@ -85,9 +85,10 @@ class SectionReconciliationTests(unittest.TestCase):
         source, before, after, report = fixture()
         p = repair.plan(source, before, after, report)
         good = {sid: '必要な説明です。' for sid in p['target_section_ids']}
-        for kind in ('extra', 'missing', 'heading'):
+        for kind in ('extra', 'neighbor', 'missing', 'heading'):
             bad = copy.deepcopy(good)
             if kind == 'extra': bad['s05'] = '無断で重要条件を書き換え'
+            elif kind == 'neighbor': bad['s03'] = '隣の節にも無断で書き換え'
             elif kind == 'missing': bad.pop('s02')
             else: bad['s02'] = '回答です。\n\n### 許可されていない子見出し'
             with self.subTest(kind=kind), self.assertRaises(ContentQualityError):
@@ -159,9 +160,21 @@ class SectionReconciliationTests(unittest.TestCase):
             self.assertFalse(saved['meta']['content_audited'])
             self.assertIsNone(saved['meta']['content_audit_snapshot'])
             self.assertNotIn('cta_placement',saved['meta'])
-            self.assertEqual(set(saved['meta']['outline_body_repair']['preserved_section_sha256']),{'s04','s05'})
+            self.assertEqual(set(saved['meta']['outline_body_repair']['preserved_section_sha256']),{'s03','s04','s05'})
             self.assertTrue(saved['meta']['outline_body_repair']['lead_preserved'])
             save.assert_called_once()
+
+    def test_deleting_only_a_redundant_root_section_requires_no_new_prose(self):
+        source,before,_,_=fixture()
+        value=copy.deepcopy(before['meta']['editorial_blueprint'])
+        value['sections']=[s for s in value['sections'] if s['id']!='s05']
+        after=artifact(value,before['meta']['blueprint_context'])
+        packet=repair.plan(source,before,after,{'editorial_findings':[]})
+        self.assertEqual(packet['target_section_ids'],[])
+        candidate,binding=repair.assemble(packet,{},after['content_text'])
+        self.assertNotIn('## 最後の判断',candidate)
+        self.assertTrue(valid_binding(candidate,after['content_text'],binding))
+        self.assertTrue(candidate.startswith(packet['lead']))
 
 
 if __name__ == '__main__': unittest.main()

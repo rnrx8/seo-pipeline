@@ -88,10 +88,10 @@ def plan(article, before_outline, after_outline, report):
             sid = addresses[bid]
             if sid in current:
                 targets.add(sid)
-    if not targets:
+    if not targets and not removed:
         fail('構成差分と指摘から修正対象を確認できません。')
-    # Changed sections may refer to a neighbor by its old role/title. Permit
-    # only adjacent existing peers, not every sibling or every child of an H2.
+    # Neighbors are context, never implicit write permission. Changing their
+    # prose without a finding was itself reintroducing already removed claims.
     peers = {}
     for s in new['sections']:
         peers.setdefault(s['parent_id'], []).append(s['id'])
@@ -101,7 +101,7 @@ def plan(article, before_outline, after_outline, report):
         i = group.index(sid)
         neighbors.update(group[j] for j in (i - 1, i + 1)
                          if 0 <= j < len(group) and group[j] in rows)
-    writable = targets | neighbors
+    writable = targets
     return {'version': VERSION, 'lead': lead, 'source_sections': rows,
             'sections': new['sections'], 'target_section_ids': [s['id'] for s in new['sections'] if s['id'] in writable],
             'heading_change_ids': [sid for sid, s in current.items() if sid not in previous
@@ -200,7 +200,8 @@ def run(job_id, keyword, api_key=None):
 節は子節を含まない自分自身の説明。新しいH4へ説明を移すときは、元の親節から同じ説明を除き、親の結論・子への自然な接続を残す。
 移動・統合した節の具体的な答えと、確認済みの事実・対象・料金・利用条件を失わない。未確認事項を不存在・非公表へ変えない。
 変更不要の節は元の本文を保つ。関係のない言い回し・共感を一新しない。
-変更節の冒頭は具体的な結論とし、その章に合う読者の迷いや期待を受け止めて、次の判断へつなぐ。隣接節は必要な接続の修正だけに留める。
+変更節の冒頭は具体的な結論とし、その章に合う読者の迷いや期待を受け止めて、次の判断へつなぐ。
+隣接節は文脈確認用の読取専用。必要なつながりは変更対象の節側で整える。隣接節自体に修正が必要なら、後続の全文QAの具体的な指摘に沿って局所修正する。
 JSONのみを返す。''',
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}],
         output_config={'format': {'type': 'json_schema', 'schema': schema}})
@@ -216,7 +217,10 @@ JSONのみを返す。''',
                 messages=[{'role': 'user', 'content': sample}], timeout=30).input_tokens)
         request['output_budget_includes_thinking'] = True
     for attempt in range(2):
-        value, _ = checked_request(job_id, f'tiered_content_repair_outline_sections_{attempt}', request, client=client)
+        if packet['target_section_ids']:
+            value, _ = checked_request(job_id, f'tiered_content_repair_outline_sections_{attempt}', request, client=client)
+        else:
+            value = {'sections': {}}  # Removing only a redundant section needs no model call.
         try:
             candidate, binding = assemble(packet, value['sections'], outline['content_text'])
             issues = validate_delivery(candidate, outline['content_text'], job.get('word_count_setting'), contract, binding)
