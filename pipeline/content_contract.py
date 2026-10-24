@@ -284,7 +284,7 @@ def build_content_contract(
     }
 
 
-def contract_prompt(contract: dict[str, Any]) -> str:
+def editorial_contract(contract: dict[str, Any]) -> dict[str, Any]:
     # Older generated contracts capped all service-named headings. Preserve
     # their numeric limit as an introduction limit, matching the validator,
     # without mutating stored artifacts or retaining contradictory prompt text.
@@ -298,6 +298,11 @@ def contract_prompt(contract: dict[str, Any]) -> str:
             '同じサービスの紹介・推薦を繰り返すH2は重複させない。料金や利用手順など別の問いを担う章の必要性は編集設計・QAで判断する'
             if rule == '独立H2を使う場合も同じサービスを扱うH2を重複させない' else rule
             for rule in section.get('requirements', [])]
+    return presented
+
+
+def contract_prompt(contract: dict[str, Any]) -> str:
+    presented = editorial_contract(contract)
     return (
         "\n【コンテンツ構造契約（機械検証対象）】\n"
         "これはジョブ固有の検索意図から生成した要件です。required_sectionsだけを必須とし、"

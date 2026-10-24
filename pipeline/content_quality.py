@@ -428,9 +428,10 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     prices, price_issues = comparison_evidence(text, contract)
     from .quality_context import review_requirements, review_reference_date
     reference_date = review_reference_date(stage, snapshot(text,facts,outline,contract,requirements,sources))
+    from .content_contract import editorial_contract
     payload = {
             'current_date': reference_date, 'stage': stage, 'document': text, 'confirmed_facts': facts, 'source_documents': sources,
-            'contract': contract, 'requirements':review_requirements(requirements, 'research'),
+            'contract': editorial_contract(contract), 'requirements':review_requirements(requirements, 'research'),
             'calculated_price_minima': prices, 'price_contradictions': price_issues,
             'conditional_facts': conditional_facts(facts), 'scope_issues': scope_issues(text, facts)}
     if outline != text:
@@ -490,7 +491,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         from .tiered_evidence import evidence_audit
         from types import SimpleNamespace
         evidence_payload={'current_date':payload['current_date'],'article_blocks':content_blocks(text),
-                          'requirements':payload['requirements'],'confirmed_facts':payload['confirmed_facts'],'content_contract':contract,
+                          'requirements':payload['requirements'],'confirmed_facts':payload['confirmed_facts'],'content_contract':editorial_contract(contract),
                           'source_documents':sources,'candidate_checks':report['checks']}
         checks,extra,evidence_trace=evidence_audit(stage,evidence_payload,evidence_keys,text)
         replacements={c['key']:c for c in checks}

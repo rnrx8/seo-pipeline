@@ -87,7 +87,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             else:
                 payload['outline'] = outline
         if role in ('evidence','coverage'):
-            payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
+            from .content_contract import editorial_contract
+            payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=editorial_contract(contract))
         if role == 'evidence': payload['source_documents'] = sources
         system = (AUDIT_SYSTEM if role in ('evidence','coverage') else EDITORIAL_SYSTEM)
         if role == 'language':
