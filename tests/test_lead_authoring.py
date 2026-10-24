@@ -70,6 +70,36 @@ class LeadAuthoringTest(unittest.TestCase):
         self.assertNotIn('別の問い',json.dumps(projected,ensure_ascii=False))
         self.assertNotIn('別の状態',json.dumps(projected,ensure_ascii=False))
 
+    def test_selected_outcome_chain_reaches_writer_and_review_without_other_causes(self):
+        from pipeline.lead_authoring import focus_context
+        branch = self.design['reader_needs'][0]['motivation_context'][0]
+        outcomes = [
+            {'from': '床の物を減らして通りやすくしたい', 'question': 'outcome',
+             'to': '帰宅後に物をよける手間を減らして、自分の時間を過ごしたい'},
+            {'from': '自分の時間を過ごせる', 'question': 'outcome',
+             'to': '家では気を張らず、自分の好きなことを楽しめる'}]
+        branch['motivation_links'].extend(copy.deepcopy(outcomes))
+        self.design['reader_needs'][0]['motivation_context'].append({
+            'hypothesis_id': 'b2', 'motivation_links': [
+                {'from': '別の事情', 'question': 'outcome', 'to': '不採用の望み'}]})
+        self.focus['motivation_ref'] = {'need_id': 'i01', 'hypothesis_id': 'b1', 'link_index': 0}
+        projected = focus_context(self.focus, self.design)
+        self.assertEqual(projected['situation'], '床に置くと通りづらい')
+        self.assertEqual(projected['motivation_outcomes'], outcomes)
+        self.assertNotIn('退去時', json.dumps(projected, ensure_ascii=False))
+        self.assertNotIn('不採用の望み', json.dumps(projected, ensure_ascii=False))
+        payload = editing_payload('# 壁への取り付け\n\n旧リード。\n\n## 方法\n耐荷重を確認します。',
+            {'reader_focus': self.focus, 'lead_direction': LEAD_DIRECTIONS['reader_experience']},
+            {'reader_design': self.design}, '壁 取り付け', {})
+        self.assertEqual(payload['reader_focus']['motivation_outcomes'], outcomes)
+        projected['motivation_outcomes'][0]['to'] = '変更'
+        self.assertEqual(branch['motivation_links'][-2:], outcomes)
+        self.assertEqual(payload['reader_focus']['motivation_outcomes'], outcomes)
+
+    def test_direct_focus_does_not_invent_life_outcomes(self):
+        from pipeline.lead_authoring import focus_context
+        self.assertEqual(focus_context(self.focus, self.design)['motivation_outcomes'], [])
+
     def test_focus_is_shared_by_rendered_outline_and_article_review(self):
         from test_editorial_blueprint import fixture, artifact
         from pipeline import editorial_blueprint as bp, article_design

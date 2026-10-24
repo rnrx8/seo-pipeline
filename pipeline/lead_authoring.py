@@ -10,7 +10,7 @@ import re
 from .readability import PROSE_STYLE_POLICY
 from .authoring_policy import LEAD_POLICY
 
-VERSION = 'focused-lead-v7-connected-reader-goal'
+VERSION = 'focused-lead-v8-connected-life-outcomes'
 
 
 def obj(fields):
@@ -83,8 +83,11 @@ def focus_context(value, reader_design):
         branch = next(b for b in needs[ref['need_id']]['motivation_context']
                       if b['hypothesis_id'] == ref['hypothesis_id'])
         situation = branch['motivation_links'][ref['link_index']]['to']
+        outcomes = [copy.deepcopy(link) for link in branch['motivation_links']
+                    if link['question'] == 'outcome']
     else:
         situation = '／'.join(needs[i].get('reader_situation', '') for i in selected['need_ids'])
+        outcomes = []
     # Keep the selected question and goal verbatim. A compressed persona can
     # otherwise lose what is being sought while retaining only a desired feeling.
     # Other branches and the analyst's iterative why-questions stay internal.
@@ -92,7 +95,8 @@ def focus_context(value, reader_design):
                           if needs[i].get('question')],
             'desired_states': [needs[i]['desired_state'] for i in selected['need_ids']
                                if needs[i].get('desired_state')],
-            'situation': situation, 'felt_response': selected['felt_response'],
+            'situation': situation, 'motivation_outcomes': outcomes,
+            'felt_response': selected['felt_response'],
             'desired_experience': selected['desired_experience'],
             'current_understanding': selected['current_understanding'],
             'open_question': selected['open_question']}
@@ -161,6 +165,8 @@ def editing_payload(text, value, ctx, keyword, requirements):
             'lead_direction': value['lead_direction'],
             'requirements': copy.deepcopy(requirements),
             'editing_task': 'questionsで今回の主題の対象・行動を、desired_statesでその人の望む状態を確かめ、実際の本文へつながるリードを執筆する。'
+                'motivation_outcomesは選んだ背景の先にある生活上の意味を保つ素材であり、全件を列挙する指示ではない。'
+                '作業に困る人という紹介だけでなく、なぜ本人がその選択を気にするのかが伝わる言葉を選ぶ。'
                 '設計の短い要約で主題や関係する人の立場が曖昧な場合は、元の問いと望む状態の意味を保って言葉を選ぶ。'
                 '出来事と本人の実感を結び、重なる説明や既に知っている概念の解説を整理する。'
                 + connection +
