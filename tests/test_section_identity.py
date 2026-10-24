@@ -61,7 +61,7 @@ class SectionPipelineIntegrationTests(unittest.TestCase):
         calls=[]
         def audit(_,**kw):
             calls.append(kw['text'])
-            return {'valid':len(calls)>1,'policy_version':POLICY_VERSION, 'stage':'article', 'phases':phases(snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources'])),
+            return {'valid':len(calls)>1,'policy_version':POLICY_VERSION, 'stage':'article', 'phases':phases(snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources']), kw['text']),
                     'snapshot':snapshot(kw['text'],kw['facts'],kw['outline'],kw['contract'],kw['requirements'],kw['sources']),
                     'checks':[{'key':k,'status':'fail' if len(calls)==1 and k=='conclusion_consistency' else 'pass','reason':'確認済み'} for k in CHECKS]}
         def save(**kw):artifacts[kw['step']]=kw;return kw

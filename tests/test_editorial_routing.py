@@ -1,3 +1,4 @@
+from heading_review_fixture import with_heading_reviews
 import copy
 import json
 import re
@@ -45,8 +46,8 @@ class EditorialRoutingTests(unittest.TestCase):
             payload = json.loads(request['messages'][0]['content'])
             role = step.removeprefix('tiered_article_')
             requests.append((role, payload))
-            return {'checks': [{'key': key, 'status': 'pass', 'reason': '文脈による許容', 'affected_blocks': []}
-                               for key in focused_quality.ROLES[role]]}, SimpleNamespace(input_tokens=0, output_tokens=0)
+            return with_heading_reviews({'checks': [{'key': key, 'status': 'pass', 'reason': '文脈による許容', 'affected_blocks': []}
+                               for key in focused_quality.ROLES[role]]}, request), SimpleNamespace(input_tokens=0, output_tokens=0)
         with patch('pipeline.ai.tiered_review_enabled', return_value=True), \
              patch('pipeline.quality_context.compact_enabled', return_value=False), \
              patch('pipeline.tiered_research.checked_request', side_effect=send):
@@ -76,8 +77,8 @@ class EditorialRoutingTests(unittest.TestCase):
         def send(job, step, request):
             role = step.removeprefix('tiered_article_')
             requests.append((role, json.loads(request['messages'][0]['content'])))
-            return {'checks': [{'key': key, 'status': 'pass', 'reason': '文脈による許容', 'affected_blocks': []}
-                               for key in focused_quality.ROLES[role]]}, SimpleNamespace(input_tokens=0, output_tokens=0)
+            return with_heading_reviews({'checks': [{'key': key, 'status': 'pass', 'reason': '文脈による許容', 'affected_blocks': []}
+                               for key in focused_quality.ROLES[role]]}, request), SimpleNamespace(input_tokens=0, output_tokens=0)
         with patch('pipeline.ai.tiered_review_enabled', return_value=True), \
              patch('pipeline.quality_context.compact_enabled', return_value=False), \
              patch('pipeline.tiered_research.checked_request', side_effect=send):
@@ -114,8 +115,8 @@ class EditorialRoutingTests(unittest.TestCase):
         def send(job, step, request):
             role = step.removeprefix('tiered_article_')
             requests.append((role, json.loads(request['messages'][0]['content'])))
-            return {'checks': [{'key': key, 'status': 'pass', 'reason': '本文と予定内容を確認',
-                               'affected_blocks': []} for key in focused_quality.ROLES[role]]}, SimpleNamespace(input_tokens=0, output_tokens=0)
+            return with_heading_reviews({'checks': [{'key': key, 'status': 'pass', 'reason': '本文と予定内容を確認',
+                               'affected_blocks': []} for key in focused_quality.ROLES[role]]}, request), SimpleNamespace(input_tokens=0, output_tokens=0)
 
         with patch('pipeline.ai.tiered_review_enabled', return_value=True), \
              patch('pipeline.quality_context.compact_enabled', return_value=False), \

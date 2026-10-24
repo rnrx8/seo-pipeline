@@ -25,6 +25,8 @@ ROLE_INSTRUCTIONS = {
 
 from .heading_scope import POLICY as HEADING_SCOPE_POLICY
 ROLE_INSTRUCTIONS['organization'] += '\n' + HEADING_SCOPE_POLICY
+from .heading_answers import POLICY as HEADING_ANSWER_POLICY
+ROLE_INSTRUCTIONS['organization'] += '\n' + HEADING_ANSWER_POLICY
 
 
 def parse_focus(raw, keys, text):
@@ -75,7 +77,11 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             from .lead_review import article_block_ids
             payload['lead_block_ids'] = article_block_ids(text)
         heading_groups = []
+        heading_entries = []
         if role == 'organization':
+            from .heading_answers import entries
+            heading_entries = entries(text)
+            payload['heading_answer_entries'] = heading_entries
             sections = requirements.get('article_design', {}).get('sections', [])
             if sections:
                 fields = ('id', 'parent_id', 'level', 'title', 'question', 'conclusion', 'answer_elements')
@@ -121,6 +127,9 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if heading_groups:
             from .heading_scope import output_config as scope_config
             output_config = scope_config(output_config, heading_groups)
+        if heading_entries:
+            from .heading_answers import output_config as answer_config
+            output_config = answer_config(output_config, heading_entries)
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=output_config,
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
@@ -181,6 +190,12 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             scope_findings = checked_scopes(json.loads(raw), heading_groups, text)
             checks = merge_scopes(checks, scope_findings)
             editorial += scope_findings
+        if heading_entries:
+            from .heading_answers import checked as checked_answers
+            from .heading_scope import merge as merge_scopes
+            answer_findings = checked_answers(json.loads(raw), text)
+            checks = merge_scopes(checks, answer_findings)
+            editorial = (editorial or []) + answer_findings
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
@@ -193,6 +208,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             phase.update(editorial_findings=editorial, findings_version=findings.VERSION)
         if heading_groups:
             phase['heading_scope_reviews'] = json.loads(raw)['heading_scope_reviews']
+        if heading_entries:
+            phase['heading_answer_reviews'] = json.loads(raw)['heading_answer_reviews']
         if trace:phase['evidence_routing']=trace
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)

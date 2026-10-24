@@ -1,3 +1,4 @@
+from heading_review_fixture import with_heading_reviews
 from reader_journey_fixture import article_journeys
 import copy
 import json
@@ -39,7 +40,7 @@ class ReaderReviewBindingTests(unittest.TestCase):
             if role=='organization':
                 self.assertTrue(all(c['block_ids'] for p in payload['heading_scope_groups'] for c in p['children']))
                 result['heading_scope_reviews']={p['id']:{c['id']:{'relation':'answer','reason':'合成確認'} for c in p['children']} for p in payload['heading_scope_groups']}
-            return result,SimpleNamespace(input_tokens=1,output_tokens=1)
+            return with_heading_reviews(result, request),SimpleNamespace(input_tokens=1,output_tokens=1)
         context=dict(text=text,outline=outline['content_text'],facts='',sources='',contract={},requirements=requirements)
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'legacy'}),patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=fq.audit_article(None,**context)

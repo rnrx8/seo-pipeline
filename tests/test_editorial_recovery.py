@@ -35,11 +35,14 @@ def materials():
 
 
 def passed(context):
+    from heading_review_fixture import reviews
     h = cq.snapshot(**context)
     check = lambda k: {'key': k, 'status': 'pass', 'reason': '合成した検証応答', 'affected_blocks': []}
     return {'valid': True, 'stage': 'article', 'snapshot': h, 'policy_version': cq.POLICY_VERSION,
             'checks': [check(k) for k in cq.CHECKS],
-            'phases': {role: {'snapshot': h, 'checks': [check(k) for k in keys]} for role, keys in ROLES.items()}}
+            'phases': {role: {'snapshot': h, 'checks': [check(k) for k in keys],
+                **({'heading_answer_reviews': reviews(context['text'])} if role == 'organization' else {})}
+                for role, keys in ROLES.items()}}
 
 
 class RecoveryMappingTests(unittest.TestCase):

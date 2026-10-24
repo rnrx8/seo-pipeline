@@ -13,7 +13,7 @@ from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
-POLICY_VERSION = 'content-quality-v18-section-local-reader-state'
+POLICY_VERSION = 'content-quality-v19-individual-heading-answer'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -544,6 +544,13 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
         phases = report.get('phases', {})
         if set(phases) != set(ROLES):
             raise ContentQualityError('分割品質検査が不足しています。')
+        if context:
+            from .heading_answers import checked as checked_answers, entries as answer_entries
+            review_text = (report.get('local_completion') or {}).get('base_text', context['text'])
+            if checked_answers(phases['organization'], review_text):
+                raise ContentQualityError('見出しと直下の第一文の確認が未合格です。')
+            if report.get('local_completion') and answer_entries(review_text) != answer_entries(context['text']):
+                raise ContentQualityError('見出し・第一文の変更には新しい全文確認が必要です。')
         if context and context.get('requirements',{}).get('article_design'):
             from .article_design import checked_result
             design=context['requirements']['article_design']

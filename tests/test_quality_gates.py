@@ -35,7 +35,7 @@ class QualityGateTests(unittest.TestCase):
 
     def test_model_pass_cannot_override_continuous_prose(self):
         text = '# 記事\n\n## 説明\n\n' + 'あ' * 170 + '\n\n**補足**\n\n' + 'い' * 170
-        with patch.object(q, 'create_with_retry', side_effect=responses()):
+        with patch.object(q, 'create_with_retry', side_effect=responses(text=text)):
             report = q.audit(None, stage='article', text=text, facts='', outline='',
                              contract={}, requirements={})
         self.assertTrue(all(c['status'] == 'pass' for c in report['checks']))
@@ -69,7 +69,7 @@ class QualityGateTests(unittest.TestCase):
 
     def test_five_roles_share_snapshot_and_all_are_required(self):
         saved=[]
-        with patch.object(q,'create_with_retry',side_effect=responses()) as calls:
+        with patch.object(q,'create_with_retry',side_effect=responses(text='# 記事\n\n## 説明\n\n本文です。')) as calls:
             result=q.audit(None,stage='article',text='# 記事\n\n## 説明\n\n本文です。',facts='',outline='',contract={},requirements={},checkpoint=lambda role,p:saved.append(p))
         self.assertEqual(calls.call_count,5)
         self.assertEqual(len(saved),5)

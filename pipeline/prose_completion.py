@@ -85,6 +85,12 @@ def eligible(report, text, expected):
         if failed.get('research_ids') or failed.get('source_urls') or failed.get('requires_source_check'): return False
         targets = {l['id'] for l in failed.get('affected_blocks', [])}
         blocks = {b['id']: b['text'] for b in content_blocks(text)}
+        from .heading_answers import entries
+        opening_ids = {i for s in entries(text) for i in s['opening_block_ids']}
+        if targets & opening_ids:
+            # This shortcut has no new per-heading review. Keep opening edits
+            # on the normal repair + full audit path instead of carrying a pass.
+            return False
         return bool(targets) and targets == locations and all(i in blocks and plain_paragraph(blocks[i]) for i in targets)
     except (ValueError, KeyError, TypeError, StopIteration):
         return False

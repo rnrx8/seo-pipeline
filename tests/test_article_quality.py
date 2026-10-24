@@ -148,7 +148,7 @@ class ArticleQualityTests(unittest.TestCase):
                      'content_contract': {'content_text': json.dumps(CONTRACT)},
                      'outline': {'content_text': OUTLINE}}
         if 'content_audit' in artifacts:
-            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
+            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot'], artifacts['article']['content_text']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
         with patch.object(step_final_validate, 'get_optional_artifact', return_value=None), patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '15,123字'}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
@@ -218,7 +218,7 @@ class ArticleQualityTests(unittest.TestCase):
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}, 'content_audit': {'content_text': json.dumps(audit)},
                      'content_contract': {'content_text': json.dumps(CONTRACT)}}
         if 'content_audit' in artifacts:
-            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
+            audit_data=json.loads(artifacts['content_audit']['content_text']); audit_data['phases']=phases(audit_data['snapshot'], artifacts['article']['content_text']); artifacts['content_audit']['content_text']=json.dumps(audit_data)
         with patch.object(step_final_validate, 'get_optional_artifact', return_value=None), patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, step: artifacts[step]), \
              patch.object(step_final_validate, 'get_job', return_value={'word_count_setting': '1,000字'}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw):

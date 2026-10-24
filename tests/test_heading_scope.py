@@ -1,3 +1,4 @@
+from heading_review_fixture import with_heading_reviews
 from reader_journey_fixture import article_journeys
 import copy
 import json
@@ -87,7 +88,7 @@ class HeadingScopeTests(unittest.TestCase):
                 result['heading_scope_reviews'] = {p['id']: {c['id']: {'relation': 'next_decision', 'reason': '準備は方法を選ぶ次の問い'}
                                                                            for c in p['children']} for p in payload['heading_scope_groups']}
             else:self.assertNotIn('heading_scope_groups', payload)
-            return result, SimpleNamespace(input_tokens=1, output_tokens=1)
+            return with_heading_reviews(result, request), SimpleNamespace(input_tokens=1, output_tokens=1)
         with patch.dict(os.environ, {'ARTICLE_REVIEW_PROVIDER': 'tiered', 'QUALITY_RESEARCH_ROUTING': 'legacy'}), \
              patch('pipeline.tiered_research.checked_request', side_effect=send):
             report = fq.audit_article(None, text=article['content_text'], facts='', outline=outline['content_text'],

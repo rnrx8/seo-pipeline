@@ -1,3 +1,4 @@
+from heading_review_fixture import with_heading_reviews
 import copy
 import json
 import os
@@ -166,7 +167,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[],**({'requires_source_check':False,'research_ids':[],'source_urls':[]} if role in ('evidence','coverage') and routing=='focused' else {})} for k in keys]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,missing))
-            return result,NS(input_tokens=1,output_tokens=1)
+            return with_heading_reviews(result, request),NS(input_tokens=1,output_tokens=1)
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':routing}),patch('pipeline.tiered_research.checked_request',side_effect=send):
             # Legacy evidence routing keeps this test on the five normal roles.
             # Focused's original evidence screen is replaced by its existing
@@ -293,7 +294,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[]} for k in fq.ROLES[role]]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,1))
-            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(with_heading_reviews(result, request),ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'}),patch.object(cq,'create_with_retry',side_effect=send):
             report=fq.audit_article(None,text=text,facts='',outline=a['content_text'],contract={'required_sections':[]},requirements={'article_design':design},sources=cq.source_evidence({'content_text':json.dumps(pages)}))
         self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
