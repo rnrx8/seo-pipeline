@@ -92,6 +92,18 @@ class ReaderJourneyTests(unittest.TestCase):
         value['reader_progression_reviews'].pop('s10')
         with self.assertRaises(cq.ContentQualityError):bp.checked_progression_reviews(value,ctx)
 
+    def test_outline_example_is_local_authoring_evidence_not_psychology_label(self):
+        from pipeline.reader_journey import outline_evidence,chapter_evidence
+        sections=[{'id':'s1','parent_id':'','conclusion':'先に条件を確認する',
+            'answer_elements':[{'instruction':'使う場面を説明する'}],
+            'example':'夕食後に本を読んで過ごす場所を確かめる',
+            'reader_progression':{'before':{'emotion':'心理欄だけのことば'}}}]
+        evidence=chapter_evidence('s1',outline_evidence(sections))
+        row=self.rendered_quote(sections[0]['example']);row['guidance']['evidence'][0]['id']='s1'
+        self.assertEqual(checked(row,evidence),[])
+        row['guidance']['evidence'][0]['quote']='心理欄だけのことば'
+        with self.assertRaises(cq.ContentQualityError):checked(row,evidence)
+
     def test_combined_old_verdict_without_lived_value_is_not_current_acceptance(self):
         _,design,text,mapping,value=fixture()
         value['reader_progression_reviews']['s01']['journey'].pop('lived_value')

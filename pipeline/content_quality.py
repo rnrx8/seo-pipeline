@@ -13,7 +13,7 @@ from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
-POLICY_VERSION = 'content-quality-v24-every-section-reader-value'
+POLICY_VERSION = 'content-quality-v25-experience-beyond-action'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
