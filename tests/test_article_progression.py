@@ -116,7 +116,7 @@ class ArticleProgressionTests(unittest.TestCase):
             ap.checked(value, design, mapping, text)
         value['reader_progression_reviews']['s02'].update(status='fail', affected_blocks=[{
             'id': 'block-0000', 'reason': '不足する章を記事に補う'}])
-        for check in ('attunement','guidance'):
+        for check in ('attunement','lived_value','guidance'):
             value['reader_progression_reviews']['s02']['journey'][check].update(status='fail',reason='章が本文に存在しない',evidence=[])
         self.assertEqual(ap.checked(value, design, mapping, text)[0]['section_id'], 's02')
 

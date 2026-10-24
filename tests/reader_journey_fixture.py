@@ -8,6 +8,7 @@ def journey(evidence):
     sid=next(iter(evidence));quote=evidence[sid][0]
     return {'reader_state':'合成した章の状況と気持ち。意味品質の証明ではない。',
         'attunement':{'status':'pass','reason':'合成した独立確認','evidence':[{'id':sid,'quote':quote}]},
+        'lived_value':{'status':'pass','reason':'合成した独立確認','evidence':[{'id':sid,'quote':quote}]},
         'guidance':{'status':'pass','reason':'合成した独立確認','evidence':[{'id':sid,'quote':quote}]}}
 
 

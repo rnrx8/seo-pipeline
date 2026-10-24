@@ -19,7 +19,7 @@ class Stage6ApiContractTests(unittest.TestCase):
 
     def test_blueprint_review_capacity_covers_each_required_verdict(self):
         request=self.blueprint_review_request()
-        self.assertEqual(tr.structured_review_output_limit(request),20400)
+        self.assertEqual(tr.structured_review_output_limit(request),23200)
         self.assertEqual(request['max_tokens'],6000)
         self.assertEqual(tr.structured_review_output_limit({**request,'max_tokens':24000}),24000)
         ordinary={**request,'output_config':cq.audit_output_config(cq.CHECKS)}
@@ -33,7 +33,7 @@ class Stage6ApiContractTests(unittest.TestCase):
         response=NS(stop_reason='end_turn',content=[NS(type='text',text='{}')],usage=NS(input_tokens=1,output_tokens=1))
         with patch.object(tr,'cached_result',return_value=None),patch.object(tr,'get_optional_artifact',return_value=None),patch.object(tr,'create_with_retry',return_value=response) as send,patch.object(tr,'upsert_artifact'):
             tr.checked_request('j','tiered_audit_research',request)
-        expected={**request,'max_tokens':20400}
+        expected={**request,'max_tokens':23200}
         self.assertEqual(send.call_args.kwargs,expected)
 
     def test_wide_research_adjudication_fits_observed_complete_response(self):

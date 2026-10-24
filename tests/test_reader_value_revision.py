@@ -78,6 +78,22 @@ class ReaderValueRevisionTests(unittest.TestCase):
         self.assertFalse(result['valid']);self.assertEqual(bp.repair_targets(saved,result),[])
         self.assertTrue(bp.lead_repair_allowed(saved,result))
 
+    def test_lived_value_lead_failure_survives_other_passed_decisions(self):
+        original=stage5.decision_result
+        def reply(design,text,missing=None):
+            value=original(design,text,missing)
+            value['lead_review']['lived_value']={'status':'fail','reason':'作業上の不便だけでその先の経験が伝わらない',
+                'affected_blocks':[{'id':lr.article_block_ids(text)[0],'reason':'選んだ背景の望む経験をリードへ接続する'}]}
+            return value
+        with patch.object(stage5,'decision_result',side_effect=reply):
+            report,requests,_=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
+        self.assertFalse(report['valid']);self.assertEqual(len(requests),5)
+        phase=report['phases']['coverage']
+        self.assertTrue(all(row['status']=='pass' for row in phase['decision_reviews'].values()))
+        self.assertEqual(phase['lead_review']['subject_and_reader']['status'],'pass')
+        self.assertEqual(phase['checks'][0]['status'],'fail')
+        self.assertTrue(any(f.get('origin')=='individual_lead_review' for f in report['editorial_findings']))
+
     def test_missing_or_outside_lead_review_locations_are_rejected(self):
         text='# 記事\n\n主題と読む目的。\n\n## 詳細\n\n本文。';ids=lr.article_block_ids(text)
         value={'lead_review':{key:{'status':'pass','reason':'合成確認','affected_blocks':[]} for key in lr.KEYS}}
@@ -92,6 +108,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
         text='# メールが届かない\n\nメールアドレスを確認して一度再送します。';ids=lr.article_block_ids(text)
         value={'lead_review':{key:{'status':'pass','reason':'主題と行動が分かる','affected_blocks':[]} for key in lr.KEYS}}
         value['lead_review']['motivation_bridge'].update(status='not_applicable',reason='心理的背景を使わず、直接手順へつながる')
+        value['lead_review']['lived_value'].update(status='not_applicable',reason='直接の再送手順であり暮らしの希望は回答を変えない')
         self.assertEqual(lr.checked(value,ids),value['lead_review'])
 
     def test_lead_findings_do_not_authorize_all_chapter_edits(self):
