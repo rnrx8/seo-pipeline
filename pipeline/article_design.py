@@ -57,9 +57,26 @@ def part_reader_brief(blueprint, h2_titles):
         +json.dumps(rows,ensure_ascii=False,separators=(',',':')))
 
 
+def bind_review_requirements(requirements, text, outline, binding):
+    """Carry validated section identities into both QA requests and final checks."""
+    if not requirements.get('article_design'):return requirements
+    from .section_identity import valid_binding
+    if not valid_binding(text,outline,binding):
+        from .content_quality import ContentQualityError
+        raise ContentQualityError('読者QAへ渡す本文と章の対応が現在の原稿に一致しません。')
+    result=copy.deepcopy(requirements)
+    result['article_design']['section_binding']=copy.deepcopy(binding)
+    return result
+
+
 def correspondence(text, outline, design, binding=None):
     """Location mapping is diagnostic; no semantic pass is inferred from it."""
     from .section_identity import valid_binding
+    if binding is None and design.get('section_binding') is not None:
+        binding=design['section_binding']
+        if not valid_binding(text,outline,binding):
+            from .content_quality import ContentQualityError
+            raise ContentQualityError('読者QAの章対応が現在の本文・構成と一致しません。')
     binding=binding if binding and valid_binding(text,outline,binding) else bind_sections(text,outline)
     blocks=content_blocks(text)
     # Actual paragraph ranges keep repeated text anchored to its own occurrence.

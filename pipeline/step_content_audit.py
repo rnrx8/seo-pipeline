@@ -212,6 +212,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         raise ContentQualityError('構成と本文の見出し対応を修正してから品質確認してください: '
                                   + json.dumps(topology_issues, ensure_ascii=False))
     requirements = final_review_requirements(job, keyword)
+    from .article_design import bind_review_requirements
+    requirements = bind_review_requirements(requirements, text, outline, section_map)
     client = anthropic.Anthropic(api_key=api_key, max_retries=0) if hybrid_writing_enabled() else (None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key))
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
     first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
@@ -235,6 +237,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     upsert_artifact(job_id=job_id, step='content_audit', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
     for attempt in range(first_attempt, attempt_limit):
+        requirements = bind_review_requirements(requirements, text, outline, section_map)
         try:
             if checkpoint is not None:
                 print('[content_audit] Resuming unchanged failed audit; repaired text will be audited again', flush=True)

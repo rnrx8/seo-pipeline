@@ -188,6 +188,11 @@ def final_review_requirements(job: dict, keyword: str) -> dict:
         outline=get_optional_artifact(job['id'],'outline')
         if outline and (outline.get('meta') or {}).get('blueprint_version'):
             requirements['article_design']=design_context(outline)
+            article=get_optional_artifact(job['id'],'article')
+            binding=(article.get('meta') or {}).get('section_map') if article else None
+            if binding:
+                from .article_design import bind_review_requirements
+                requirements=bind_review_requirements(requirements,article['content_text'],outline['content_text'],binding)
     if astra_review_enabled():
         from .db import get_learned_style_rules
         from .step_review import SYSTEM_PROMPT
