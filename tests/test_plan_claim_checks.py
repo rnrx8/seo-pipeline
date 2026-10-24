@@ -50,3 +50,27 @@ class PlanClaimChecksTests(unittest.TestCase):
         self.assertTrue(self.value['valid'])
         self.assertEqual(self.value['issues'], [])
         self.assertEqual(self.plan['items'][1]['source_requirement'],'expert_allowed')
+
+    def test_producer_and_preflight_share_scope_rule_without_relaxing_adoption(self):
+        from pipeline.evidence_policy import SOURCE_REQUIREMENT_PLANNING_POLICY, SOURCE_BASES
+        from pipeline.research_requirements import PLAN_SYSTEM
+        from pipeline.research_plan_review import PLAN_REVIEW_SYSTEM
+        self.assertIn(SOURCE_REQUIREMENT_PLANNING_POLICY, PLAN_SYSTEM)
+        self.assertIn(SOURCE_REQUIREMENT_PLANNING_POLICY, PLAN_REVIEW_SYSTEM)
+        self.assertNotIn('guidance', SOURCE_BASES['expert_allowed'])
+        self.assertNotIn('guidance', SOURCE_BASES['primary_only'])
+
+    def test_general_comparison_and_individual_safety_are_not_one_requirement(self):
+        plan = {'items':[
+            {'id':'comparison','source_requirement':'expert_allowed','official_check_required':False},
+            {'id':'individual','source_requirement':'expert_allowed','official_check_required':False}]}
+        value = {'valid':True,'issues':[], 'claim_checks':{
+            'comparison':{'answer_scope':'設備変更で工事が大きくなりやすい理由と後付け家具の選択肢を一般的な確認目安として説明し、個別の施工可否は判定しない',
+                'source_requirement':'general_guidance','official_check_required':False},
+            'individual':{'answer_scope':'特定の建物で壁を撤去する場合の構造安全性を判断する',
+                'source_requirement':'expert_allowed','official_check_required':False}}}
+        before = copy.deepcopy(plan)
+        validate_claim_checks(value, plan)
+        self.assertFalse(value['valid'])
+        self.assertEqual([i['id'] for i in value['issues']], ['comparison'])
+        self.assertEqual(plan, before)

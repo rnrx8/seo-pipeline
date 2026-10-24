@@ -117,6 +117,8 @@ MATRIX_SCHEMA = claim_response_schema(MATRIX_SCHEMA)
 
 from .reader_needs import ANSWER_SCOPE_POLICY
 PLAN_SYSTEM += '\n' + ANSWER_SCOPE_POLICY
+from .evidence_policy import SOURCE_REQUIREMENT_PLANNING_POLICY
+PLAN_SYSTEM += '\n' + SOURCE_REQUIREMENT_PLANNING_POLICY
 
 
 def plan_policy():
