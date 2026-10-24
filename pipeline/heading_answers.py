@@ -4,10 +4,39 @@ import re
 
 # Shared by authoring and QA. This is a semantic rule, not a phrase blacklist.
 WRITING_POLICY = '''【見出しと直下の答え】
-H2/H3/H4の第一文で、その節の問いへの具体的な答えを伝える。「方法によって異なる」「以下で紹介する」だけでは、後ろの表・一覧に答えがあっても結論先行を満たさない。条件別なら第一文で主要な分かれ方や選ぶ基準を簡潔に示し、細かな例外・全項目は後続で説明する。一文に全情報を詰め込む必要はない。短い条件句と同じ文で答える形は使える。見出しの言葉も、何を指し、何を勧めるかが文脈上明確であること。後続本文で説明できることを、意味の曖昧な見出しを残す理由にしない。問いの対象を明確にすることと、見出しに長い説明を詰め込むことは別。リードはこの規則の対象外。'''
+H2/H3/H4の第一文で、その節の問いへの具体的な答えを伝える。「方法によって異なる」「以下で紹介する」だけでは、後ろの表・一覧に答えがあっても結論先行を満たさない。条件別なら第一文で主要な分かれ方や選ぶ基準を簡潔に示し、細かな例外・全項目は後続で説明する。一文に全情報を詰め込む必要はない。短い条件句と同じ文で答える形は使える。推薦を担う節は、共通の提示基準どおり冒頭1〜2文で推薦を明示する。第一文が問いへの具体的な回答（探す方法の実名や仕組みなど）、第二文が推薦対象と結論なら合格であり、見出しに「おすすめ」とあることだけで推薦も第一文へ詰め込ませない。第一文が中身のない予告・共感だけの場合や、候補を挙げるだけで冒頭1〜2文に推薦がない場合とは区別する。見出しの言葉も、何を指し、何を勧めるかが文脈上明確であること。後続本文で説明できることを、意味の曖昧な見出しを残す理由にしない。問いの対象を明確にすることと、見出しに長い説明を詰め込むことは別。リードはこの規則の対象外。'''
 
 POLICY = WRITING_POLICY + '''
-heading_answer_entriesは実本文から切り出した見出しと、その節自身のopening_quote（第一文、文がない場合は最初の行）です。全件についてheading_answer_reviewsへ、headingとopeningを独立にpass/fail判定し、具体的な理由を記す。opening_quoteは指定値をそのまま返し、後の文・一覧・子節に差し替えない。見出しの問いと実際の第一文だけで直接の答えになるかを判定し、後続で読めた答えを補ってpassにしない。冒頭が表やリストのみ、本文がない場合も第一文の要件を満たしたことにしない。条件依存の問いでも、第一文に具体的な分岐・判断基準があればpassにできる。感情語・推薦を全節へ追加せず、その節の回答を明確にする。headingは対象・行為が別の意味にも読めて誤解させないかを見る。本文から書き手の意図が分かることだけで曖昧な見出しをpassにしない。意味が自然に定まる省略や通常の専門語は許容する。この個別確認は文言と答えの置き方を扱い、failは既存のarticle修正へ渡す。問いの変更・回答範囲・階層そのものの問題は既存のheading_scope_reviews/editorial_findingsでoutlineへ指摘する。'''
+heading_answer_entriesは実本文から切り出した見出しと、その節自身のopening_quote（第一文、文がない場合は最初の行）、opening_context（直下の段落）です。全件についてheading_answer_reviewsへ、headingとopeningを独立にpass/fail判定し、具体的な理由を記す。opening_quoteは指定値をそのまま返し、後の文・一覧・子節に差し替えない。第一文の具体的な答えを確認し、推薦節ではopening_contextも読み、第一文の具体的な回答と第二文の推薦が冒頭1〜2文の基準を満たすか見る。「推薦が第二文だから」という理由だけでfailにしない。第一文に具体的な回答がない場合を、後続の回答で相殺しない。冒頭が表やリストのみ、本文がない場合も第一文の要件を満たしたことにしない。条件依存の問いでも、第一文に具体的な分岐・判断基準があればpassにできる。感情語・推薦を全節へ追加せず、その節の回答を明確にする。headingは対象・行為が別の意味にも読めて誤解させないかを見る。本文から書き手の意図が分かることだけで曖昧な見出しをpassにしない。意味が自然に定まる省略や通常の専門語は許容する。この個別確認は文言と答えの置き方を扱い、failは既存のarticle修正へ渡す。問いの変更・回答範囲・階層そのものの問題は既存のheading_scope_reviews/editorial_findingsでoutlineへ指摘する。'''
+
+
+def first_sentence(paragraph):
+    """Keep punctuation inside quotations, brackets and inline code in one sentence."""
+    stack = []
+    pairs = {'「': '」', '『': '』', '（': '）', '(': ')', '【': '】', '[': ']', '“': '”'}
+    code = False
+    for i, char in enumerate(paragraph):
+        if i and paragraph[i - 1] == '\\':
+            continue
+        if char == '`':
+            code = not code
+            continue
+        if code:
+            continue
+        if stack and char == stack[-1]:
+            stack.pop()
+            continue
+        if char in pairs:
+            stack.append(pairs[char])
+            continue
+        if stack:
+            continue
+        if char in '。！？!?' or (char == '.' and (i + 1 == len(paragraph) or paragraph[i + 1].isspace())):
+            end = i + 1
+            if paragraph[end:end + 2] == '**':
+                end += 2
+            return paragraph[:end]
+    return paragraph
 
 
 def entries(text):
@@ -42,13 +71,12 @@ def entries(text):
         paragraph = re.split(r'\n[ \t]*\n', own, maxsplit=1)[0]
         if re.match(r'(?:[-*+]\s|\d+[.)]\s|[|>]|```|~~~)', paragraph):
             paragraph = paragraph.splitlines()[0]
-        sentence = re.search(r'[。！？!?](?:[」』”"）)]|\*\*)*|[.](?=\s|$)', paragraph)
-        quote = paragraph[:sentence.end()] if sentence else paragraph
+        quote = first_sentence(paragraph)
         result.append({'id': f'heading-{index + 1:04d}', 'level': level,
             'title': match[2].strip(), 'parents': list(parents.values()),
             'heading_block_ids': ids(match.start(), match.end()),
             'opening_block_ids': ids(start, start + len(quote)) if quote else [],
-            'opening_quote': quote})
+            'opening_quote': quote, 'opening_context': paragraph})
         parents[level] = match[2].strip()
     return result
 

@@ -73,6 +73,21 @@ class HeadingAnswerTests(unittest.TestCase):
         text = '# 題\n\n## 解約\n\nカードは自動更新、振込は自動更新なしと、決済方法によって異なります。\n\n### 充電できない場合\n\n充電できない場合は、ケーブルの接続を確認してください。'
         self.assertEqual(ha.checked({'heading_answer_reviews':reviews(text)}, text), [])
 
+    def test_concrete_answer_then_recommendation_in_second_sentence_is_supported(self):
+        text = '## 探し方を比較：Aがおすすめ\n\n探し方はA・B・Cの3つです。手軽に始めたい人にはAがおすすめです。'
+        row = ha.entries(text)[0]
+        self.assertEqual(row['opening_quote'], '探し方はA・B・Cの3つです。')
+        self.assertIn('Aがおすすめです。', row['opening_context'])
+        self.assertIn('冒頭1〜2文', ha.WRITING_POLICY)
+        self.assertEqual(ha.checked({'heading_answer_reviews':reviews(text)},text), [])
+
+    def test_question_inside_quotes_does_not_hide_the_answer_in_same_sentence(self):
+        for sentence in ['「どれがいい？」と迷ったら、Aがおすすめです。',
+                         '設定例（「これでよい？」と聞かれた場合）はAです。',
+                         'ボタン`help?`を押してください。']:
+            text = '## 最初に何をするか\n\n' + sentence + '次の説明。'
+            with self.subTest(sentence=sentence): self.assertEqual(ha.entries(text)[0]['opening_quote'],sentence)
+
     def test_old_global_pass_is_rejected_at_strict_final_gate(self):
         from quality_fixtures import phases
         context = dict(text=self.text, facts='', outline='', contract={}, requirements={}, sources='')
