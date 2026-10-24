@@ -9,7 +9,7 @@ from .ai import create_with_retry, get_step_config
 from .db import get_artifact, get_job, get_learned_style_rules, upsert_artifact
 from .content_contract import contract_prompt
 from .step_structure_guard import validate_structure
-from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT, SENTENCE_STYLE_POLICY, PROSE_STYLE_POLICY
+from .readability import EMPATHY_ENDING_POLICY, READABILITY_POLICY, SENTENCE_REVIEW_LIMIT, SENTENCE_STYLE_POLICY
 
 MODEL, MAX_TOKENS = get_step_config("review")
 
@@ -54,7 +54,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
    - """ + SENTENCE_STYLE_POLICY + """
 
 7. 文体チェック
-   - """ + PROSE_STYLE_POLICY + """
+   - 共通提示基準「読者と同じ目線の自然な解説」を全章で確認する。説明が抽象的な行為名や書き手側の評価に寄り、読者が何をするか・自分にどう役立つかが伝わりにくい箇所は、実際の意味を保って整える。くだけた語尾や共感文を増やすだけで改善した扱いにしない。
 
 ### 【見出しの可読性】
 8. H2見出しの可読性チェック（記事完成後、全H2を通しで点検）
