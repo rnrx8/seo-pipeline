@@ -120,17 +120,18 @@ class ArticleProgressionTests(unittest.TestCase):
             value['reader_progression_reviews']['s02']['journey'][check].update(status='fail',reason='章が本文に存在しない',evidence=[])
         self.assertEqual(ap.checked(value, design, mapping, text)[0]['section_id'], 's02')
 
-    def test_null_progression_does_not_add_a_forced_empathy_review(self):
+    def test_null_progression_is_reviewed_without_forcing_emotional_prose(self):
         _, design, _, _, _ = fixture()
         config = ad.review_config(cq.audit_output_config(('coverage',), locations=True), design)
         props = config['format']['schema']['properties']['reader_progression_reviews']['properties']
-        self.assertNotIn('s10', props)
+        self.assertIn('s10', props)
         self.assertEqual(set(props), {s['id'] for s in ap.sections(design)})
         plain = copy.deepcopy(design)
         for section in plain['sections']:
             section['reader_progression'] = None
-        self.assertNotIn('reader_progression_reviews', ad.review_config(
-            cq.audit_output_config(('coverage',), locations=True), plain)['format']['schema']['properties'])
+        rows=ad.review_config(cq.audit_output_config(('coverage',), locations=True),plain)['format']['schema']['properties']['reader_progression_reviews']['properties']
+        self.assertEqual(set(rows),{s['id'] for s in design['sections']})
+        self.assertIn('not_needed',rows['s10']['properties']['journey']['properties']['attunement']['properties']['status']['enum'])
 
     def test_local_chapter_failure_overrides_global_pass_in_same_existing_call(self):
         original = stage5.decision_result

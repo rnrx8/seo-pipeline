@@ -81,7 +81,7 @@ class HeadingScopeTests(unittest.TestCase):
                                                for d in design['reader_decisions']},
                     lead_review={k: {'status': 'pass', 'reason': '合成確認', 'affected_blocks': []} for k in KEYS},
                     reader_progression_reviews={s['id']: {'status': 'pass', 'reason': '合成確認', 'affected_blocks': [],'journey':article_journeys(design,article['content_text'],outline['content_text'])[s['id']]}
-                                                for s in design['sections'] if s['reader_progression']})
+                                                for s in design['sections']})
             if role == 'organization':
                 self.assertIn(scope.POLICY, request['system'])
                 self.assertIn('heading_scope_reviews', request['output_config']['format']['schema']['required'])

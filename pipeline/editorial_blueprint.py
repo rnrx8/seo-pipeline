@@ -28,7 +28,7 @@ POLICY += '\n'+JOURNEY_PLANNING_POLICY
 REVIEW_POLICY = '''【編集設計の個別確認】
 blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
-section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは、主回答の詳細を説明せずに個別商品の長い推薦・不要な補足で中断すること、depends_onとの不整合、子節と親の問いの不一致を確認する。概要の条件付きの方法推奨は主回答なので、それ自体を順序違反にしない。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsの各節を個別に確認する。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。親章の確認ではnullの子節も問いと回答要素を読み、その節の判断に必要な固有のためらい・欲求が親章の一般的な心理へ埋もれていないか確認する。必要な差分が欠ける場合は該当する子節を理由に示し、説明設計の不足として扱う。単にnullであることや感情を強める好みは欠陥にしない。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
+section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは、主回答の詳細を説明せずに個別商品の長い推薦・不要な補足で中断すること、depends_onとの不整合、子節と親の問いの不一致を確認する。概要の条件付きの方法推奨は主回答なので、それ自体を順序違反にしない。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsにある全節（reader_progressionがnullの子節も含む）を個別に確認する。計画欄の有無で評価を省略しない。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。各子節の問いと回答要素を読み、その節の判断に必要な固有のためらい・欲求を確認する。親章の別の子節にある説明で、その子節の不足を相殺しない。親章全体としての流れも別に確認する。必要な差分が欠ける場合は該当する子節を理由に示し、説明設計の不足として扱う。単にnullであることや感情を強める好みは欠陥にしない。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
 '''
 from .lead_review import POLICY as LEAD_REVIEW_POLICY
 REVIEW_POLICY+='\n'+LEAD_REVIEW_POLICY
@@ -430,7 +430,8 @@ def review_context(artifact):
     from .reader_journey import outline_evidence
     return {'version':VERSION,'reader_focus':focus_context(value['reader_focus'],ctx['reader_design']),
         'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
-        'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
+        # A nullable planning field cannot opt a child out of reader-value QA.
+        'progression_section_ids':[s['id'] for s in value['sections']],
         'journey_sections':outline_evidence(value['sections']),
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}

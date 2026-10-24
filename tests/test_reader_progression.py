@@ -55,7 +55,7 @@ class ReaderProgressionTests(unittest.TestCase):
         _,_,_,ctx,value=fixture();child=copy.deepcopy(value['sections'][0]);child.update(id='s02',level=3,parent_id='s01',title='具体例',reader_progression=None,budget={'chars':0,'importance':0,'reason':''})
         value['sections'].append(child);bp.validate(value,ctx)
         self.assertEqual(bp.render(value,ctx).count('この章で解消する疑問'),1)
-        self.assertEqual(bp.review_context(artifact(value,ctx))['progression_section_ids'],['s01'])
+        self.assertEqual(bp.review_context(artifact(value,ctx))['progression_section_ids'],['s01','s02'])
 
     def test_child_can_define_only_its_own_change(self):
         _,_,_,ctx,value=fixture();child=copy.deepcopy(value['sections'][0]);child.update(id='s02',level=3,parent_id='s01',title='用途を具体化',budget={'chars':0,'importance':0,'reason':''})

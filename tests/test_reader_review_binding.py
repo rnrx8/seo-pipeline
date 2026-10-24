@@ -36,7 +36,7 @@ class ReaderReviewBindingTests(unittest.TestCase):
                 self.assertTrue(all(row['article_section_ids'] for row in payload['reader_correspondence']['sections']))
                 result.update(decision_reviews={d['id']:{'status':'pass','reason':'合成確認','missing_requirements':[],'affected_blocks':[]} for d in design['reader_decisions']},
                     lead_review={k:{'status':'pass','reason':'合成確認','affected_blocks':[]} for k in KEYS},
-                    reader_progression_reviews={s['id']:{'status':'pass','reason':'合成確認','affected_blocks':[],'journey':article_journeys(requirements['article_design'],text,outline['content_text'])[s['id']]} for s in design['sections'] if s['reader_progression']})
+                    reader_progression_reviews={s['id']:{'status':'pass','reason':'合成確認','affected_blocks':[],'journey':article_journeys(requirements['article_design'],text,outline['content_text'])[s['id']]} for s in design['sections']})
             if role=='organization':
                 self.assertTrue(all(c['block_ids'] for p in payload['heading_scope_groups'] for c in p['children']))
                 result['heading_scope_reviews']={p['id']:{c['id']:{'relation':'answer','reason':'合成確認'} for c in p['children']} for p in payload['heading_scope_groups']}

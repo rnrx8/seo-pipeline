@@ -65,6 +65,33 @@ class ReaderJourneyTests(unittest.TestCase):
         self.assertEqual(issues[0]['repair_kind'],'editorial')
         self.assertIn('選択の先に望む経験',issues[0]['reason'])
 
+    def test_null_child_cannot_hide_behind_its_passed_parent(self):
+        _,design,text,mapping,value=fixture()
+        child=next(s for s in design['sections'] if s['id']=='s10')
+        self.assertIsNone(child['reader_progression'])
+        value['reader_progression_reviews']['s10']['journey']['lived_value'].update(
+            status='fail',reason='親にはあるがこの節の選択の意味がない',evidence=[])
+        issues=ap.checked(value,design,mapping,text)
+        self.assertEqual([x['section_id'] for x in issues],['s10'])
+        child_blocks=next(x['block_ids'] for x in mapping['sections'] if x['blueprint_id']=='s10')
+        self.assertTrue(all(x['id'] in child_blocks for x in issues[0]['affected_blocks']))
+
+    def test_null_child_direct_answer_can_pass_without_added_empathy(self):
+        _,design,text,mapping,value=fixture()
+        row=value['reader_progression_reviews']['s10']['journey']
+        for key in ('attunement','lived_value'):
+            row[key].update(status='not_needed',reason='短い事実回答でこの節の問いが完結する',evidence=[])
+        self.assertEqual(ap.checked(value,design,mapping,text),[])
+
+    def test_outline_null_child_requires_its_own_review_and_fails_locally(self):
+        saved,_,_,_,_=fixture();ctx=bp.review_context(saved);value=verdict(ctx)
+        self.assertIn('s10',ctx['progression_section_ids'])
+        value['reader_progression_reviews']['s10']['journey']['lived_value'].update(
+            status='fail',reason='親の別節の望みでこの節の説明不足は補えない',evidence=[])
+        self.assertEqual(bp.checked_progression_reviews(value,ctx)[0]['section_ids'],['s10'])
+        value['reader_progression_reviews'].pop('s10')
+        with self.assertRaises(cq.ContentQualityError):bp.checked_progression_reviews(value,ctx)
+
     def test_combined_old_verdict_without_lived_value_is_not_current_acceptance(self):
         _,design,text,mapping,value=fixture()
         value['reader_progression_reviews']['s01']['journey'].pop('lived_value')
