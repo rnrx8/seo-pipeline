@@ -67,7 +67,8 @@ SECTION_SCHEMA = obj({
     'need_ids':STRINGS,'decision_ids':STRINGS,'research_ids':STRINGS,
     'question':STRING,'conclusion':STRING,
     'answer_elements':{'type':'array','minItems':1,'items':obj({'instruction':STRING,'claim_ids':STRINGS})},
-    'reader_progression':nullable(PROGRESSION_SCHEMA),'example':STRING,
+    'reader_progression':{**nullable(PROGRESSION_SCHEMA),
+        'description':'level=2はまとめを含め必ずobject。before・afterで章の読者の変化を設計する。nullはlevel=3/4で親から引き継ぐ場合のみ。'},'example':STRING,
     'format':{'type':'string','enum':['文章','箇条書き','番号付きリスト','比較表','データ表']},
     'items':STRINGS,'cta':STRING,'budget':BUDGET_SCHEMA})
 SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},
