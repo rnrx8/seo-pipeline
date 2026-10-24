@@ -348,10 +348,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
 def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
     review_meta = {}
+    mapping=report.get('phases',{}).get('coverage',{}).get('reader_correspondence')
+    if mapping:
+        from .content_quality import digest
+        if mapping.get('text_sha256')!=digest(text):
+            raise ContentQualityError('合格した読者対応表が最終本文と一致しません。')
+        review_meta['reader_correspondence']=mapping
     if astra_review_enabled():
-        review_meta = {'review_model': get_step_config('content_audit')[0],
+        review_meta.update({'review_model': get_step_config('content_audit')[0],
                        'reviewed': True, 'review_skipped_reason': None,
-                       'acceptance_mode': report.get('acceptance_mode', 'full_audit')}
+                       'acceptance_mode': report.get('acceptance_mode', 'full_audit')})
         upsert_artifact(job_id=job_id, step='article_reviewed', content_type='text/markdown',
             content_text=text, meta={**review_meta, 'content_audit_snapshot': report['snapshot']})
         upsert_artifact(job_id=job_id, step='review', content_type='text/markdown',

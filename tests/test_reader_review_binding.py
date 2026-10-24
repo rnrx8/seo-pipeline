@@ -45,6 +45,16 @@ class ReaderReviewBindingTests(unittest.TestCase):
             cq._require_audit_strict(report,cq.snapshot(**context),stage='article',context=context)
         self.assertEqual(len(requests),5);self.assertTrue(report['valid'])
         self.assertNotIn('section_binding',design)
+        from pipeline import step_content_audit
+        with patch.object(step_content_audit,'astra_review_enabled',return_value=False),patch.object(step_content_audit,'upsert_artifact') as saved:
+            step_content_audit.publish_pass('job',article,text,report,binding,True,{'id':'audit'})
+        stored=saved.call_args.kwargs
+        self.assertEqual(stored['meta']['reader_correspondence'],report['phases']['coverage']['reader_correspondence'])
+        self.assertEqual(stored['meta']['reader_correspondence']['text_sha256'],cq.digest(stored['content_text']))
+        stale=copy.deepcopy(report);stale['phases']['coverage']['reader_correspondence']['text_sha256']='stale'
+        with patch.object(step_content_audit,'upsert_artifact') as saved,self.assertRaises(cq.ContentQualityError):
+            step_content_audit.publish_pass('job',article,text,stale,binding,True,{'id':'audit'})
+        saved.assert_not_called()
 
     def test_saved_final_context_loads_same_binding(self):
         article,outline,binding=self.fixture()
