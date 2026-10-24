@@ -13,7 +13,7 @@ editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコー�
 sectionsは記事順の平坦な配列。idは階層にかかわらずsに数字だけを続けた一意なID（s01等）、parent_idは直前の親のID（H2は空文字）。
 記事の主な宛先と読み始める時点の理解・迷いを、ユーザーのターゲット指定と採用した主要な問いから選ぶ。その人が知りたいことを起点に、各節のquestion/conclusion/answer_elementsへ問い・結論・説明事項、reader_progressionへ章の前後の変化を設計する。章の開始状態は前章で分かったことを引き継ぎ、同じ人を毎章初学者へ戻さない。主な宛先を定めても関連する読者や必要な問いを切り捨てず、条件の違いは該当章で扱う。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
 need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。need_idsには部分的に扱う関連ニーズも含められ、そのすべての判断をこの節で完了させる必要はない。decision_idsに対応する分析IDは保持する。計画のresearch_idsは調査の案内であり、他の質問の採用済み主張を関連する判断へ再利用してよい。関連性と回答の十分さは独立確認で評価する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
-H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。感情が選び方に関わる章は、beforeに何を得たい・守りたいからためらうのかを必要な範囲で具体化する。answer_elementsでは、その人が何に戸惑い・ためらい・期待しているかを短く受け止める役割と、それに応える判断・具体策・特徴の作用を結び、どの説明の入口や結びで実現するかを割り当てる。問題の説明や具体策があることだけで、気持ちを受け止める設計を済ませたとしない。before/afterの心理欄だけに残さず、必要な節の執筆内容へ反映する。完成文の例や固定の共感句を必須にせず、その節に受け止めが不要なら増やさない。afterへ「安心」「期待」と書くだけで、その変化を生む説明を設計済みとしない。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
+H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。その章の状況・気持ちと回答のつながりは、下記の共通指針に沿ってbeforeとanswer_elementsへ設計する。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
 H3/H4も、その節の問いを読む時点で何が分かり、何に迷い、何を得たい・避けたいかを判断する。親章や記事全体の欲求を繰り返すのでなく、その節の選択・行動に関わる固有のためらいや期待があれば、既存のreader_progressionへbefore/afterの差分と、それに応えるanswer_elementsを記す。親と同じ役割で独自の変化を担わない節はnullでよく、全節に心理を創作・複製しない。親と同じ分析IDを参照することだけをnullの理由にしない。既に解消した不安や初学者の状態へ毎節戻さず、次の疑問が生まれるなら解消した問いとのつながりを残す。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
 マーケティング目的に沿って認識・感情・行動の変化を意図してよい。潜在課題/願望への気づき、懸念の重要性の認識、新しい選択肢、利用後の変化のイメージ、期待・共感・安心・納得、比較・相談・登録への誘導、問いかけや価値の予告を設計できる。marketingは必要な章だけ指定し、不要ならnull。次の行動は認知・理解が目的なら空文字でもよい。全章にCTAや同じ感情を要求しない。脅迫、虚偽の恐怖/効果/緊急性、判断に重要な条件の隠蔽は行わない。商品の適合条件と確認済み事実を保ち、心理は仮説、感情変化は狙いであって実測効果や全員の感情として断定しない。合理的な助言や価値説明に効果率・同一文章の引用を一律要求しない。
 具体例exampleは役立つ節だけ記入し、不要なら空文字。説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
@@ -23,6 +23,8 @@ omissionsには省く内容と読者判断を損なわない理由を記録す�
 lead_directionはschemaの4つの入口（体験・望む変化・判断の難しさ・直接回答）から、reader_focusの人へ合う展開を一つ選ぶ。具体的な事情・実感・望み・今の問いはreader_focusから引き継ぎ、別欄で再要約して別の事情を足さない。文章の穴埋めテンプレートではなく説明の入口の選択であり、実際の言葉・文数・人称は素材と記事目的に合わせる。予告は実際の章の回答と読後判断へ合わせ、何を先に答え何を本文へ任せるかはユーザー指定と記事目的を守る。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
 POLICY += '\n' + READER_FOCUS_POLICY
+from .reader_journey import PLANNING_POLICY as JOURNEY_PLANNING_POLICY, REVIEW_POLICY as JOURNEY_REVIEW_POLICY
+POLICY += '\n'+JOURNEY_PLANNING_POLICY
 REVIEW_POLICY = '''【編集設計の個別確認】
 blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
@@ -30,6 +32,7 @@ section_idsは実際に回答する節、欠落時は直すべき最寄りの節
 '''
 from .lead_review import POLICY as LEAD_REVIEW_POLICY
 REVIEW_POLICY+='\n'+LEAD_REVIEW_POLICY
+REVIEW_POLICY+='\n'+JOURNEY_REVIEW_POLICY
 
 
 def fail(message):
@@ -312,7 +315,8 @@ def review_config(config, ctx):
         entries[d['id']]=obj({'requirements':obj(checks),'order':obj({
             'status':{'type':'string','enum':['pass','fail']},'reason':STRING,'section_ids':refs})})
     root['properties']['blueprint_reviews']=obj(entries);root['required'].append('blueprint_reviews')
-    progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING})
+    from .reader_journey import schema as journey_schema
+    progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING,'journey':journey_schema()})
     root['properties']['reader_progression_reviews']=obj({sid:copy.deepcopy(progression_check) for sid in ctx.get('progression_section_ids',[])})
     root['required'].append('reader_progression_reviews')
     if 'lead_direction' in ctx:
@@ -423,9 +427,11 @@ def review_context(artifact):
     value=require_projection(artifact)
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
+    from .reader_journey import outline_evidence
     return {'version':VERSION,'reader_focus':focus_context(value['reader_focus'],ctx['reader_design']),
         'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
         'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
+        'journey_sections':outline_evidence(value['sections']),
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}
 
@@ -631,10 +637,12 @@ def checked_progression_reviews(value, ctx):
     ids=ctx.get('progression_section_ids',[]);rows=value.get('reader_progression_reviews');issues=[]
     if not isinstance(rows,dict) or set(rows)!=set(ids):fail('章ごとの読者の変化・導線の確認が不足しています。')
     for sid,row in rows.items():
-        if (not isinstance(row,dict) or set(row)!={'status','reason'}
+        if (not isinstance(row,dict) or set(row)!={'status','reason','journey'}
             or row['status'] not in ('pass','answer_missing','evidence_missing')
             or not isinstance(row['reason'],str) or not row['reason'].strip()):fail('章ごとの変化・導線の確認結果が不正です。')
-        if row['status']!='pass':
+        from .reader_journey import checked as checked_journey,chapter_evidence
+        missing=checked_journey(row['journey'],chapter_evidence(sid,ctx.get('journey_sections',{})))
+        if row['status']!='pass' or missing:
             issues.append({'section_id':sid,'section_ids':[sid],'requirement_index':'reader_progression',
-                'reason':row['reason'],'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
+                'reason':'\n'.join([row['reason'],*missing]),'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
     return issues

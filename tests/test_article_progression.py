@@ -9,6 +9,7 @@ from pipeline.tiered_research import structured_review_output_limit
 from test_editorial_blueprint import artifact
 from test_reader_progression import chain
 import test_stage5_authoring as stage5
+from reader_journey_fixture import article_journeys
 
 
 def fixture():
@@ -26,7 +27,7 @@ def fixture():
     mapping = ad.correspondence(text, saved['content_text'], design)
     value = {'reader_progression_reviews': {
         s['id']: {'status': 'pass', 'reason': 'この章にある説明を確認した合成応答',
-                  'affected_blocks': []} for s in ap.sections(design)}}
+                  'affected_blocks': [],'journey':article_journeys(design,text)[s['id']]} for s in ap.sections(design)}}
     return saved, design, text, mapping, value
 
 
@@ -57,7 +58,7 @@ class ArticleProgressionTests(unittest.TestCase):
                 'missing_requirements': [], 'affected_blocks': []}
                 for d in design['reader_decisions']},
             'reader_progression_reviews': {s['id']: {'status': 'pass',
-                'reason': '合成した章の確認', 'affected_blocks': []}
+                'reason': '合成した章の確認', 'affected_blocks': [],'journey':article_journeys(design,text)[s['id']]}
                 for s in ap.sections(design)}}
         from pipeline.lead_review import KEYS
         result['lead_review'] = {key: {'status': 'pass', 'reason': '合成した導入確認',
@@ -115,6 +116,8 @@ class ArticleProgressionTests(unittest.TestCase):
             ap.checked(value, design, mapping, text)
         value['reader_progression_reviews']['s02'].update(status='fail', affected_blocks=[{
             'id': 'block-0000', 'reason': '不足する章を記事に補う'}])
+        for check in ('attunement','guidance'):
+            value['reader_progression_reviews']['s02']['journey'][check].update(status='fail',reason='章が本文に存在しない',evidence=[])
         self.assertEqual(ap.checked(value, design, mapping, text)[0]['section_id'], 's02')
 
     def test_null_progression_does_not_add_a_forced_empathy_review(self):

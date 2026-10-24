@@ -1,3 +1,4 @@
+from reader_journey_fixture import article_journeys
 import copy
 import json
 import unittest
@@ -78,7 +79,7 @@ class HeadingScopeTests(unittest.TestCase):
                 result.update(decision_reviews={d['id']: {'status': 'pass', 'reason': '合成確認', 'missing_requirements': [], 'affected_blocks': []}
                                                for d in design['reader_decisions']},
                     lead_review={k: {'status': 'pass', 'reason': '合成確認', 'affected_blocks': []} for k in KEYS},
-                    reader_progression_reviews={s['id']: {'status': 'pass', 'reason': '合成確認', 'affected_blocks': []}
+                    reader_progression_reviews={s['id']: {'status': 'pass', 'reason': '合成確認', 'affected_blocks': [],'journey':article_journeys(design,article['content_text'],outline['content_text'])[s['id']]}
                                                 for s in design['sections'] if s['reader_progression']})
             if role == 'organization':
                 self.assertIn(scope.POLICY, request['system'])

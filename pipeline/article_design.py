@@ -44,7 +44,9 @@ def part_reader_brief(blueprint, h2_titles):
         row={'section_id':section['id'],'heading':section['title'],
              'question':section['question'],'answer':section['conclusion'],
              'open_questions':before['open_questions'],
+             'reader_situation':before['understanding'],
              'reader_feeling':before['emotion'],
+             'answer_elements':[e['instruction'] for e in section['answer_elements']],
              'outcome':{k:v for k,v in after.items() if v}}
         rows.append(row)
     if not rows:return ''

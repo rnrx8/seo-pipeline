@@ -122,7 +122,7 @@ class ReaderProgressionTests(unittest.TestCase):
 
     def test_progression_failure_overrides_all_other_individual_passes(self):
         _,_,_,ctx,value=chain();rctx=bp.review_context(artifact(value,ctx));r=verdict(rctx)
-        r['reader_progression_reviews']['s02']={'status':'answer_missing','reason':'次の問いに対する受け持ち章の説明が一致しない'}
+        r['reader_progression_reviews']['s02'].update(status='answer_missing',reason='次の問いに対する受け持ち章の説明が一致しない')
         report={'valid':True,'checks':[{'key':'coverage','status':'pass','reason':'全論点IDは存在'}]}
         bp.apply_review(report,r,rctx)
         self.assertFalse(report['valid']);self.assertEqual(report['blueprint_issues'][0]['section_ids'],['s02'])
@@ -140,7 +140,7 @@ class ReaderProgressionTests(unittest.TestCase):
 
     def test_source_gap_routes_to_source_without_buying_editorial_fix(self):
         _,_,_,ctx,value=chain();rctx=bp.review_context(artifact(value,ctx));r=verdict(rctx)
-        r['reader_progression_reviews']['s02']={'status':'evidence_missing','reason':'期待の根拠に使った具体的効果の資料がない'}
+        r['reader_progression_reviews']['s02'].update(status='evidence_missing',reason='期待の根拠に使った具体的効果の資料がない')
         report={'valid':True,'checks':[{'key':'coverage','status':'pass','reason':'一般確認'}]};bp.apply_review(report,r,rctx)
         self.assertTrue(report['evidence_pending']);self.assertEqual(report['blueprint_issues'][0]['repair_kind'],'source')
 
@@ -182,7 +182,7 @@ class ReaderProgressionTests(unittest.TestCase):
             checks=[{'key':k,'status':'not_applicable' if k in ('prose_quality','redundancy','comparison_conditions','metric_scope') else 'pass',
                 'reason':'合成確認','requires_source_check':False,'affected_blocks':[],'research_ids':[],'source_urls':[]} for k in cq.CHECKS]
             result={**verdict(rctx),'checks':checks}
-            result['reader_progression_reviews']['s02']={'status':'answer_missing','reason':'狙う期待と説明する利用場面が結びついていない'}
+            result['reader_progression_reviews']['s02'].update(status='answer_missing',reason='狙う期待と説明する利用場面が結びついていない')
             with ExitStack() as stack:
                 stack.enter_context(patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':routing}))
                 send=stack.enter_context(patch.object(cq,'create_with_retry',return_value=response(result)))
