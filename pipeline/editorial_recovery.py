@@ -100,8 +100,9 @@ def audit_context(job_id, keyword):
 def input_signature(job_id, keyword):
     from .content_quality import final_review_requirements, snapshot
     job = get_job(job_id)
-    requirements = final_review_requirements(job, keyword)
-    requirements.pop('article_design', None)  # this is the design being repaired
+    # The outline changes before the old body is rewritten. Material/settings
+    # identity must not bind that temporary pair; actual article QA still does.
+    requirements = final_review_requirements(job, keyword, include_article_design=False)
     material = {}
     for key in ('research_plan', 'research_matrix', 'fact_sheet', 'fresh_sources',
                 'content_contract', 'production_brief', 'product_context',

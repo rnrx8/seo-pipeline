@@ -43,6 +43,25 @@ def passed(context):
 
 
 class RecoveryMappingTests(unittest.TestCase):
+    def test_real_input_signature_survives_planned_outline_change_but_final_binding_does_not(self):
+        article,outline,_=materials()
+        records={'article':article,'outline':outline,'fact_sheet':{'content_text':'根拠A'}}
+        job={'id':'job','article_purpose':'information'}
+        with patch.object(recovery,'get_job',return_value=job), \
+             patch.object(recovery,'get_optional_artifact',side_effect=lambda jid,key:records.get(key)), \
+             patch('pipeline.db.get_optional_artifact',side_effect=lambda jid,key:records.get(key)), \
+             patch('pipeline.research_requirements.load_plan',return_value={}):
+            before=recovery.input_signature('job','比較')
+            self.assertIn('article_design',cq.final_review_requirements(job,'比較'))
+            # A real binding becomes stale between outline repair and writing.
+            revised=copy.deepcopy(outline['meta']['editorial_blueprint'])
+            revised['sections'][1]['title']='変更した準備の説明'
+            records['outline']=artifact(revised,outline['meta']['blueprint_context'])
+            self.assertEqual(recovery.input_signature('job','比較'),before)
+            with self.assertRaisesRegex(cq.ContentQualityError,'読者QA'):cq.final_review_requirements(job,'比較')
+            records['fact_sheet']['content_text']='根拠B'
+            self.assertNotEqual(recovery.input_signature('job','比較'),before)
+
     def test_maps_child_and_actual_parent_without_next_heading_in_same_block(self):
         article, outline, report = materials()
         result = recovery.outline_report(article, outline, report)

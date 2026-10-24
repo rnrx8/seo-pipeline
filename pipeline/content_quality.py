@@ -180,9 +180,9 @@ def intent_review_requirements(job: dict, keyword: str) -> dict:
     return requirements
 
 
-def final_review_requirements(job: dict, keyword: str) -> dict:
+def final_review_requirements(job: dict, keyword: str, *, include_article_design: bool = True) -> dict:
     requirements = intent_review_requirements(job, keyword)
-    if job.get('id'):
+    if job.get('id') and include_article_design:
         from .db import get_optional_artifact
         from .article_design import design_context
         outline=get_optional_artifact(job['id'],'outline')
