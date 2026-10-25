@@ -19,7 +19,7 @@ class RecoveryFinalGateTests(unittest.TestCase):
             for key in ('readability_issues', 'validate_structure', 'cta_placement_issues', 'validate_delivery', 'scope_issues'):
                 stack.enter_context(patch.object(final, key, return_value=[]))
             stack.enter_context(patch.object(final, 'get_artifact', side_effect=lambda j, s: copy.deepcopy(records[s])))
-            stack.enter_context(patch.object(final, 'get_optional_artifact', return_value=record))
+            stack.enter_context(patch.object(final, 'get_optional_artifact', side_effect=lambda j,s: record if s=='editorial_recovery' else copy.deepcopy(records.get(s))))
             stack.enter_context(patch.object(final, 'get_job', return_value={}))
             stack.enter_context(patch.object(final, 'final_review_requirements', return_value={}))
             stack.enter_context(patch.object(final, 'snapshot', return_value='current'))

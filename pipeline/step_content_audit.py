@@ -293,6 +293,35 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             return publish_pass(job_id, artifact, text, report, section_map, attempt > 0, saved)
         if report.get('evidence_pending'):
             raise ContentQualityError('原文照合が未完了です。確認側の資料不足を本文の誤りとして修正しません。保存した照合結果を確認してください。')
+        # Small layout/wording findings do not require another research/writer
+        # cycle. Original five-role evidence stays immutable in the receipt.
+        from . import editorial_completion
+        context = dict(text=text, facts=facts, outline=outline, contract=contract,
+                       requirements=requirements, sources=sources)
+        if editorial_completion.base_valid(report, context) and (get_artifact(job_id, 'outline').get('meta') or {}).get('blueprint_version'):
+            def check_editorial(candidate, revised_outline, mapped):
+                violations = validate_delivery(candidate, revised_outline['content_text'], job.get('word_count_setting'), contract=contract, section_map=mapped)
+                violations += readability_issues(candidate) + scope_issues(candidate, facts)
+                violations += validate_structure(candidate, contract, outline=False)
+                violations += validate_structure(revised_outline['content_text'], contract, outline=True)
+                violations += cta_placement_issues(candidate, (artifact.get('meta') or {}).get('cta_placement'), mapped)
+                if citation_registry is not None:
+                    from .article_citations import integrity_issues
+                    violations += integrity_issues(candidate, citation_registry)
+                violations += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
+                if violations:raise ContentQualityError('局所編集後の機械検査が未合格です: '+json.dumps(violations,ensure_ascii=False))
+            finished = editorial_completion.complete(job_id, client, article={**artifact,'content_text':text,'meta':{**(artifact.get('meta') or {}),'section_map':section_map}},
+                outline=get_artifact(job_id,'outline'), report=report, context=context, check_candidate=check_editorial)
+            if finished:
+                candidate,revised,mapped,completed_report = finished
+                current=editorial_completion.candidate_context(context,revised,mapped);current['text']=candidate
+                from .content_quality import _require_audit_strict
+                _require_audit_strict(completed_report,snapshot(**current),stage='article',context=current)
+                from .outline_design import topic_assignments
+                revised['meta']['topic_assignments']=topic_assignments(revised['content_text'])
+                upsert_artifact(job_id=job_id,step='outline',content_type='text/markdown',content_text=revised['content_text'],meta=revised['meta'])
+                saved=upsert_artifact(job_id=job_id,step='content_audit',content_type='application/json',content_text=json.dumps(completed_report,ensure_ascii=False),meta={'valid':True})
+                return publish_pass(job_id,artifact,candidate,completed_report,mapped,True,saved)
         require_article_repair_scope(report)
         if attempt == attempt_limit - 1:
             from .prose_completion import enabled, complete
@@ -369,6 +398,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
     review_meta = {}
     mapping=report.get('phases',{}).get('coverage',{}).get('reader_correspondence')
+    if mapping and report.get('editorial_completion'):
+        # Mapping is a location index, not a new reader-QA verdict. Keep the
+        # old semantic trace intact and derive new addresses from the receipt.
+        from .article_design import correspondence
+        from .editorial_completion import apply_proposal,candidate_context
+        receipt=report['editorial_completion']
+        _,revised,binding=apply_proposal(receipt['base_article'],receipt['base_outline'],receipt['base_report'],receipt['base_context'],receipt['proposal'])
+        context=candidate_context(receipt['base_context'],revised,binding)
+        mapping=correspondence(text,revised['content_text'],context['requirements']['article_design'])
     if mapping:
         from .content_quality import digest
         if mapping.get('text_sha256')!=digest(text):
@@ -381,7 +419,7 @@ def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
         upsert_artifact(job_id=job_id, step='article_reviewed', content_type='text/markdown',
             content_text=text, meta={**review_meta, 'content_audit_snapshot': report['snapshot']})
         upsert_artifact(job_id=job_id, step='review', content_type='text/markdown',
-            content_text=get_step_config('content_audit')[0]+(' 全文確認＋局所文章修正確認：合格。\n' if report.get('local_completion') else ' 最終確認：全項目合格。\n') + '\n'.join(
+            content_text=get_step_config('content_audit')[0]+(' 全文確認＋局所編集の変更影響確認：合格。\n' if report.get('editorial_completion') else ' 全文確認＋局所文章修正確認：合格。\n' if report.get('local_completion') else ' 最終確認：全項目合格。\n') + '\n'.join(
                 f"- {c['key']}: {c['reason']}" for c in report['checks']),
             meta={'model': get_step_config('content_audit')[0], 'valid': True,
                   'content_audit_snapshot': report['snapshot'], 'integrated_final_review': True})

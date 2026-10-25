@@ -186,11 +186,16 @@ def continue_recovery(job_id, keyword, state, api_key=None):
     from .quality_warnings import strict_checks
     retry_patch = (state.get('status') == 'failed' and state.get('error_kind') == 'patch_validation'
                    and state.get('current_step') == 'content_audit')
+    retry_editorial = False
+    if state.get('status') == 'failed' and state.get('current_step') == 'content_audit' and state.get('error_type') == 'UpstreamRepairRequired':
+        from .editorial_completion import base_valid
+        saved_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
+        retry_editorial = base_valid(saved_report, audit_context(job_id, keyword))
     partial = get_optional_artifact(job_id, 'tiered_content_repair_outline_sections_0_incomplete')
     retry_suffix = (state.get('status') == 'failed' and state.get('current_step') == 'article'
                     and partial and partial.get('meta', {}).get('stop_reason') == 'max_tokens'
                     and partial['meta'].get('request_sha256'))
-    if state.get('version') != VERSION or (state.get('status') != 'ready' and not retry_patch and not retry_suffix):
+    if state.get('version') != VERSION or (state.get('status') != 'ready' and not retry_patch and not retry_suffix and not retry_editorial):
         raise EditorialRecoveryError('前回の上流修正が実行中または未解決です。結果を確認するまで再送しません。')
     if state['input_signature'] != input_signature(job_id, keyword) or state['expected_hashes'] != current_hashes(job_id):
         raise EditorialRecoveryError('上流修正の保存後に資料・設定・原稿が変更されています。再送しません。')
@@ -199,8 +204,15 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         raise EditorialRecoveryError('上流修正の実行計画が変更されています。再確認が必要です。')
     completed = state.get('completed_steps')
     if (not isinstance(completed, list) or completed != state['steps'][:len(completed)]
-            or (state.get('current_step') is not None and not retry_patch and not retry_suffix)):
+            or (state.get('current_step') is not None and not retry_patch and not retry_suffix and not retry_editorial)):
         raise EditorialRecoveryError('上流修正の完了記録が不整合です。未確認の工程を省略しません。')
+    if retry_editorial:
+        if len(completed)>=len(steps) or steps[len(completed)][0]!='content_audit':
+            raise EditorialRecoveryError('局所編集へ戻す工程記録が不整合です。')
+        save(job_id, 'editorial_recovery_before_editorial_completion', state)
+        state.update(status='ready',current_step=None)
+        for field in ('error','error_kind','error_type'):state.pop(field,None)
+        save(job_id,'editorial_recovery',state)
     if retry_suffix:
         # The writer binds the exact request to the incomplete receipt before
         # asking only for missing values. Do not erase the failed run or fee.
@@ -247,6 +259,17 @@ def continue_recovery(job_id, keyword, state, api_key=None):
             allowed = {'article': {'article', 'cta_inject', 'review', 'fact_review', 'content_audit'},
                        'outline': {'outline_repair', 'structure_guard', 'research_validation'},
                        'fresh_sources_review': {'fact_review'}, 'fact_review_evidence': {'fact_review'}}
+            if key=='content_audit' and hashes['outline']!=state['expected_hashes']['outline']:
+                # Only a validated bounded layout transaction may update an
+                # outline during article QA. Never grant a general write scope.
+                from .content_quality import _require_audit_strict, snapshot
+                context=audit_context(job_id,keyword)
+                report=json.loads(get_artifact(job_id,'content_audit')['content_text'])
+                receipt=report.get('editorial_completion') or {}
+                if digest(receipt.get('base_context',{}).get('outline',''))!=state['expected_hashes']['outline']:
+                    raise EditorialRecoveryError('局所編集の元構成が実行記録と一致しません。')
+                _require_audit_strict(report,snapshot(**context),stage='article',context=context)
+                allowed['outline'].add('content_audit')
             if (state['input_signature'] != input_signature(job_id, keyword)
                     or any(hashes[k] != previous and key not in allowed[k]
                            for k, previous in state['expected_hashes'].items())):

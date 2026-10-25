@@ -11,6 +11,29 @@ WARNING_ACCOUNT = 'nishi.aworks@gmail.com'
 SOFT_STAGES = {'research_completeness', 'structure_guard', 'research_validation',
                'review', 'fact_review', 'content_audit'}
 
+
+def resolve_after_final(job_id):
+    """Keep history, but do not present resolved earlier attempts as current faults.
+
+    Called only after native final validation and save/seal. Re-read its strict
+    result so this helper cannot clear warnings from a failed/incomplete run.
+    """
+    from .db import get_optional_artifact, get_artifact, upsert_artifact
+    from .content_quality import ContentQualityError
+    final = json.loads(get_artifact(job_id, 'structure_validation_final')['content_text'])
+    if final.get('valid') is not True or final.get('violations'):
+        raise ContentQualityError('最終確認が未合格の警告は解消扱いにできません。')
+    previous = get_optional_artifact(job_id, 'quality_warnings')
+    if not previous:return
+    value=json.loads(previous['content_text'])
+    warnings=value.get('warnings',[])
+    if not warnings:return
+    value.setdefault('resolved_warnings',[]).extend(
+        [{**w,'resolved_at':datetime.now(timezone.utc).isoformat(),'resolution':'native_final_validation_passed'} for w in warnings])
+    value['warnings']=[]
+    upsert_artifact(job_id=job_id,step='quality_warnings',content_type='application/json',
+                    content_text=json.dumps(value,ensure_ascii=False))
+
 def enabled():
     return _CONTEXT.get() is not None
 
