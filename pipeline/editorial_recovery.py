@@ -186,7 +186,11 @@ def continue_recovery(job_id, keyword, state, api_key=None):
     from .quality_warnings import strict_checks
     retry_patch = (state.get('status') == 'failed' and state.get('error_kind') == 'patch_validation'
                    and state.get('current_step') == 'content_audit')
-    if state.get('version') != VERSION or (state.get('status') != 'ready' and not retry_patch):
+    partial = get_optional_artifact(job_id, 'tiered_content_repair_outline_sections_0_incomplete')
+    retry_suffix = (state.get('status') == 'failed' and state.get('current_step') == 'article'
+                    and partial and partial.get('meta', {}).get('stop_reason') == 'max_tokens'
+                    and partial['meta'].get('request_sha256'))
+    if state.get('version') != VERSION or (state.get('status') != 'ready' and not retry_patch and not retry_suffix):
         raise EditorialRecoveryError('前回の上流修正が実行中または未解決です。結果を確認するまで再送しません。')
     if state['input_signature'] != input_signature(job_id, keyword) or state['expected_hashes'] != current_hashes(job_id):
         raise EditorialRecoveryError('上流修正の保存後に資料・設定・原稿が変更されています。再送しません。')
@@ -195,8 +199,15 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         raise EditorialRecoveryError('上流修正の実行計画が変更されています。再確認が必要です。')
     completed = state.get('completed_steps')
     if (not isinstance(completed, list) or completed != state['steps'][:len(completed)]
-            or (state.get('current_step') is not None and not retry_patch)):
+            or (state.get('current_step') is not None and not retry_patch and not retry_suffix)):
         raise EditorialRecoveryError('上流修正の完了記録が不整合です。未確認の工程を省略しません。')
+    if retry_suffix:
+        # The writer binds the exact request to the incomplete receipt before
+        # asking only for missing values. Do not erase the failed run or fee.
+        save(job_id, 'editorial_recovery_before_suffix_completion', state)
+        state.update(status='ready', current_step=None)
+        for field in ('error', 'error_kind', 'error_type'): state.pop(field, None)
+        save(job_id, 'editorial_recovery', state)
     if retry_patch:
         from .ai import tiered_review_enabled
         from .content_quality import snapshot

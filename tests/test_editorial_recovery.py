@@ -334,6 +334,27 @@ class RecoveryExecutionTests(unittest.TestCase):
             with self.assertRaisesRegex(recovery.EditorialRecoveryError, '保存完了'):recovery.run('job', 'keyword')
             self.assertEqual(events, []); audit.assert_not_called()
 
+    def test_interrupted_section_response_resumes_only_its_saved_tail(self):
+        for stale in (False, True):
+            with ExitStack() as stack:
+                records, report, events, steps, audit, _, _ = self.harness(stack)
+                state = recovery.begin('job', 'keyword', report)
+                keys = [k for k, _ in steps]
+                state.update(status='failed', current_step='article', error='incomplete')
+                state['completed_steps'] = keys[:keys.index('article')]
+                records['tiered_content_repair_outline_sections_0_incomplete'] = {
+                    'content_text':'partial', 'meta':{'stop_reason':'max_tokens','request_sha256':'bound-request'}}
+                recovery.save('job','editorial_recovery',state)
+                if stale:
+                    records['article']['content_text'] += '\nchanged'
+                    with self.assertRaises(recovery.EditorialRecoveryError): recovery.run('job','keyword')
+                    self.assertEqual(events, [])
+                else:
+                    recovery.run('job','keyword')
+                    self.assertEqual(events, ['article','cta_inject','content_audit'])
+                    self.assertIn('editorial_recovery_before_suffix_completion',records)
+                audit.assert_not_called()
+
     def test_shared_api_cli_plan_installs_recovery_and_keeps_final_gate(self):
         from pipeline.step_plan import build_step_plan
         steps = build_step_plan({'delivery_type': 'full'})

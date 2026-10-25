@@ -139,6 +139,19 @@ def checked_request(job_id,step,request,*,client=None):
    print('[tiered] Reuse '+step,flush=True)
    return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
+ props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
+ section_map=props.get('sections',{})
+ if (not step.endswith('_suffix') and section_map.get('type')=='object'
+     and section_map.get('properties') and all(v.get('type')=='string' for v in section_map['properties'].values())):
+  interrupted=get_optional_artifact(job_id,step+'_incomplete')
+  if interrupted:
+   from .structured_completion import recover
+   value,usage,provenance=recover(job_id,step,request,interrupted,client)
+   text=json.dumps(value,ensure_ascii=False)
+   upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=text,
+       meta={'request_sha256':fingerprint,'result_sha256':digest(text),'model':request['model'],
+             'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens,'suffix_completion':provenance})
+   return value,usage
  from .quality_budget import request_scope
  with request_scope(job_id,step,fingerprint,request):
   msg=create_with_retry(client,**request)
