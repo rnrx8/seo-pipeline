@@ -162,6 +162,40 @@ def assemble(packet, replacements, outline):
     return candidate, binding
 
 
+def scoped_retry(request, packet, candidate, binding, outline, issues):
+    """A mechanical defect narrows the next request; valid sections stay fixed."""
+    from .content_edits import content_blocks
+    _, rows = sections({'content_text':candidate, 'meta':{'section_map':binding}}, outline)
+    owners = {}; cursor = 0
+    for block in content_blocks(candidate):
+        start = candidate.index(block['text'], cursor)
+        cursor = start + len(block['text'])
+        start += len(block['text']) - len(block['text'].lstrip())
+        owners[block['id']] = next((sid for sid, r in rows.items() if r['start'] <= start < r['end']), None)
+    targets = set()
+    for issue in issues:
+        located = {owners.get(row['id']) for row in issue.get('affected_blocks', [])}
+        located.discard(None)
+        if not located:
+            located = {sid for sid, row in rows.items() if row['title'] == issue.get('heading')}
+        if not located or not located <= set(packet['target_section_ids']):
+            fail('検査指摘を変更可能な節へ特定できません。全対象の再送はしません。')
+        targets.update(located)
+    ids = [s['id'] for s in packet['sections'] if s['id'] in targets]
+    source = json.loads(request['messages'][0]['content'])
+    payload = {'source_sections':[{'id':sid,'text':rows[sid]['text']} for sid in ids],
+        'target_section_ids':ids, 'target_sections':[s for s in packet['sections'] if s['id'] in targets],
+        'structural_issues':issues, 'content_contract':source['content_contract']}
+    if any(issue['key'] != 'continuous_prose' for issue in issues):
+        payload['confirmed_facts'] = source['confirmed_facts']
+    return {**request, 'max_tokens':min(request['max_tokens'],6000), 'output_budget_includes_thinking':False,
+        'system':request['system']+'\n今回は機械検査に残った対象節だけを修正する。既存原稿の事実・数値・対象条件と必要な感情理解は保持し、新情報を追加しない。target_section_ids以外は返さない。',
+        'messages':[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+        'output_config':{'format':{'type':'json_schema','schema':{'type':'object','properties':{
+            'sections':{'type':'object','properties':{sid:{'type':'string'} for sid in ids},
+                        'required':ids,'additionalProperties':False}},'required':['sections'],'additionalProperties':False}}}}
+
+
 def run(job_id, keyword, api_key=None):
     from . import step_article
     before = get_artifact(job_id, 'outline_before_editorial_recovery')
@@ -232,13 +266,19 @@ JSONのみを返す。''',
             client.with_options(max_retries=0).messages.count_tokens(model=model,
                 messages=[{'role': 'user', 'content': sample}], timeout=30).input_tokens)
         request['output_budget_includes_thinking'] = True
+    replacements = {}
     for attempt in range(2):
         if packet['target_section_ids']:
             value, _ = checked_request(job_id, f'tiered_content_repair_outline_sections_{attempt}', request, client=client)
         else:
             value = {'sections': {}}  # Removing only a redundant section needs no model call.
+        expected = set(request['output_config']['format']['schema']['properties']['sections']['properties'])
+        if not isinstance(value.get('sections'),dict) or set(value['sections']) != expected:
+            fail('修正応答の節IDが要求範囲と一致しません。原稿は変更しません。')
+        replacements.update(value['sections'])
+        candidate, binding = assemble(packet, replacements, outline['content_text'])
+        issues = []
         try:
-            candidate, binding = assemble(packet, value['sections'], outline['content_text'])
             issues = validate_delivery(candidate, outline['content_text'], job.get('word_count_setting'), contract, binding)
             issues += readability_issues(candidate) + validate_structure(candidate, contract, outline=False)
             if cta_block and cta_block in candidate:
@@ -247,11 +287,9 @@ JSONのみを返す。''',
                 fail(json.dumps(issues, ensure_ascii=False))
             break
         except (ContentQualityError, KeyError) as exc:
-            if attempt:
+            if attempt or not issues:
                 raise
-            request = {**request, 'messages': request['messages'] + [
-                {'role': 'assistant', 'content': json.dumps(value, ensure_ascii=False)},
-                {'role': 'user', 'content': '未適用です。同じ元原稿へ全対象を再提出してください。' + str(exc)}]}
+            request = scoped_retry(request, packet, candidate, binding, outline, issues)
     candidate, lead_repair = finish_failed_lead(client, candidate, outline, keyword, job, report)
     preserved = {sid: digest(row['text'].rstrip('\n')) for sid, row in packet['source_sections'].items()
                  if sid not in packet['target_section_ids'] and sid not in packet['removed_section_ids']}

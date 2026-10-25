@@ -139,7 +139,38 @@ class SectionReconciliationTests(unittest.TestCase):
             check=stack.enter_context(patch('pipeline.tiered_research.checked_request',return_value=({'sections':{'s05':'無断の修正'}},None)))
             save=stack.enter_context(patch.object(repair,'upsert_artifact'))
             with self.assertRaises(ContentQualityError): repair.run('j','kw')
-            self.assertEqual(check.call_count,2); save.assert_not_called()
+            self.assertEqual(check.call_count,1); save.assert_not_called()
+
+    def test_mechanical_retry_sends_only_failed_section_and_preserves_other_result(self):
+        source,before,after,report=fixture()
+        records={'article':source,'article_before_editorial_recovery':source,
+                 'outline_before_editorial_recovery':before,'outline':after,
+                 'content_audit_before_editorial_recovery':{'content_text':json.dumps(report)},
+                 'content_contract':{'content_text':'{}'}}
+        packet=repair.plan(source,before,after,report)
+        result={sid:packet['source_sections'][sid]['body'] for sid in packet['target_section_ids']}
+        result['s01']='確認すること。'*60
+        calls=[]
+        def send(job,step,request,client=None):
+            payload=json.loads(request['messages'][0]['content']);calls.append(payload)
+            if len(calls)==1:return {'sections':result},None
+            self.assertEqual(payload['target_section_ids'],['s01'])
+            self.assertEqual([s['id'] for s in payload['source_sections']],['s01'])
+            self.assertNotIn('confirmed_facts',payload)
+            self.assertEqual(list(request['output_config']['format']['schema']['properties']['sections']['properties']),['s01'])
+            return {'sections':{'s01':'必要な条件を確認します。'}},None
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(repair,'get_artifact',side_effect=lambda j,k:copy.deepcopy(records[k])))
+            stack.enter_context(patch.object(repair,'get_job',return_value={}))
+            stack.enter_context(patch('pipeline.generation_context.generation_evidence',return_value='確認済み条件'))
+            stack.enter_context(patch('pipeline.ai.get_step_config',return_value=('gpt-6.1-sol',1000)))
+            stack.enter_context(patch('pipeline.ai.hybrid_writing_enabled',return_value=False))
+            stack.enter_context(patch('pipeline.tiered_research.checked_request',side_effect=send))
+            stack.enter_context(patch.object(repair,'upsert_artifact',side_effect=lambda **kw:kw))
+            saved=repair.run('j','kw')
+        _,actual=repair.sections({'content_text':saved['content_text'],'meta':saved['meta']},after)
+        self.assertEqual(actual['s02']['body'],result['s02'])
+        self.assertEqual(len(calls),2)
 
     def test_native_run_preserves_remote_conditions_and_defers_exact_cta_to_configured_step(self):
         from pipeline.step_cta_inject import _format_cta_block
