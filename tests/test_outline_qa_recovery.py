@@ -49,7 +49,7 @@ class OutlineQARecoveryTests(unittest.TestCase):
         keys=['research_completeness','outline','research_validation','article','content_audit']
         saved={'search_intent':{'meta':{'reader_needs_version':'v1'}},'research_matrix':{'content_text':'{"valid":true}'},'outline':{'meta':{'blueprint_version':'v1'}},'research_validation':{'content_text':'{"valid":true}'}}
         load=lambda j,k:copy.deepcopy(saved.get(k))
-        with patch('pipeline.research_requirements._require_matrix_strict',return_value={}),patch('pipeline.db.get_job',return_value={'main_keyword':'kw'}):
+        with patch('pipeline.research_requirements.matrix_ready_for_draft',return_value=True),patch('pipeline.db.get_job',return_value={'main_keyword':'kw'}):
             self.assertEqual(research_resume_stage('j','article',keys,load),'research_validation')
             report={'version':VERSION,'ready_for_draft':True,'publication_approved':False,'input_sha256':'current'}
             saved['draft_readiness']={'content_text':json.dumps(report)}

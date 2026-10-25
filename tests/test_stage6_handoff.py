@@ -222,11 +222,11 @@ class BlueprintProvenanceTests(unittest.TestCase):
         _,_,_,ctx,value=fixture();value['sections'][0]['research_ids']=['unknown']
         with self.assertRaises(req.ContentQualityError):bp.validate(bp.canonicalize_research_refs(value,ctx),ctx)
 
-    def test_new_outline_stops_before_paid_generation_if_research_is_invalid(self):
+    def test_strict_diagnostic_rejects_invalid_research_before_paid_generation(self):
         artifacts={'serp':{'content_text':'{}'},'search_intent':{'content_text':'intent','meta':{'reader_needs_version':'new'}}}
         with patch.object(step_outline,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
              patch('pipeline.generation_context.authoring_intent',return_value='intent'), \
-             patch.object(req,'require_matrix',return_value={}),patch.object(req,'_require_matrix_strict',side_effect=req.ContentQualityError('invalid')), \
+             patch.object(req,'_require_matrix_strict',side_effect=req.ContentQualityError('invalid')), \
              patch.object(step_outline,'create_with_retry') as send:
             with self.assertRaises(req.ContentQualityError):step_outline.run('j','kw')
         send.assert_not_called()

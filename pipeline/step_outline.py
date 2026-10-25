@@ -368,9 +368,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     intent = {**intent, 'content_text': authoring_intent(job_id, intent)}
     from .research_requirements import require_matrix, load_plan
     matrix = require_matrix(job_id)
-    if structured_intent:
-        from .research_requirements import _require_matrix_strict
-        _require_matrix_strict(job_id)
     fact = dict(get_artifact(job_id, "fact_sheet"))
     from .generation_context import generation_evidence
     from .quality_context import compact_enabled

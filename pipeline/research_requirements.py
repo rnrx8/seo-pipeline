@@ -919,13 +919,42 @@ def verify(job_id, keyword, api_key=None):
     raise ContentQualityError('必須質問の調査が未完了です。執筆を開始しません。research_matrixを確認してください。')
 
 
+def matrix_inputs_current(job_id, matrix, plan_value=None):
+    """Material identity is independent of a review's acceptance verdict."""
+    plan_value=load_plan(job_id) if plan_value is None else plan_value
+    if (matrix.get('policy_sha256')!=matrix_policy()
+            or matrix.get('plan_sha256')!=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
+            or matrix.get('sources_sha256')!=digest(source_evidence(get_artifact(job_id,'fresh_sources')))
+            or matrix.get('facts_sha256')!=digest(get_artifact(job_id,'fact_sheet')['content_text'])):
+        return False
+    return (not plan_value.get('policy_sha256')
+            or matrix.get('attempts_sha256')==digest(get_artifact(job_id,'fresh_sources')['content_text']))
+
+
+def matrix_ready_for_draft(job_id, matrix):
+    """A completed current review can supply partial evidence without passing QA.
+
+    Used by resume with the same material identity as the authoring boundary. Pending/missing material
+    still needs collection; an editorial rejection must never schedule the
+    already completed research/review again. Unverified answers remain excluded
+    by generation_context.bundle_data, not promoted by this readiness result.
+    """
+    items=matrix.get('items')
+    if (matrix.get('status')=='running' or not isinstance(items,list)
+            or (matrix.get('valid') is not True and type(matrix.get('attempt')) is not int)):
+        return False
+    plan_value=load_plan(job_id)
+    return (len(items)==len(plan_value['items'])
+            and all(isinstance(i,dict) and isinstance(i.get('id'),str) for i in items)
+            and {i['id'] for i in items}=={q['id'] for q in plan_value['items']}
+            and matrix_inputs_current(job_id,matrix,plan_value))
+
+
 def _require_matrix_strict(job_id):
     plan_value=load_plan(job_id)
     matrix=json.loads(get_artifact(job_id,'research_matrix')['content_text'])
-    sources=source_evidence(get_artifact(job_id,'fresh_sources'))
-    if matrix.get('valid') is not True or matrix.get('policy_sha256')!=matrix_policy() or matrix.get('plan_sha256')!=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)) or matrix.get('sources_sha256')!=digest(sources) or matrix.get('facts_sha256')!=digest(get_artifact(job_id,'fact_sheet')['content_text']):
+    if matrix.get('valid') is not True or not matrix_inputs_current(job_id,matrix,plan_value):
         raise ContentQualityError('調査確認が未合格、または調査資料が変更されています。')
-    if plan_value.get('policy_sha256') and matrix.get('attempts_sha256') != digest(get_artifact(job_id,'fresh_sources')['content_text']): raise ContentQualityError('調査の探索記録が変更されています。')
     if validate_matrix(matrix,plan_value,json.loads(get_artifact(job_id,'fresh_sources')['content_text'])): raise ContentQualityError('調査の必須回答が不足しています。')
     if plan_value.get('reader_decisions'):
         from .reader_decisions import research_result
@@ -946,9 +975,7 @@ def require_matrix(job_id):
         warn(str(exc))
         # Never fabricate a passed matrix or change the original audit.
         matrix = json.loads(get_artifact(job_id, 'research_matrix')['content_text'])
-        if (matrix.get('plan_sha256') != digest(json.dumps(load_plan(job_id),ensure_ascii=False,sort_keys=True))
-                or matrix.get('sources_sha256') != digest(source_evidence(get_artifact(job_id,'fresh_sources')))
-                or matrix.get('facts_sha256') != digest(get_artifact(job_id,'fact_sheet')['content_text'])):
+        if not matrix_inputs_current(job_id,matrix):
             # Stale verdicts are diagnostics, never current publishable evidence.
             matrix = {**matrix, 'items': [{**item, 'verified': False} for item in matrix.get('items', [])]}
         return matrix
