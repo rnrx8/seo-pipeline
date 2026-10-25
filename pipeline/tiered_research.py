@@ -105,7 +105,7 @@ def checked_request(job_id,step,request,*,client=None):
  if old is not None:
   print('[tiered] Reuse '+step,flush=True)
   return old,SimpleNamespace(input_tokens=0,output_tokens=0)
- if step.startswith('tiered_focused_'):
+ if step.startswith(('tiered_focused_', 'research_answer_repair_candidate')):
   stable=stable_review_request(request)
   if stable is not request:
    request=stable;old=cached_result(job_id,step,request)
