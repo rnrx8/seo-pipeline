@@ -55,6 +55,40 @@ class ResearchFindingResolutionTests(unittest.TestCase):
         self.assertTrue(req.resolve_current_findings('j','kw',self.plan,self.matrix))
         self.fetch.assert_not_called()
 
+    def test_interrupted_handoff_verification_resumes_without_recollecting_or_fourth_audit(self):
+        self.matrix['coverage_issues']=self.matrix['coverage_issues'][:1]
+        self.assertTrue(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+        saves=len(self.saves)
+        self.assertTrue(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+        self.assertEqual(len(self.saves),saves)
+        self.fetch.assert_not_called()
+        self.records['research_matrix_3']={'content_text':'{"valid":false,"attempt":3}'}
+        self.assertFalse(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+        self.matrix['coverage_issues'][0]['reason']='different unresolved finding'
+        self.records.pop('research_matrix_3')
+        self.assertFalse(req.resolve_current_findings('j','kw',self.plan,self.matrix))
+
+    def test_credit_interrupted_handoff_runs_only_missing_third_verification(self):
+        plan,pages,value=research_fixture()
+        failed={**self.matrix,'policy_sha256':req.matrix_policy(),
+                'plan_sha256':req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
+                'coverage_issues':[{'id':'q1','repair_kind':'handoff','reason':'link existing evidence'}]}
+        self.records['research_matrix']={'content_text':json.dumps(failed)}
+        self.records['research_finding_resolution']={'content_text':json.dumps({
+            'status':'completed','plan_sha256':failed['plan_sha256'],'source_question_ids_attempted':[],
+            'findings':failed['coverage_issues']})}
+        artifacts={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
+        with patch.object(req,'load_plan',return_value=plan), \
+             patch('pipeline.research_collection.recover_empty_collections',return_value=False), \
+             patch.object(req,'refresh_dynamic_sources'), \
+             patch.object(req,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
+             patch.object(req,'get_step_config',return_value=('gpt-6.1-sol',100)), \
+             patch('pipeline.research_verification.audit_matrix',return_value=(value,SimpleNamespace(input_tokens=1,output_tokens=1))) as audit:
+            saved=req.verify('j','kw')
+        audit.assert_called_once();self.fetch.assert_not_called()
+        self.assertTrue(saved['meta']['valid'])
+        self.assertEqual(json.loads(saved['content_text'])['attempt'],3)
+
     def test_stale_plan_or_unfinished_resolution_is_not_retried(self):
         stale={**self.matrix,'plan_sha256':'old'}
         self.assertFalse(req.resolve_current_findings('j','kw',self.plan,stale))

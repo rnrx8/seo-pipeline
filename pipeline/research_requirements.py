@@ -761,7 +761,15 @@ def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
         attempted=set(prior.get('source_question_ids_attempted',prior.get('source_question_ids',[])))
         # New concrete source findings can arise during full verification. Fetch
         # each planned question at most once, never replay an unresolved query.
-        if not requested-attempted:return False
+        if not requested-attempted:
+            # A handoff-only resolution can finish before its third audit is
+            # interrupted. Resume the unfinished verification, not retrieval
+            # or a fourth attempt; saved model replies remain reusable.
+            if (not requested and matrix.get('attempt') == 2 and prior.get('status') == 'completed'
+                    and prior.get('findings') == relevant
+                    and not get_optional_artifact(job_id, 'research_matrix_3')):
+                return True
+            return False
         history=prior.get('history',[])+[{k:prior.get(k) for k in ('status','source_question_ids','findings')}]
     ids=sorted(requested-attempted)
     state={'status':'running','plan_sha256':plan_hash,'source_question_ids':ids,
