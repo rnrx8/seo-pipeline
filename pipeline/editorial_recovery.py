@@ -192,7 +192,18 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         and (cached_editorial.get('meta') or {}).get('request_sha256')
         and (cached_editorial.get('meta') or {}).get('result_sha256')==digest(cached_editorial['content_text'])
         and not get_optional_artifact(job_id,'editorial_completion_candidate'))
-    if state.get('status') == 'failed' and state.get('current_step') == 'content_audit' and (state.get('error_type') == 'UpstreamRepairRequired' or cached_format_failure):
+    cached_semantic_failure=False
+    if state.get('error_type')=='ContentQualityError' and state.get('current_step')=='content_audit':
+        candidate=get_optional_artifact(job_id,'editorial_completion_candidate')
+        reviewed=get_optional_artifact(job_id,'tiered_editorial_finish_review')
+        if candidate and reviewed and (reviewed.get('meta') or {}).get('request_sha256') and (reviewed.get('meta') or {}).get('result_sha256')==digest(reviewed['content_text']):
+            try:
+                receipt=json.loads(candidate['content_text']);saved_report=json.loads(get_artifact(job_id,'content_audit')['content_text'])
+                cached_semantic_failure=(receipt['base_report']['snapshot']==saved_report.get('snapshot')
+                    and digest(receipt['base_context']['text'])==state['expected_hashes']['article']
+                    and digest(receipt['base_context']['outline'])==state['expected_hashes']['outline'])
+            except (KeyError,ValueError,TypeError):pass
+    if state.get('status') == 'failed' and state.get('current_step') == 'content_audit' and (state.get('error_type') == 'UpstreamRepairRequired' or cached_format_failure or cached_semantic_failure):
         from .editorial_completion import base_valid
         saved_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         retry_editorial = base_valid(saved_report, audit_context(job_id, keyword))
