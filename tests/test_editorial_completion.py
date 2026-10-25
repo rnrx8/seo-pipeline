@@ -141,7 +141,7 @@ class CompletionBudgetTests(unittest.TestCase):
     def test_production_cannot_repeat_editorial_finish_with_different_input(self):
         from pipeline import quality_budget as q
         import os
-        for role in ('editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical'):
+        for role in ('editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical','editorial_finish_titles','editorial_finish_recheck'):
             meta={'phase':'article','role':role,'call_limit':1,'request_sha256':'new'}
             value={'calls':[{'status':'accounted','cost_usd':.1,'reserved_usd':.1,
                 'review_operation':{**meta,'request_sha256':'previous'}}]}
@@ -165,3 +165,22 @@ class MechanicalAddressTests(unittest.TestCase):
         adjusted=finish.apply_mechanical(p,{'edits':[{'id':b,'new':'説明。'}]},{'content_text':text},[b])
         self.assertEqual(adjusted['article_edits'],[p['article_edits'][0]])
         with self.assertRaises(cq.ContentQualityError):finish.apply_mechanical(p,{'edits':[{'id':neighbor,'new':'別の内容'}]},{'content_text':text},[b])
+
+class HeadingMeaningTests(unittest.TestCase):
+    def test_correction_only_changes_the_quoted_new_heading(self):
+        proposal={'outline_patch':{'edits':[{'id':'new-a','section':{'id':'new-a','title':'兼用では解決しない'}}]},
+                  'article_edits':[{'id':'block-0010','new':'#### 兼用では解決しない\n\n自動で解決するわけではありません。'}]}
+        fixed=finish.apply_titles(proposal,{'titles':{'new-a':'兼用でも確認は必要'}},['new-a'])
+        self.assertEqual(fixed['article_edits'][0]['new'],'#### 兼用でも確認は必要\n\n自動で解決するわけではありません。')
+        self.assertEqual(proposal['outline_patch']['edits'][0]['section']['title'],'兼用では解決しない')
+        for titles in ({'other':'別の話'},{'new-a':'兼用では解決しない'},{'new-a':'100円です'},{'new-a':'別の話\n本文'}):
+            with self.assertRaises(cq.ContentQualityError):finish.apply_titles(proposal,{'titles':titles},['new-a'])
+    def test_only_a_quoted_new_heading_can_enter_the_terminal_title_fix(self):
+        _,_,_,ctx,value=fixture();outline=artifact(value,ctx)
+        proposal={'outline_patch':{'edits':[{'id':value['sections'][0]['id'],'section':{'level':2,'title':'兼用では解決しない'}},
+            {'id':'new-a','section':{'level':4,'title':'兼用では解決しない'}}]}}
+        verdict={'checks':{'evidence_preserved':{'status':'fail','reason':'新見出し「兼用では解決しない」は断定が強い。'},
+                           'organization':{'status':'fail','reason':'AIの指定した手段と異なる。'}}}
+        self.assertEqual(finish.title_targets(proposal,verdict,outline),['new-a'])
+        verdict['checks']['evidence_preserved']['reason']='具体的な箇所は不明'
+        self.assertEqual(finish.title_targets(proposal,verdict,outline),[])

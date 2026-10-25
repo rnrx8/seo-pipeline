@@ -56,7 +56,7 @@ def total_remaining(value):
 
 
 def review_operation(step):
- if step in ('tiered_editorial_finish_repair','tiered_editorial_finish_review','tiered_editorial_finish_mechanical'):return 'article',step.removeprefix('tiered_'),1
+ if step in ('tiered_editorial_finish_repair','tiered_editorial_finish_review','tiered_editorial_finish_mechanical','tiered_editorial_finish_titles','tiered_editorial_finish_recheck'):return 'article',step.removeprefix('tiered_'),1
  if step=='outline_journey_reference_recheck':return 'outline','journey_reference_recheck',1
  if step=='outline_suffix_completion':return 'outline','suffix_completion',1
  if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
@@ -158,11 +158,11 @@ def guard_review(value,amount):
    raise ContentQualityError('追加確認の承認設定が不正です。')
   if meta['phase']==phase and (phase=='article' or meta['role']=='audit') and (not extension.get('role') or extension['role']==meta['role']):
    extra=extension['extra_calls_per_role']
- if meta['role'] in ('prose_finish_repair','prose_finish_review','editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical'):
+ if meta['role'] in ('prose_finish_repair','prose_finish_review','editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical','editorial_finish_titles','editorial_finish_recheck'):
   extra=0 # A terminal local finish cannot be extended into another loop.
   # Its own one-shot role limit and shared spend cap still apply. Prior full
   # repair/encoding attempts do not change a prose-only finding's eligibility.
- if meta['role'] in ('editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical') and len(same)>=1:
+ if meta['role'] in ('editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical','editorial_finish_titles','editorial_finish_recheck') and len(same)>=1:
   raise ContentQualityError('局所編集は保存応答を再利用する1回限りの処理です。追加の再送はしません。')
  if spending_limits_enabled() and len(same)>=meta['call_limit']+extra:
   raise ContentQualityError('再開を含む確認・修正の通算回数上限です。原因と範囲の確認が必要です。')
