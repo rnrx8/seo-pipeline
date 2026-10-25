@@ -56,6 +56,16 @@ def research_resume_stage(job_id, stage, keys, load):
         research_requirements._require_matrix_strict(job_id)
     except ContentQualityError:
         return prerequisite
+    outline_gate='research_validation'
+    if outline_gate in keys and keys.index(stage)>keys.index(outline_gate):
+        outline=load(job_id,'outline')
+        if (outline or {}).get('meta',{}).get('blueprint_version'):
+            readiness=load(job_id,'research_validation')
+            report=json.loads(readiness['content_text']) if readiness else {}
+            if report.get('valid') is not True:return outline_gate
+            from .editorial_blueprint import require_review
+            try:require_review(report,outline)
+            except ContentQualityError:return outline_gate
     return stage
 
 

@@ -325,7 +325,7 @@ def review_config(config, ctx):
     return result
 
 
-def checked_review(value, ctx):
+def checked_review(value, ctx, *, text=None):
     rows=value.get('blueprint_reviews');decisions=ctx['reader_decisions'];section_ids=set(ctx['section_ids']);issues=[]
     if not isinstance(rows,dict) or set(rows)!={d['id'] for d in decisions}:fail('編集設計の個別確認が不足しています。')
     for d in decisions:
@@ -340,7 +340,7 @@ def checked_review(value, ctx):
             if r['status'] not in ('pass','omitted') and (d['role']!='supporting' or index=='order'):
                 issues.append({'decision_id':d['id'],'requirement_index':index,'section_ids':refs,
                     'reason':r['reason'],'repair_kind':'source' if r['status']=='evidence_missing' else 'editorial'})
-    issues.extend(checked_progression_reviews(value,ctx))
+    issues.extend(checked_progression_reviews(value,ctx,text=text))
     if 'lead_direction' in ctx:
         from .lead_review import checked
         for key,row in checked(value,ctx['lead_block_ids']).items():
@@ -350,8 +350,8 @@ def checked_review(value, ctx):
     return issues
 
 
-def apply_review(report, value, ctx):
-    issues=checked_review(value,ctx)
+def apply_review(report, value, ctx, *, text=None):
+    issues=checked_review(value,ctx,text=text)
     report['blueprint_reviews']=copy.deepcopy(value['blueprint_reviews']);report['reader_progression_reviews']=copy.deepcopy(value['reader_progression_reviews']);report['blueprint_issues']=issues
     if 'lead_direction' in ctx:report['lead_review']=copy.deepcopy(value['lead_review'])
     if issues:
@@ -366,11 +366,15 @@ def apply_review(report, value, ctx):
     return report
 
 
-def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=()):
+def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=(), allow_titles=False):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
     expected=({'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
-              |({'omission_edits'} if omission_targets else set()))
+              |({'omission_edits'} if omission_targets else set())|({'titles'} if allow_titles else set()))
     if set(response)!=expected:fail('編集設計の局所修正形式が不正です。')
+    if allow_titles:
+        validate_shape(response['titles'],SCHEMA['properties']['titles'])
+        if response['titles']==value['titles']:fail('指摘されたタイトルが未修正です。')
+        candidate['titles']=copy.deepcopy(response['titles'])
     if allow_lead:
         lead=response['lead_direction']
         candidate['reader_focus']=checked_focus(response['reader_focus'],ctx['reader_design'])
@@ -410,17 +414,18 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, 
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_schema(*, allow_lead=False, allow_omissions=False):
+def repair_schema(*, allow_lead=False, allow_omissions=False, allow_titles=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
     if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
+    if allow_titles:fields['titles']=copy.deepcopy(SCHEMA['properties']['titles'])
     if allow_omissions:fields['omission_edits']={'type':'array','items':obj({'research_id':STRING,'reason':STRING})}
     return obj(fields)
 
 
-def repair_config(*, allow_lead=False, allow_omissions=False):
-    return model_output_config(repair_schema(allow_lead=allow_lead,allow_omissions=allow_omissions))
+def repair_config(*, allow_lead=False, allow_omissions=False, allow_titles=False):
+    return model_output_config(repair_schema(allow_lead=allow_lead,allow_omissions=allow_omissions,allow_titles=allow_titles))
 
 
 def review_context(artifact):
@@ -440,7 +445,7 @@ def review_context(artifact):
 def require_review(report, artifact):
     ctx=review_context(artifact)
     if ctx is None:return
-    if report.get('blueprint_review_context')!=ctx or checked_review(report,ctx):
+    if report.get('blueprint_review_context')!=ctx or checked_review(report,ctx,text=artifact['content_text']):
         fail('現在の編集設計に対する個別の回答・順序確認が未合格です。')
 
 
@@ -500,7 +505,7 @@ def repair_targets(artifact, report):
     # not an unrelated prose block; unrelated sections remain read-only by policy.
     unlocalized = any(c['status']=='fail' and c['key']!='coverage' and not c.get('affected_blocks')
                       for c in report['checks'])
-    if unlocalized or (not targets and not lead_repair_allowed(artifact,report)):
+    if unlocalized or (not targets and not lead_repair_allowed(artifact,report) and not title_repair_allowed(artifact,report)):
         targets.update(s['id'] for s in value['sections'])
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     if structural:
@@ -529,24 +534,25 @@ def repair(job_id, keyword, report, artifact, client):
     job=get_job(job_id)
     targets=repair_targets(artifact,report)
     allow_lead=lead_repair_allowed(artifact,report)
+    allow_titles=title_repair_allowed(artifact,report)
     omission_targets=omission_repair_targets(artifact,report)
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     from .evidence_policy import REVIEW_RESOLUTION_POLICY
     from .reader_presentation import READER_PRESENTATION_POLICY
     from .generation_context import POLICY as EVIDENCE_POLICY
     model,limit=get_step_config('content_repair')
-    output=repair_config(allow_lead=allow_lead,allow_omissions=bool(omission_targets))
+    output=repair_config(allow_lead=allow_lead,allow_omissions=bool(omission_targets),allow_titles=allow_titles)
     request=dict(model=model,max_tokens=min(limit,6000),output_config=output,
         system=REVIEW_RESOLUTION_POLICY+READER_PRESENTATION_POLICY+EVIDENCE_POLICY+POLICY+'''
 今回は局所修正。editsには指摘箇所と同じ誤りを直す節だけを全フィールドで返す。全文再出力は禁止。
-既存節のうちtarget_section_ids以外は読取専用。タイトル案は維持する。
+既存節のうちtarget_section_ids以外は読取専用。titles_edit_allowed=trueの場合だけtitlesを返し、指摘されたタイトル案を直す。指摘のない案は維持する。それ以外はタイトル案を変更せずキーも返さない。
 omission_reason_targetsがある場合だけomission_editsで指摘された既存IDの省略理由を修正できる。採否や掲載範囲を変えず、原文と不一致の「未確認」等の説明だけを正す。省略項目の追加・削除・ID変更は不可。対象のない理由は維持する。指摘に関係する修正がなければ空配列。それ以外は省略理由を維持しomission_editsも返さない。
 lead_edit_allowed=trueの場合だけlead_directionとreader_focusを返す。指摘された宛先・背景・流れを直し、指摘のない読者選択は維持する。それ以外はどちらも変更せずキーも返さない。リードだけの修正ならeditsは空配列でよい。
 structural=trueのときだけ関連節の追加・削除・順序・階層変更を許可する。新しい節には未使用IDを付ける。
 section_orderは追加・移動・削除が必要なときのみ修正後全IDを順に返し、変更不要なら空配列。delete_idsも不要なら空配列。
 主回答の説明と根拠・条件・必須論点を維持し、文字数合わせの水増し・追加調査・未確認の断定をしない。''',
         messages=[{'role':'user','content':json.dumps({'keyword':keyword,'blueprint':value,'accepted_context':ctx,
-            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'omission_reason_targets':omission_targets,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
+            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'titles_edit_allowed':allow_titles,'omission_reason_targets':omission_targets,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'blueprint_issues':report.get('blueprint_issues',[]),'structural_issues':report.get('structural_issues',[])},ensure_ascii=False)}])
     if tiered_review_enabled():
         from .tiered_research import checked_request
@@ -556,7 +562,7 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
         if getattr(msg,'stop_reason',None)!='end_turn':fail('編集設計の局所修正が途中で中断しました。未適用です。')
         response=json.loads(message_text(msg))
     validate_shape(response,output['format']['schema'])
-    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets)
+    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets,allow_titles=allow_titles)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
     issues=validate_structure(text,contract,outline=True)+budget_issues(candidate,job.get('word_count_setting'))
     if issues:fail('編集設計の修正後も必須構造が不足しています: '+json.dumps(issues,ensure_ascii=False))
@@ -634,16 +640,52 @@ def validate_progression(value):
             elif target:fail('関連情報・範囲外の問いに記事内の引継ぎ先を混在できません。')
 
 
-def checked_progression_reviews(value, ctx):
+def checked_progression_reviews(value, ctx, *, text=None):
     ids=ctx.get('progression_section_ids',[]);rows=value.get('reader_progression_reviews');issues=[]
     if not isinstance(rows,dict) or set(rows)!=set(ids):fail('章ごとの読者の変化・導線の確認が不足しています。')
+    evidence=journey_evidence(ctx,text)
     for sid,row in rows.items():
         if (not isinstance(row,dict) or set(row)!={'status','reason','journey'}
             or row['status'] not in ('pass','answer_missing','evidence_missing')
             or not isinstance(row['reason'],str) or not row['reason'].strip()):fail('章ごとの変化・導線の確認結果が不正です。')
         from .reader_journey import checked as checked_journey,chapter_evidence
-        missing=checked_journey(row['journey'],chapter_evidence(sid,ctx.get('journey_sections',{})))
+        missing=checked_journey(row['journey'],chapter_evidence(sid,evidence))
         if row['status']!='pass' or missing:
             issues.append({'section_id':sid,'section_ids':[sid],'requirement_index':'reader_progression',
                 'reason':'\n'.join([row['reason'],*missing]),'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
     return issues
+
+
+def journey_evidence(ctx, text=None):
+    """Accept shown paragraph addresses only inside their exact semantic section."""
+    result=copy.deepcopy(ctx.get('journey_sections',{}))
+    if text is None:return result
+    from .article_quality import outline_sections
+    from .content_edits import content_blocks
+    from .reader_journey import normalize_quote
+    spans=outline_sections(text);ids=ctx['section_ids']
+    if len(spans)!=len(ids):fail('表示用構成と節の件数が一致しません。')
+    blocks=[];cursor=0
+    for block in content_blocks(text):
+        start=text.index(block['text'],cursor);cursor=start+len(block['text'])
+        blocks.append((block,start,cursor))
+    for span,sid in zip(spans,ids):
+        for block,start,end in blocks:
+            if not (start<span['end'] and end>span['start']):continue
+            quoted=[t for t in result[sid]['texts'] if t.strip() and normalize_quote(t) in normalize_quote(block['text'])]
+            if quoted:
+                if block['id'] in result and result[block['id']]['parent_id']!=sid:
+                    fail('引用段落が複数の節にまたがっています。推測で対応付けません。')
+                result[block['id']]={'parent_id':sid,'texts':quoted}
+    return result
+
+
+def title_repair_allowed(artifact, report):
+    from .content_edits import content_blocks
+    text=artifact['content_text']
+    start=text.index('### タイトル案');end=text.index('### 記事の宛先と読み始める時点')
+    ids=set();cursor=0
+    for b in content_blocks(text):
+        pos=text.index(b['text'],cursor);cursor=pos+len(b['text'])
+        if pos<end and cursor>start:ids.add(b['id'])
+    return any(loc['id'] in ids for c in report['checks'] if c['status']=='fail' for loc in c.get('affected_blocks',[]))

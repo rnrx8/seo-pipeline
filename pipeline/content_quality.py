@@ -484,7 +484,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         raw, usage = response_text(message), message.usage
     report = parse_audit(raw)
     blueprint_response=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())) if blueprint_ctx else None
-    if blueprint_ctx:blueprint.checked_review(blueprint_response,blueprint_ctx)
+    if blueprint_ctx:blueprint.checked_review(blueprint_response,blueprint_ctx,text=text)
     if compact:
         from .review_scope import validate_routes, pages_from
         validate_routes(report['checks'],content_blocks(text),payload['requirements'],pages_from(sources),evidence_keys)
@@ -523,7 +523,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         check.update(status='fail', reason=check['reason'] + '\n無限定な安全保証: ' + ' / '.join(guarantees))
         report['valid'] = False
     if blueprint_ctx:
-        report=blueprint.apply_review(report,blueprint_response,blueprint_ctx)
+        report=blueprint.apply_review(report,blueprint_response,blueprint_ctx,text=text)
         report['blueprint_review_context']=blueprint_ctx
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
