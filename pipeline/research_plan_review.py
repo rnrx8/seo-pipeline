@@ -2,7 +2,7 @@
 import copy
 import json
 import anthropic
-from .ai import create_with_retry, get_step_config, is_openai_model
+from .ai import create_with_retry, get_step_config, is_openai_model, message_text
 from .content_quality import response_text, ContentQualityError
 from .evidence_policy import EVIDENCE_POLICY, SOURCE_REQUIREMENT_PLANNING_POLICY
 from .db import upsert_artifact
@@ -82,6 +82,11 @@ def review(job_id, plan, context, attempt, api_key=None):
     response=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
         model=model,max_tokens=budget,system=PLAN_REVIEW_SYSTEM,output_config=review_schema(plan),
         messages=[{'role':'user','content':json.dumps({'plan':plan,'context':context},ensure_ascii=False)}])
+    # Preserve the paid response even if a later semantic/ID validator rejects
+    # it. A missing reference is a review diagnostic, not lost generation.
+    upsert_artifact(job_id=job_id,step=f'research_plan_review_{attempt}_response',content_type='application/json',
+        content_text=message_text(response),meta={'model':model,'input_tokens':response.usage.input_tokens,
+        'output_tokens':response.usage.output_tokens,'stop_reason':getattr(response,'stop_reason',None),'validated':False})
     value=json.loads(response_text(response))
     if plan.get('reader_decisions'):
         from .reader_decisions import checked_reviews

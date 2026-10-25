@@ -67,6 +67,22 @@ def enabled():
     return _CONTEXT.get() is not None
 
 
+def optional_check(fn, *args, **kwargs):
+    """A completed input does not depend on an optional review's response.
+
+    Callers persist the usable candidate first. An unavailable/malformed
+    review stays unverified; this helper never retries or manufactures a pass.
+    Strict diagnostic callers outside the delivery context keep exceptions.
+    """
+    if not enabled():return fn(*args,**kwargs)
+    from .content_quality import GenerationBusyError
+    try:return fn(*args,**kwargs)
+    except GenerationBusyError:raise
+    except Exception as exc:
+        warn('事前確認は未完了です。保存済みの計画から続けます: '+str(exc))
+        return None
+
+
 @contextmanager
 def strict_checks():
     """A recovery must pass its prerequisites before it can write new prose."""

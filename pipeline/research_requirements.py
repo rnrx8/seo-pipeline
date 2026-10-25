@@ -267,13 +267,27 @@ def plan(job_id, keyword, api_key=None):
         validate_gaps(value,payload)
         if payload.get('competitor_context'):
             value['competitor_context']=payload['competitor_context']
-        upsert_artifact(job_id=job_id,step=f'research_plan_candidate_{attempt}',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
-        verdict,usage=review(job_id,value,payload,attempt,api_key)
+        candidate_meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens,
+                        'planning_inputs_sha256':digest(json.dumps(payload,ensure_ascii=False,sort_keys=True))}
+        upsert_artifact(job_id=job_id,step=f'research_plan_candidate_{attempt}',content_type='application/json',
+            content_text=json.dumps(value,ensure_ascii=False),meta=candidate_meta)
+        from .quality_warnings import enabled, optional_check, warn
+        provisional=None
+        if enabled():
+            # This is a plan of questions, not verified factual answers. Make
+            # the completed plan available before optional editorial review.
+            provisional=save_unreviewed_plan(job_id,value,candidate_meta)
+        checked=optional_check(review,job_id,value,payload,attempt,api_key)
+        if checked is None:return provisional
+        verdict,usage=checked
         inputs+=msg.usage.input_tokens+usage.input_tokens;outputs+=msg.usage.output_tokens+usage.output_tokens
         if verdict['valid']:
             value['policy_sha256'] = plan_policy()
             return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
                 meta={'model':model,'input_tokens':inputs,'output_tokens':outputs,'planning_review_passed':True})
+        if enabled():
+            warn('調査計画に確認事項があります。質問の計画を保持して調査へ進みます: '+json.dumps(verdict['issues'],ensure_ascii=False))
+            return provisional
         payload['previous_plan']=value
         payload['planning_issues']=verdict['issues']
     # A full-plan retry can introduce new obligations. Use the same bounded
@@ -287,6 +301,16 @@ def plan(job_id, keyword, api_key=None):
     return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',
         content_text=json.dumps(value,ensure_ascii=False),meta={'model':model,'input_tokens':inputs,
         'output_tokens':outputs,'planning_review_passed':True,'planning_local_repaired':True})
+
+
+def save_unreviewed_plan(job_id, value, meta):
+    """Deliver a structurally usable question plan without approving its QA."""
+    value=copy.deepcopy(value)
+    validate_plan(value)
+    value['policy_sha256']=plan_policy()
+    return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',
+        content_text=json.dumps(value,ensure_ascii=False),meta={**meta,'ready_for_research':True,
+        'planning_review_passed':False,'publication_approved':False})
 
 
 def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
