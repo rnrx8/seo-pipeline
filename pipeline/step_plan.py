@@ -73,11 +73,11 @@ def _research_resume_stage(job_id, stage, keys, load):
     if not ((intent or {}).get('meta') or {}).get('reader_needs_version'):
         return stage
     matrix = load(job_id, 'research_matrix')
-    if not matrix or json.loads(matrix['content_text']).get('valid') is not True:
-        return prerequisite
+    if not matrix:return prerequisite
     from .content_quality import ContentQualityError
     try:
-        research_requirements._require_matrix_strict(job_id)
+        if not research_requirements.matrix_ready_for_draft(job_id,json.loads(matrix['content_text'])):
+            return prerequisite
     except ContentQualityError:
         return prerequisite
     outline_gate='research_validation'

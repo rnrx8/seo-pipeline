@@ -50,12 +50,12 @@ class ResumeTests(unittest.TestCase):
                'research_matrix':{'content_text':'{"valid":true}'}}
         keys=['research_completeness','outline','article']
         load=lambda job,step:saved.get(step)
-        with patch('pipeline.research_requirements._require_matrix_strict',side_effect=ContentQualityError('stale')):
+        with patch('pipeline.research_requirements.matrix_ready_for_draft',return_value=False):
             self.assertEqual(research_resume_stage('job','article',keys,load),'research_completeness')
-        with patch('pipeline.research_requirements._require_matrix_strict',return_value={}) as strict:
+        with patch('pipeline.research_requirements.matrix_ready_for_draft',return_value=True) as readiness:
             self.assertEqual(research_resume_stage('job','article',keys,load),'article')
-            strict.assert_called_once_with('job')
-        with patch('pipeline.research_requirements._require_matrix_strict',side_effect=RuntimeError('transport')):
+            readiness.assert_called_once_with('job',{'valid':True})
+        with patch('pipeline.research_requirements.matrix_ready_for_draft',side_effect=RuntimeError('transport')):
             with self.assertRaisesRegex(RuntimeError,'transport'):
                 research_resume_stage('job','article',keys,load)
 
