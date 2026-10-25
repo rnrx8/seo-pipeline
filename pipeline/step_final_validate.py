@@ -8,7 +8,7 @@ from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
 from .readability import readability_issues
 from .claim_scope import scope_issues
-from .content_quality import ContentQualityError, audit_facts, require_audit, final_review_requirements, snapshot, source_evidence
+from .content_quality import ContentQualityError, audit_facts, final_review_requirements, snapshot, source_evidence
 from .step_structure_guard import extract_h2_titles, validate_structure
 
 
@@ -32,13 +32,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             violations.append({'key': 'editorial_recovery_pending', 'reason': '上流修正と全文QAが未完了です。'})
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
     try:
-        from .research_requirements import require_matrix
-        from .article_revisions import RUN
-        if RUN.get() or recovery_artifact:
-            from .research_requirements import _require_matrix_strict
-            _require_matrix_strict(job_id)
-        else:
-            require_matrix(job_id)
+        from .research_requirements import _require_matrix_strict
+        _require_matrix_strict(job_id)
     except Exception as exc:
         violations.append({'key':'research_not_ready','reason':str(exc)[:200]})
     try:
@@ -52,14 +47,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         audit_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         context = dict(text=article['content_text'], facts=facts, outline=outline, contract=contract,
                        requirements=final_review_requirements(job, keyword), sources=sources)
-        from .article_revisions import RUN
         if recovery_artifact and (not isinstance(recovery, dict) or recovery.get('final_snapshot') != snapshot(**context)):
             violations.append({'key': 'editorial_recovery_not_current', 'reason': '上流修正の最終確認が現在の原稿へ対応していません。'})
-        if RUN.get() or recovery_artifact:
-            from .content_quality import _require_audit_strict
-            _require_audit_strict(audit_report, snapshot(**context), stage="article", context=context)
-        else:
-            require_audit(audit_report, snapshot(**context), stage="article", context=context)
+        from .content_quality import _require_audit_strict
+        _require_audit_strict(audit_report, snapshot(**context), stage="article", context=context)
     except Exception as exc:
         violations.append({'key': 'content_audit_not_passed', 'reason': str(exc)[:200]})
     report = {

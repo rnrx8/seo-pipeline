@@ -2,7 +2,7 @@
 import copy
 import json
 
-CONTEXT_POLICY = 'role-input-v6-editorial-checklist-routing'
+CONTEXT_POLICY = 'role-input-v7-canonical-claim-projection'
 
 
 def compact_enabled():
@@ -16,7 +16,27 @@ def decision_brief(requirements):
     result=copy.deepcopy(requirements)
     decisions=result.get('research_decisions')
     if isinstance(decisions,dict):
+        from .claim_evidence import VERSION as CLAIM_VERSION
+        canonical=bool(decisions.get('items')) and all(
+            item.get('claim_format')==CLAIM_VERSION and isinstance(item.get('claim_states'),list)
+            for item in decisions['items'])
+        if canonical:
+            # Keep the original matrix in storage. A reviewer needs one copy
+            # of each verified claim, not candidates plus repeated audit logs.
+            decisions.pop('evidence_ledger',None)
+            for key in ('answer_repair_history','answer_repair_version','answer_repair_rounds'):
+                decisions.pop(key,None)
         for item in decisions.get('items',[]):
+            if canonical:
+                item['claims']=item.pop('claim_states')
+                for claim in item['claims']:
+                    for field in ('evidence','conflicting_evidence'):
+                        for ref in claim.get(field,[]):
+                            # Source documents remain available to evidence QA;
+                            # preserve every URL, condition and disposition.
+                            ref.pop('quote',None);ref.pop('expert_qualification_quote',None)
+                for key in ('claim_evidence','claims_checked_at','claim_validation_issue','claim_visibility_failed','claim_policy_issues'):
+                    item.pop(key,None)
             # Source text belongs to the evidence reviewer. All answer, date,
             # adoption/omission and unknown future fields survive verbatim.
             refs=item.pop('evidence',[])

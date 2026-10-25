@@ -27,7 +27,7 @@ from . import (
 Step = tuple[str, Callable]
 RATE_LIMITED_STEPS = {
     "search_intent", "fact_sheet", "outline", "service_map", "article", "review", "fact_review",
-    "research_validation", "content_audit", "research_plan", "research_completeness"
+    "content_audit", "research_plan", "research_completeness"
 }
 
 
@@ -60,11 +60,16 @@ def research_resume_stage(job_id, stage, keys, load):
     if outline_gate in keys and keys.index(stage)>keys.index(outline_gate):
         outline=load(job_id,'outline')
         if (outline or {}).get('meta',{}).get('blueprint_version'):
-            readiness=load(job_id,'research_validation')
-            report=json.loads(readiness['content_text']) if readiness else {}
-            if report.get('valid') is not True:return outline_gate
-            from .editorial_blueprint import require_review
-            try:require_review(report,outline)
+            readiness=load(job_id,'draft_readiness')
+            try:report=json.loads(readiness['content_text']) if readiness else {}
+            except json.JSONDecodeError:return outline_gate
+            from .draft_readiness import evaluate,VERSION
+            if not isinstance(report,dict) or report.get('version')!=VERSION or report.get('ready_for_draft') is not True:return outline_gate
+            try:
+                from .db import get_job
+                job=get_job(job_id)
+                current=evaluate(job_id,job['main_keyword'],outline=outline,load=load,job=job)
+                if current['input_sha256']!=report.get('input_sha256'):return outline_gate
             except ContentQualityError:return outline_gate
     return stage
 

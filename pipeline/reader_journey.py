@@ -70,4 +70,4 @@ def chapter_evidence(sid, sections):
     ids={sid}
     for key,row in sections.items():
         if row['parent_id'] in ids:ids.add(key)
-    return {key:copy.deepcopy(sections[key]['texts']) for key in ids if key in sections}
+    return {key:copy.deepcopy(sections[key]['texts']) for key in sorted(ids) if key in sections}
