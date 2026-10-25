@@ -104,7 +104,11 @@ def bundle_data(plan, matrix, *, quotes, planning=False):
             'omission_candidate_from','omission_source_review','unresolved_candidate',
             'additional_sources_needed','reviewed_source_urls',
             'claims','claim_states','claim_evidence','claim_format','claims_checked_at','claim_validation_issue','claim_visibility_failed','claim_policy_issues'}})
-        row.update(publication_scope(item))
+        try:row.update(publication_scope(item))
+        except ContentQualityError:
+            if not enabled():raise
+            warn('採用条件を確認できない回答は執筆資料から除外します: '+str(item['id']))
+            continue
         row['publishable']=item.get('basis')!='omitted' and item.get('status') in ('confirmed','explicitly_undisclosed')
         row['source_ids']=[]
         if item.get('basis')!='omitted':

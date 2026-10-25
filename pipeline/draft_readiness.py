@@ -13,8 +13,8 @@ class DraftReadinessError(ContentQualityError):
 
 def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
     from .research_requirements import load_plan, require_matrix
-    from .quality_warnings import strict_checks
-    from .editorial_blueprint import context, require_projection, budget_issues
+    from .quality_warnings import enabled, warn
+    from .editorial_blueprint import context, require_projection, budget_issues, fingerprint
     from .outline_policy import require_current_outline
     from .outline_design import assignment_issues
     from .step_structure_guard import validate_structure
@@ -27,8 +27,9 @@ def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
     job=job if job is not None else get_job(job_id)
     # There is one current-input rule for guard, writer, service map and resume.
     # Do not import old model pass/fail reports into this mechanical decision.
-    with strict_checks():
-        matrix=require_matrix(job_id)
+    # Research QA is advisory in the generation flow. require_matrix still
+    # filters stale/unverified answers out of the writer's evidence bundle.
+    matrix=require_matrix(job_id)
     plan=load_plan(job_id)
     saved=load(job_id,'outline')
     if outline is not None and saved!=outline:
@@ -43,7 +44,10 @@ def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
     contract=json.loads(load(job_id,'content_contract')['content_text'])
     issues=assignment_issues(outline['content_text'],plan)+validate_structure(outline['content_text'],contract,outline=True)
     issues+=budget_issues(value,job.get('word_count_setting'))
-    if issues:raise DraftReadinessError('下書きに必要な構成・回答の割当てが不足しています: '+json.dumps(issues,ensure_ascii=False))
+    if issues:
+        message='下書きに必要な構成・回答の割当てに確認事項があります: '+json.dumps(issues,ensure_ascii=False)
+        if not enabled():raise DraftReadinessError(message)
+        warn(message)
     settings={k:job.get(k) for k in ('custom_prompt','must_include','must_reference_urls','never_reference_urls',
         'company_restriction','word_count_setting','article_purpose','target_audience','tone_style','citation_style','service_id','cta_id',
         'tenant_id','category','high_accuracy_mode','delivery_type')}
@@ -53,8 +57,10 @@ def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
         inputs[step]=load(job_id,step)['content_text']
     binding=digest(json.dumps(inputs,ensure_ascii=False,sort_keys=True))
     return {'version':VERSION,'kind':'draft_readiness','ready_for_draft':True,'publication_approved':False,
-            'input_sha256':binding,'checks':{'research_current':True,'canonical_design_current':True,
-            'required_answers_assigned':True,'structure_and_explicit_budget':True},
+            'input_sha256':binding,'checks':{'research_current':matrix.get('valid') is True,
+            'canonical_design_current':outline.get('meta',{}).get('blueprint_inputs_sha256')==fingerprint(context(plan,matrix)),
+            'required_answers_assigned':not issues,'structure_and_explicit_budget':not issues},
+            'warnings':issues,
             'editorial_quality':'verify_on_actual_article'}
 
 
