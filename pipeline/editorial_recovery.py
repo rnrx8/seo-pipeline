@@ -187,7 +187,12 @@ def continue_recovery(job_id, keyword, state, api_key=None):
     retry_patch = (state.get('status') == 'failed' and state.get('error_kind') == 'patch_validation'
                    and state.get('current_step') == 'content_audit')
     retry_editorial = False
-    if state.get('status') == 'failed' and state.get('current_step') == 'content_audit' and state.get('error_type') == 'UpstreamRepairRequired':
+    cached_editorial = get_optional_artifact(job_id,'tiered_editorial_finish_repair') if state.get('current_step')=='content_audit' else None
+    cached_format_failure = (state.get('error_type')=='ContentQualityError' and cached_editorial
+        and (cached_editorial.get('meta') or {}).get('request_sha256')
+        and (cached_editorial.get('meta') or {}).get('result_sha256')==digest(cached_editorial['content_text'])
+        and not get_optional_artifact(job_id,'editorial_completion_candidate'))
+    if state.get('status') == 'failed' and state.get('current_step') == 'content_audit' and (state.get('error_type') == 'UpstreamRepairRequired' or cached_format_failure):
         from .editorial_completion import base_valid
         saved_report = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
         retry_editorial = base_valid(saved_report, audit_context(job_id, keyword))

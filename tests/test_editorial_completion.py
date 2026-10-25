@@ -52,6 +52,23 @@ class EditorialCompletionTests(unittest.TestCase):
         self.assertEqual([e['blueprint_id'] for e in binding['entries']],['s01','s02','s03'])
         self.assertEqual(self.text.replace('限界も確認します。','#### 制約を確認する\n\n限界も確認します。'),text)
 
+    def test_model_temporary_labels_are_allocated_by_code(self):
+        p=copy.deepcopy(self.proposal);e=p['outline_patch']['edits'][0]
+        e['id']='child-a';e['section']['id']='child-a';p['outline_patch']['section_order'][-1]='child-a'
+        _,_,binding=finish.apply_proposal(self.article,self.outline,self.report,self.context,p)
+        self.assertEqual(binding['entries'][-1]['blueprint_id'],'s03')
+        self.assertEqual(p['outline_patch']['edits'][0]['id'],'child-a')
+        p['outline_patch']['edits'].append(copy.deepcopy(e))
+        with self.assertRaises(cq.ContentQualityError):finish.apply_proposal(self.article,self.outline,self.report,self.context,p)
+
+    def test_repeating_a_qualifier_is_not_a_numeric_or_citation_change(self):
+        self.assertEqual(finish.immutable_anchors('必ずではない。100円です。※1'),finish.immutable_anchors('必ずではない。対象ではない場合もある。100円です。※1'))
+        self.assertNotEqual(finish.immutable_anchors('100円です。※1'),finish.immutable_anchors('200円です。※1'))
+        self.assertNotEqual(finish.immutable_anchors('100円です。※1'),finish.immutable_anchors('100円です。※2'))
+        v={'checks':{k:{'status':'pass','reason':'照合'} for k in finish.KEYS}}
+        v['checks']['evidence_preserved']['status']='fail'
+        with self.assertRaises(cq.ContentQualityError):finish.require_review(v)
+
     def test_delete_reorder_change_claims_or_reader_goals_rejected(self):
         for change in ('delete','reorder','claim','reader','h2','unrelated','body','number','new_fact'):
             p=copy.deepcopy(self.proposal)
@@ -124,7 +141,7 @@ class CompletionBudgetTests(unittest.TestCase):
     def test_production_cannot_repeat_editorial_finish_with_different_input(self):
         from pipeline import quality_budget as q
         import os
-        for role in ('editorial_finish_repair','editorial_finish_review'):
+        for role in ('editorial_finish_repair','editorial_finish_review','editorial_finish_mechanical'):
             meta={'phase':'article','role':role,'call_limit':1,'request_sha256':'new'}
             value={'calls':[{'status':'accounted','cost_usd':.1,'reserved_usd':.1,
                 'review_operation':{**meta,'request_sha256':'previous'}}]}
@@ -132,3 +149,19 @@ class CompletionBudgetTests(unittest.TestCase):
             try:
                 with patch.dict(os.environ,QUALITY_BUDGET_MODE='unlimited'),self.assertRaises(cq.ContentQualityError):q.guard_review(value,.1)
             finally:q.REQUEST.reset(token)
+
+class MechanicalAddressTests(unittest.TestCase):
+    def test_retry_maps_shifted_ids_to_changed_original_blocks_only(self):
+        from pipeline.content_edits import apply_block_edits
+        text='# 題\n\n## 親\n\n入口。\n\n### 子\n\n説明。\n\n次の段落。'
+        blocks=content_blocks(text);a=blocks[2]['id'];b=blocks[-2]['id']
+        p={'article_edits':[{'id':a,'new':'入口。\n\n#### 先に増える見出し\n\n説明。'},
+                            {'id':b,'new':'長い説明。'}],'outline_patch':{}}
+        candidate=apply_block_edits(text,json.dumps({'edits':p['article_edits']}))
+        failed=next(x['id'] for x in content_blocks(candidate) if x['text']=='長い説明。')
+        neighbor=content_blocks(candidate)[-1]['id']
+        with patch('pipeline.readability.readability_issues',return_value=[{'key':'continuous_prose','affected_blocks':[{'id':failed},{'id':neighbor}]}]):
+            self.assertEqual(finish.mechanical_targets({'content_text':text},p,candidate),[b])
+        adjusted=finish.apply_mechanical(p,{'edits':[{'id':b,'new':'説明。'}]},{'content_text':text},[b])
+        self.assertEqual(adjusted['article_edits'],[p['article_edits'][0]])
+        with self.assertRaises(cq.ContentQualityError):finish.apply_mechanical(p,{'edits':[{'id':neighbor,'new':'別の内容'}]},{'content_text':text},[b])
