@@ -76,5 +76,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         raise ContentQualityError(f"Final article violates content contract: {violations}")
     from .article_revisions import seal
     seal(job_id)
+    from .quality_warnings import resolve_after_final
+    warnings = get_optional_artifact(job_id,'quality_warnings')
+    if warnings:resolve_after_final(job_id)
     print("[final_validate] Final article satisfies the content contract")
     return artifact
