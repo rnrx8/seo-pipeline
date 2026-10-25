@@ -184,7 +184,7 @@ def coverage_decision(item):
   'publication_conditions','claim_limits','supports_current_conclusion','omission_reason','omission_candidate_from','unresolved_candidate')}
  result['claims']=[{k:copy.deepcopy(c[k]) for k in ('id','text','subject','operation','conditions','answer_type',
    'publishable','required_for_answer','conflict','evidence','conflicting_evidence')} for c in item.get('claim_states',[])
-   if c['required_for_answer'] or c['conflict']['status']!='none']
+   if c.get('publishable') or c['required_for_answer'] or c['conflict']['status']!='none']
  return result
 
 

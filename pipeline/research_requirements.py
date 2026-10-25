@@ -2,6 +2,7 @@ import copy
 """Question-level research planning and evidence readiness before outlining."""
 import json
 import re
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 from .evidence_policy import EVIDENCE_POLICY, EVIDENCE_POLICY_VERSION, SOURCE_BASES, allowed_source_bases, SOURCE_INTERPRETATION_POLICY
 from .fresh_sources import normalize_url
@@ -151,7 +152,8 @@ def matrix_policy():
     from .ai import tiered_review_enabled
     from .tiered_research import VERSION, POLICY
     from .source_spans import SPAN_POLICY
-    extra = [VERSION, POLICY, SPAN_POLICY] if tiered_review_enabled() else []
+    from .research_answer_repair import VERSION as ANSWER_REPAIR_VERSION, POLICY as ANSWER_REPAIR_POLICY
+    extra = [VERSION, POLICY, SPAN_POLICY, ANSWER_REPAIR_VERSION, ANSWER_REPAIR_POLICY] if tiered_review_enabled() else []
     from .focused_research import enabled as focused_enabled, VERSION as FOCUSED_VERSION, READ_POLICY, FOCUS_POLICY
     if tiered_review_enabled() and focused_enabled():
         extra += [FOCUSED_VERSION, READ_POLICY, FOCUS_POLICY]
@@ -804,17 +806,54 @@ def failed_material_unchanged(job_id, previous):
             and previous['facts_sha256']==digest(facts))
 
 
+def save_matrix_result(job_id, plan_value, pages, facts, value, usage, attempt, model):
+    sources=source_evidence(get_artifact(job_id,'fresh_sources'))
+    gaps=validate_matrix(value,plan_value,pages)
+    if not gaps and plan_value.get('policy_sha256'):
+        for page in pages:
+            page['evidence_quotes']=list(dict.fromkeys(quote for i in value['items'] if i.get('verified') and i.get('basis')!='omitted'
+                for r in i['evidence'] if r['url']==page['url']
+                for quote in (r['quote'], r.get('expert_qualification_quote','')) if quote))
+        upsert_artifact(job_id=job_id,step='fresh_sources',content_type='application/json',content_text=json.dumps(pages,ensure_ascii=False),
+            meta={**get_artifact(job_id,'fresh_sources').get('meta',{}),'checked_quote_context':True})
+        sources=source_evidence(get_artifact(job_id,'fresh_sources'))
+        original=get_artifact(job_id,'fact_sheet')
+        upsert_artifact(job_id=job_id,step='research_draft',content_type='text/markdown',content_text=facts,meta=original.get('meta',{}))
+        facts=accepted_facts(value,plan_value)
+        upsert_artifact(job_id=job_id,step='fact_sheet',content_type='text/markdown',content_text=facts,
+            meta={**original.get('meta',{}),'canonical_research_answers':True})
+    value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt,
+                 material_revision=material_revision(pages,facts), plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
+                 sources_sha256=digest(sources), attempts_sha256=digest(get_artifact(job_id,'fresh_sources')['content_text']), facts_sha256=digest(facts))
+    for step in (f'research_matrix_{attempt}','research_matrix'):
+        saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
+            meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
+    return saved,gaps
+
+
 def verify(job_id, keyword, api_key=None):
     """Resolve specific findings without dropping questions or unbounded replay."""
+    from .ai import tiered_review_enabled
     plan_value=load_plan(job_id)
     previous=get_optional_artifact(job_id,'research_matrix')
     from .research_collection import recover_empty_collections
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
     previous_value=json.loads(previous['content_text']) if previous else {}
     material_updated=(previous_value.get('valid') is False and not failed_material_unchanged(job_id,previous_value))
-    if (previous_value.get('valid') is False and previous_value.get('attempt')==3 and previous_value.get('policy_sha256')==matrix_policy()
+    if (previous_value.get('valid') is False and previous_value.get('attempt')==3
             and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
             and not material_updated):
+        from .research_answer_repair import eligible, run as repair_answers
+        pages=json.loads(get_artifact(job_id,'fresh_sources')['content_text']) if previous_value.get('items') else []
+        if tiered_review_enabled() and eligible(previous_value,plan_value,pages):
+            if not get_optional_artifact(job_id,'research_matrix_before_answer_repair'):
+                upsert_artifact(job_id=job_id,step='research_matrix_before_answer_repair',content_type='application/json',content_text=previous['content_text'],meta=previous.get('meta',{}))
+            context={k:get_artifact(job_id,k)['content_text'] for k in ('serp','search_intent')}
+            value,usage=repair_answers(job_id,previous_value,plan_value,pages,context)
+            facts=get_artifact(job_id,'fact_sheet')['content_text']
+            model,_=get_step_config('content_audit')
+            saved,gaps=save_matrix_result(job_id,plan_value,pages,facts,value,usage,3,model)
+            if not gaps:return saved
         raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
     resolution=False
     if (not material_updated and previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
@@ -842,25 +881,12 @@ def verify(job_id, keyword, api_key=None):
         context = {k:get_artifact(job_id,k)['content_text'] for k in ('serp','search_intent')} if plan_value.get('policy_sha256') else {}
         value,usage=audit_matrix(job_id,None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget,intent_context=context)
         gaps=validate_matrix(value,plan_value,pages)
-        if not gaps and plan_value.get('policy_sha256'):
-            for page in pages:
-                page['evidence_quotes']=list(dict.fromkeys(quote for i in value['items'] if i.get('verified') and i.get('basis')!='omitted'
-                    for r in i['evidence'] if r['url']==page['url']
-                    for quote in (r['quote'], r.get('expert_qualification_quote','')) if quote))
-            upsert_artifact(job_id=job_id,step='fresh_sources',content_type='application/json',content_text=json.dumps(pages,ensure_ascii=False),
-                meta={**get_artifact(job_id,'fresh_sources').get('meta',{}),'checked_quote_context':True})
-            sources=source_evidence(get_artifact(job_id,'fresh_sources'))
-            original=get_artifact(job_id,'fact_sheet')
-            upsert_artifact(job_id=job_id,step='research_draft',content_type='text/markdown',content_text=facts,meta=original.get('meta',{}))
-            facts=accepted_facts(value,plan_value)
-            upsert_artifact(job_id=job_id,step='fact_sheet',content_type='text/markdown',content_text=facts,
-                meta={**original.get('meta',{}),'canonical_research_answers':True})
-        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1,
-                     material_revision=material_revision(pages,facts), plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
-                     sources_sha256=digest(sources), attempts_sha256=digest(get_artifact(job_id,'fresh_sources')['content_text']), facts_sha256=digest(facts))
-        for step in (f'research_matrix_{attempt+1}','research_matrix'):
-            saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
-                meta={'valid':not gaps,'model':model,'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens})
+        if gaps and attempt == 2 and tiered_review_enabled():
+            from .research_answer_repair import eligible, run as repair_answers
+            if eligible(value, plan_value, pages):
+                value, repair_usage = repair_answers(job_id, value, plan_value, pages, context)
+                usage = SimpleNamespace(input_tokens=usage.input_tokens+repair_usage.input_tokens, output_tokens=usage.output_tokens+repair_usage.output_tokens)
+        saved,gaps=save_matrix_result(job_id,plan_value,pages,facts,value,usage,attempt+1,model)
         if not gaps:return saved
         if attempt<1:
             supplement_once(job_id,keyword,plan_value,gaps,api_key,matrix=value)
