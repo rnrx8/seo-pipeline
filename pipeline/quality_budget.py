@@ -30,10 +30,29 @@ def spending_limits_enabled():
  return mode=='bounded'
 
 
+def incremental_remaining(value):
+ """An explicitly authorized job allowance never resets historical spending."""
+ policy=value.get('incremental_allowance')
+ if policy is None:return float('inf')
+ from .content_quality import ContentQualityError
+ if not isinstance(policy,dict):raise ContentQualityError('追加費用上限の保存形式が不正です。')
+ start=policy.get('start_call_index');limit=policy.get('limit_usd');calls=value['calls']
+ if (policy.get('version')!='incremental-allowance-v1' or type(start) is not int
+     or not 0<=start<=len(calls) or type(limit) not in (int,float) or not math.isfinite(limit)
+     or limit<=0 or not policy.get('authorization')):
+  raise ContentQualityError('追加費用上限の承認・保存形式を確認できません。送信しません。')
+ prefix=hashlib.sha256(json.dumps(calls[:start],ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+ if prefix!=policy.get('historical_calls_sha256'):
+  raise ContentQualityError('追加費用上限を設定する前の費用履歴が変更されています。送信しません。')
+ used=sum(c.get('cost_usd',c['reserved_usd']) for c in calls[start:])
+ return limit-used
+
+
 def total_remaining(value):
- if not spending_limits_enabled():return float('inf')
+ remaining=incremental_remaining(value)
+ if not spending_limits_enabled():return remaining
  used=sum(c.get('cost_usd',c['reserved_usd']) for c in value['calls'])
- return value.get('total_limit_usd',float('inf'))-used
+ return min(remaining,value.get('total_limit_usd',float('inf'))-used)
 
 
 def review_operation(step):
@@ -234,6 +253,8 @@ def completion_evaluation(value):
 def guard_total(value, amount):
  """Optional stricter total cap for a bounded evaluation, never a budget reset."""
  from .content_quality import ContentQualityError
+ if amount>incremental_remaining(value):
+  raise ContentQualityError('本人が指定した追加費用上限を超えるため、送信前に停止しました。原稿と費用履歴を保持します。')
  if not spending_limits_enabled():return
  configured=os.getenv('QUALITY_TOTAL_LIMIT_USD')
  saved=value.get('total_limit_usd')
