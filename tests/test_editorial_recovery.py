@@ -163,6 +163,38 @@ class RecoveryExecutionTests(unittest.TestCase):
             self.assertTrue(json.loads(result['content_text'])['valid'])
             self.assertEqual(events, []); self.assertEqual(records, before); audit.assert_called_once()
 
+    def test_new_strict_audit_refreshes_completed_receipt_without_replaying_writer(self):
+        with ExitStack() as stack:
+            records, _, events, _, audit, _, _ = self.harness(stack)
+            recovery.run('job', 'keyword')
+            previous = json.loads(records['editorial_recovery']['content_text'])
+            records['article']['content_text'] += '\n\n新しい確認対象の説明。'
+            text = records['article']['content_text']; events.clear()
+            def recheck(*args, **kwargs):
+                fresh = passed(recovery.audit_context('job', 'keyword'))
+                records['content_audit'] = {'content_text': json.dumps(fresh)}
+                return records['content_audit']
+            audit.side_effect = recheck
+            result = recovery.run('job', 'keyword')
+            current = json.loads(records['editorial_recovery']['content_text'])
+            self.assertEqual(current['final_snapshot'], json.loads(result['content_text'])['snapshot'])
+            self.assertEqual(current['verification_history'], [previous['final_snapshot']])
+            self.assertEqual(current['completed_steps'], previous['completed_steps'])
+            self.assertEqual(records['article']['content_text'], text)
+            self.assertEqual(events, [])
+            recovery.run('job', 'keyword')
+            self.assertEqual(audit.call_count, 2)
+
+    def test_stale_audit_does_not_refresh_completed_receipt(self):
+        with ExitStack() as stack:
+            records, _, _, _, audit, _, _ = self.harness(stack)
+            recovery.run('job', 'keyword')
+            before = copy.deepcopy(records['editorial_recovery'])
+            records['article']['content_text'] += '\n\n変更された本文。'
+            audit.side_effect = None; audit.return_value = records['content_audit']
+            with self.assertRaises(cq.ContentQualityError): recovery.run('job', 'keyword')
+            self.assertEqual(records['editorial_recovery'], before)
+
     def test_completed_save_clears_stale_pending_marker_without_model_replay(self):
         with ExitStack() as stack:
             records, _, events, _, audit, _, _ = self.harness(stack)

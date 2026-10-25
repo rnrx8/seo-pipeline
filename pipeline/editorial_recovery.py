@@ -279,7 +279,19 @@ def _run(job_id, keyword, api_key=None):
             clear_pending_marker(job_id)
             return saved
     try:
-        return step_content_audit.run(job_id, keyword, api_key=api_key)
+        result = step_content_audit.run(job_id, keyword, api_key=api_key)
+        if previous:
+            # A completed recovery can need a new audit after a policy/body
+            # change. Advance its verification receipt only after current,
+            # strict whole-article QA; never replay or relabel writing steps.
+            context = audit_context(job_id, keyword)
+            fresh = json.loads(get_artifact(job_id, 'content_audit')['content_text'])
+            _require_audit_strict(fresh, snapshot(**context), stage='article', context=context)
+            state.setdefault('verification_history', []).append(state['final_snapshot'])
+            state.update(final_snapshot=fresh['snapshot'], expected_hashes=current_hashes(job_id))
+            clear_pending_marker(job_id)
+            save(job_id, 'editorial_recovery', state)
+        return result
     except UpstreamRepairRequired as exc:
         if previous:
             raise EditorialRecoveryError('上流へ戻す修正は既に1回実行しました。追加生成せず指摘を保持します。') from exc
