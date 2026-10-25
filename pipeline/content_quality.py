@@ -484,6 +484,12 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
         raw, usage = response_text(message), message.usage
     report = parse_audit(raw)
     blueprint_response=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())) if blueprint_ctx else None
+    journey_recheck_trace=None
+    if blueprint_ctx and tiered_review_enabled():
+        from .outline_journey_recheck import recheck
+        blueprint_response,extra,journey_recheck_trace=recheck(JOB.get(),blueprint_response,blueprint_ctx,text)
+        from types import SimpleNamespace
+        usage=SimpleNamespace(input_tokens=usage.input_tokens+extra.input_tokens,output_tokens=usage.output_tokens+extra.output_tokens)
     if blueprint_ctx:blueprint.checked_review(blueprint_response,blueprint_ctx,text=text)
     if compact:
         from .review_scope import validate_routes, pages_from
@@ -525,6 +531,7 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
     if blueprint_ctx:
         report=blueprint.apply_review(report,blueprint_response,blueprint_ctx,text=text)
         report['blueprint_review_context']=blueprint_ctx
+        if journey_recheck_trace:report['journey_reference_recheck']=journey_recheck_trace
     report['price_calculations'] = prices
     report.update(policy_version=POLICY_VERSION, stage=stage, model=model,
                   snapshot=snapshot(text, facts, outline, contract, requirements, sources),

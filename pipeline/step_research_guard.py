@@ -25,7 +25,9 @@ def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict
     from .outline_repair_progress import prepare, completed
     # Legacy direct callers may not supply valid; the native guard always does.
     progress = prepare(artifact, {**report, 'valid': report.get('valid', False)},
-                       lambda: get_artifact(job_id, 'outline_before_local_repair'))
+                       lambda: get_artifact(job_id, 'outline_before_local_repair'),
+                       lambda n: (json.loads(get_artifact(job_id,f'outline_repair_review_{n}')['content_text']),
+                                  get_artifact(job_id,f'outline_before_local_repair_{n}')))
     number = progress['next']['round']
     upsert_artifact(job_id=job_id, step=f'outline_repair_review_{number}', content_type='application/json',
                     content_text=json.dumps(report, ensure_ascii=False), meta={'valid':False})
@@ -106,8 +108,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
-    from .outline_repair_progress import history, MAX_REPAIRS
-    for _ in range(MAX_REPAIRS + 1):
+    from .outline_repair_progress import history
+    while True:
         job = get_job(job_id)
         outline_artifact = get_artifact(job_id, 'outline')
         repairs = history(outline_artifact, lambda: get_artifact(job_id, 'outline_before_local_repair'))
@@ -167,4 +169,3 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if get_artifact(job_id, 'outline')['content_text'] == before_repair:
             raise ContentQualityError('構成の修正で本文が変わっていません。再検証を再送しません。')
         step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
-    raise ContentQualityError('構成の局所修正を通算3回行っても未充足です。保存結果を確認してください。')
