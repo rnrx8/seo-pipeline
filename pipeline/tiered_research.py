@@ -269,7 +269,7 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
     # Keep already-paid identical factual checks. For new work, offer eligible
     # unknown optional facts for coverage review before buying another fact check.
     if paid_legacy is None:
-     propose_optional_omissions(value['items'],{'items':questions},packed)
+     propose_optional_omissions(value['items'],{'items':questions},packed,defer_reference_issues=True)
      pending=[i for i in pending if not (i.get('basis')=='omitted' and i.get('omission_candidate_from'))]
      pending_ids={i['id'] for i in pending}
      payload['plan']={**scope,'items':[q for q in questions if q['id'] in pending_ids]}

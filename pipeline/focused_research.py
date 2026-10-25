@@ -163,7 +163,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
     pages_visible=[]
     # Only supporting unknowns skip rereading. Important partial answers must
     # reach the existing bounded reread before the final omission proposal.
-    propose_optional_omissions(value['items'], {'items':questions}, packed, supporting_only=True)
+    propose_optional_omissions(value['items'], {'items':questions}, packed, supporting_only=True, defer_reference_issues=True)
     unknown = [i for i in value['items'] if not i.get('verified') and not i.get('omission_candidate_from')]
     if unknown:
         # One reread per subject. Use original saved bodies, not the earlier excerpt.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 from .ai import astra_review_enabled, tiered_review_enabled
 from . import research_requirements
 
@@ -32,6 +33,30 @@ RATE_LIMITED_STEPS = {
 
 def requires_rate_limit_delay(step_key: str) -> bool:
     return step_key in RATE_LIMITED_STEPS
+
+
+def research_resume_stage(job_id, stage, keys, load):
+    """Repair structured research prerequisites before resuming a later stage.
+
+    The location of a failure does not prove its research gate passed. Reuse
+    saved research and request receipts, never rerun discovery from the start.
+    Transport/authentication errors propagate instead of enabling new work.
+    """
+    prerequisite = 'research_completeness'
+    if prerequisite not in keys or stage not in keys or keys.index(stage) <= keys.index(prerequisite):
+        return stage
+    intent = load(job_id, 'search_intent')
+    if not ((intent or {}).get('meta') or {}).get('reader_needs_version'):
+        return stage
+    matrix = load(job_id, 'research_matrix')
+    if not matrix or json.loads(matrix['content_text']).get('valid') is not True:
+        return prerequisite
+    from .content_quality import ContentQualityError
+    try:
+        research_requirements._require_matrix_strict(job_id)
+    except ContentQualityError:
+        return prerequisite
+    return stage
 
 
 def build_step_plan(job: dict) -> list[Step]:

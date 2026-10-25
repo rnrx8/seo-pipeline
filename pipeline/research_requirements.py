@@ -438,12 +438,16 @@ def major_sources_checked(item, pages):
             and bool(item.get('exploration_reason','').strip()))
 
 
-def propose_optional_omissions(items, plan, pages, *, supporting_only=False):
+def propose_optional_omissions(items, plan, pages, *, supporting_only=False, defer_reference_issues=False):
     """Offer unverified optional facts for whole-article omission review.
 
     Called after factual checks. Never marks the article complete; coverage can
     reject any proposal, including a mistaken priority in the original plan.
+    Before the bounded re-review, a rejected claim/evidence mapping is a
+    response defect rather than an unknown fact, so it is not offered yet.
     """
+    from .claim_evidence import reference_failures
+    deferred=set(reference_failures({'items':items})) if defer_reference_issues else set()
     planned={q['id']:q for q in plan['items']}
     reviewed={}
     successful={p['url'] for p in pages if p.get('status','success')=='success' and p.get('text','').strip()}
@@ -456,7 +460,7 @@ def propose_optional_omissions(items, plan, pages, *, supporting_only=False):
                 reviewed.setdefault(subject,{})[ref['url']]=item['id']
     for item in items:
         q=planned[item['id']]
-        if (item.get('verified') or q.get('required') is not False
+        if (item.get('verified') or q.get('required') is not False or item['id'] in deferred
             or q.get('priority') not in (('supporting',) if supporting_only else ('important','supporting'))):
             continue
         if supporting_only and item.get('answer','').strip() and item.get('evidence'):
@@ -692,11 +696,22 @@ def retrieval_gaps(gaps, matrix, pages):
     return result
 
 
+def require_valid_references(matrix, ids):
+    """A claim/evidence mapping still rejected after the bounded re-review is
+    not missing source material. Keep the saved failure and stop before any
+    supplemental search or source-question collection is consumed."""
+    from .claim_evidence import reference_failures
+    failed=reference_failures(matrix,ids)
+    if failed:
+        raise ContentQualityError('主張の根拠参照が再判定後も不正です。資料不足として追加調査しません：'+', '.join(failed))
+
+
 def supplement_once(job_id, keyword, plan, gaps, api_key=None, *, matrix=None):
     """One supplemental collection per job, resumable at completed subject receipts."""
     from . import step_fact_sheet
     # A validator/model disagreement is not missing source material. Preserve
     # the failed matrix and stop before consuming the supplemental search slot.
+    require_valid_references(matrix, {g.get('id') for g in gaps})
     planned = {q['id']:q for q in plan['items']}
     conflicts = []
     for item in (matrix or {}).get('items', []):
@@ -735,6 +750,7 @@ def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
     if not relevant:return False
     plan_hash=digest(json.dumps(plan,ensure_ascii=False,sort_keys=True))
     if matrix.get('plan_sha256')!=plan_hash:return False
+    require_valid_references(matrix,{f['id'] for f in relevant})
     old=get_optional_artifact(job_id,'research_finding_resolution')
     attempted=set();history=[]
     requested={f['id'] for f in relevant if f['repair_kind']=='source'}
