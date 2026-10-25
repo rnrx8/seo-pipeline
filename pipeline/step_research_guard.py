@@ -13,7 +13,7 @@ from .outline_length import planning_setting
 
 
 def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict:
-    """Patch the reviewed brief once; never regenerate it or inherit a pass."""
+    """Patch new reviewed findings within a durable bound; never inherit a pass."""
     from .ai import create_with_retry, get_step_config, message_text, tiered_review_enabled
     from .content_edits import REPAIR_OUTPUT_CONFIG, apply_block_edits, content_blocks, scoped_repair_output_config
     from .generation_context import generation_evidence
@@ -22,9 +22,18 @@ def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict
     require_current_outline(get_artifact(job_id, 'outline'))
     require_matrix(job_id)
     artifact = get_artifact(job_id, 'outline')
+    from .outline_repair_progress import prepare, completed
+    # Legacy direct callers may not supply valid; the native guard always does.
+    progress = prepare(artifact, {**report, 'valid': report.get('valid', False)},
+                       lambda: get_artifact(job_id, 'outline_before_local_repair'))
+    number = progress['next']['round']
+    upsert_artifact(job_id=job_id, step=f'outline_repair_review_{number}', content_type='application/json',
+                    content_text=json.dumps(report, ensure_ascii=False), meta={'valid':False})
+    upsert_artifact(job_id=job_id, step=f'outline_before_local_repair_{number}', content_type='text/markdown',
+                    content_text=artifact['content_text'], meta=artifact.get('meta') or {})
     if (artifact.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import repair
-        return repair(job_id,keyword,report,artifact,client)
+        return repair(job_id,keyword,report,artifact,client,repair_progress=progress)
     text = artifact['content_text']
     failed = [c for c in report['checks'] if c['status'] == 'fail']
     structure_edit = any(c.get("key") == "coverage" and not c.get("requires_source_check") for c in failed)
@@ -70,6 +79,7 @@ outline_blocks の既存IDだけを使い、変更のないIDは返さない。�
         from .review_scope import validate_edits
         validate_edits(raw,packet)
     candidate = apply_block_edits(text, raw)
+    progress_meta = completed(progress, candidate)
     headings = lambda value: re.findall(r'^\s*(#{1,6})\s+', value, re.M)
     if not structure_edit and headings(candidate) != headings(text):
         raise ContentQualityError('局所修正で構成の見出し階層が変更されました。未適用です。')
@@ -84,7 +94,7 @@ outline_blocks の既存IDだけを使い、変更のないIDは返さない。�
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid':False, 'status':'local_repair_requires_recheck'}), meta={'valid':False})
     return upsert_artifact(job_id=job_id, step='outline', content_type='text/markdown', content_text=candidate,
-                           meta={**(artifact.get('meta') or {}), 'local_repaired':True, 'audited':False, 'topic_assignments':topic_assignments(candidate)})
+                           meta={**(artifact.get('meta') or {}), **progress_meta, 'local_repaired':True, 'audited':False, 'topic_assignments':topic_assignments(candidate)})
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
@@ -96,9 +106,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
-    for attempt in range(2):
+    from .outline_repair_progress import history, MAX_REPAIRS
+    for _ in range(MAX_REPAIRS + 1):
         job = get_job(job_id)
         outline_artifact = get_artifact(job_id, 'outline')
+        repairs = history(outline_artifact, lambda: get_artifact(job_id, 'outline_before_local_repair'))
+        attempt = len(repairs)
         if (outline_artifact.get('meta') or {}).get('blueprint_version'):
             from .editorial_blueprint import require_projection,context
             from .research_requirements import load_plan
@@ -146,10 +159,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             return artifact
         if report.get('evidence_pending'):
             raise ContentQualityError('構成の原文照合が未完了です。資料不足を記事の誤りとして書き換えず、保存した確認結果から再開してください。')
-        if attempt == 0:
-            # A checked evidence set is the boundary: fix the outline once against
-            # it. New genuine obligations need an explicit plan change, never an
-            # unscoped full collection inside a second retry loop.
-            repair_outline(job_id, keyword, report, client)
-            step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
-    raise ContentQualityError('確認済み資料で構成を修正しても必要情報・比較条件が未充足です。全体の再調査は行いません。research_validationを確認してください。')
+        # prepare() checks the persistent total, repeated findings and pending
+        # evidence before another scoped edit. Each changed version receives a
+        # fresh whole-outline audit; no source collection or full regeneration.
+        before_repair = get_artifact(job_id, 'outline')['content_text']
+        repair_outline(job_id, keyword, report, client)
+        if get_artifact(job_id, 'outline')['content_text'] == before_repair:
+            raise ContentQualityError('構成の修正で本文が変わっていません。再検証を再送しません。')
+        step_structure_guard.run_before_research(job_id, keyword, api_key=api_key)
+    raise ContentQualityError('構成の局所修正を通算3回行っても未充足です。保存結果を確認してください。')

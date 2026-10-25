@@ -174,7 +174,7 @@ class QualityTests(unittest.TestCase):
             finally:
                 AUDIT_RECOVERY.reset(token)
 
-    def test_outline_gap_repairs_once_without_recursive_research_and_still_fails(self):
+    def test_unchanged_outline_repair_stops_without_repeated_audit_or_research(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
         artifacts = {'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：比較8選'}, 'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''},
                      'content_contract': {'content_text': '{}'}}
@@ -187,7 +187,7 @@ class QualityTests(unittest.TestCase):
              patch.object(step_content_contract, 'run'), patch.object(step_research_guard, 'repair_outline'), \
              patch.object(step_structure_guard, 'run'):
             with self.assertRaises(quality.ContentQualityError):step_research_guard.run('j', '比較')
-        self.assertEqual(audit.call_count, 2)
+        self.assertEqual(audit.call_count, 1)
         research.assert_not_called()
 
 
@@ -195,13 +195,15 @@ class QualityTests(unittest.TestCase):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard
         artifacts={'outline':{'meta':{'editorial_policy':current_policy()},'content_text':'### H2：比較'},'fact_sheet':{'content_text':''},
                    'fresh_sources':SOURCE,'content_contract':{'content_text':'{}'}}
+        def apply_outline_repair(*args):
+            artifacts['outline']['content_text'] += '\n\n比較する条件を明示する。'
         with patch.object(step_research_guard,'get_artifact',side_effect=lambda _,s:artifacts[s]), \
              patch.object(step_research_guard,'get_job',return_value={}), \
              patch.object(step_research_guard.anthropic,'Anthropic'), \
              patch.object(step_research_guard,'audit',side_effect=[report('comparison_conditions'),report()]), \
              patch.object(step_research_guard,'upsert_artifact',side_effect=lambda **kw:kw), \
              patch.object(step_fact_sheet,'run') as research, \
-             patch.object(step_content_contract,'run'),patch.object(step_research_guard,'repair_outline') as outline, \
+             patch.object(step_content_contract,'run'),patch.object(step_research_guard,'repair_outline',side_effect=apply_outline_repair) as outline, \
              patch.object(step_structure_guard,'run_before_research'):
             result=step_research_guard.run('j','比較')
         research.assert_not_called()
