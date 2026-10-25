@@ -346,7 +346,7 @@ def complete(job_id,client,*,article,outline,report,context,check_candidate):
         targets=title_targets(proposal,verdict,outline)
         if targets:
             previous=copy.deepcopy(proposal)
-            heading_request={'target_section_ids':targets,'failed_checks':verdict['checks'],
+            heading_request={'target_section_ids':targets,'failed_checks':[{'key':k,**row} for k,row in verdict['checks'].items()],
                 'sections':[e['section'] for e in proposal['outline_patch']['edits'] if e['id'] in targets],
                 'paragraphs':[e for e in proposal['article_edits'] if any(e['new'].find('#### '+s['section']['title'])>=0 for s in proposal['outline_patch']['edits'] if s['id'] in targets)]}
             title_model,_=get_step_config('content_repair')

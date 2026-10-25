@@ -193,7 +193,7 @@ def continue_recovery(job_id, keyword, state, api_key=None):
         and (cached_editorial.get('meta') or {}).get('result_sha256')==digest(cached_editorial['content_text'])
         and not get_optional_artifact(job_id,'editorial_completion_candidate'))
     cached_semantic_failure=False
-    if state.get('error_type')=='ContentQualityError' and state.get('current_step')=='content_audit':
+    if state.get('error_type') in ('ContentQualityError','AttributeError') and state.get('current_step')=='content_audit':
         candidate=get_optional_artifact(job_id,'editorial_completion_candidate')
         reviewed=get_optional_artifact(job_id,'tiered_editorial_finish_review')
         if candidate and reviewed and (reviewed.get('meta') or {}).get('request_sha256') and (reviewed.get('meta') or {}).get('result_sha256')==digest(reviewed['content_text']):
