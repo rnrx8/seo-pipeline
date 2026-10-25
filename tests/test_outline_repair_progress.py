@@ -21,8 +21,40 @@ class OutlineRepairProgressTests(unittest.TestCase):
             p = progress.prepare(a, report(str(n)), lambda: self.fail('legacy load'))
             self.assertEqual(p['next']['round'], n)
             a = {'content_text': f'revision{n}', 'meta': progress.completed(p, f'revision{n}')}
-        with self.assertRaisesRegex(ContentQualityError, '通算3回'):
-            progress.prepare(copy.deepcopy(a), report('new'), lambda: None)
+        with patch('pipeline.quality_budget.spending_limits_enabled',return_value=True):
+            with self.assertRaisesRegex(ContentQualityError, '通算3回'):
+                progress.prepare(copy.deepcopy(a), report('new'), lambda: None)
+        with self.assertRaisesRegex(ContentQualityError,'同じ回答要件'):
+            progress.prepare(copy.deepcopy(a), report('rephrased'), lambda: None)
+
+    def test_production_continues_new_obligation_but_limits_rephrased_old_one(self):
+        a={'content_text':'original','meta':{}}
+        def finding(n,decision):return {**report(str(n)), 'blueprint_issues':[{'decision_id':decision,'requirement_index':'0'}]}
+        with patch('pipeline.quality_budget.spending_limits_enabled',return_value=False):
+            for n in range(1,4):
+                p=progress.prepare(a,finding(n,'i01'),lambda:None)
+                a={'content_text':str(n),'meta':progress.completed(p,str(n))}
+            new=progress.prepare(a,finding(4,'i03'),lambda:None)
+            self.assertEqual(new['next']['round'],4)
+            with self.assertRaisesRegex(ContentQualityError,'同じ回答要件'):
+                progress.prepare(a,finding(5,'i01'),lambda:None)
+
+    def test_legacy_findings_migrate_only_from_matching_archived_revision(self):
+        a={'content_text':'before','meta':{}}
+        old=report('old');p=progress.prepare(a,old,lambda:None)
+        a={'content_text':'after','meta':progress.completed(p,'after')}
+        del a['meta']['outline_repair_progress']['history'][0]['obligation_ids']
+        archive={'content_text':'before'}
+        next_report={**report('new'),'blueprint_issues':[{'decision_id':'i03','requirement_index':'0'}]}
+        got=progress.prepare(a,next_report,lambda:None,lambda n:(old,archive))
+        self.assertIn('check:coverage',got['history'][0]['obligation_ids'])
+        with self.assertRaisesRegex(ContentQualityError,'過去指摘'):
+            progress.prepare(a,next_report,lambda:None,lambda n:(old,{'content_text':'different'}))
+
+    def test_unlocalized_evidence_failure_stays_counted_beside_new_decision(self):
+        r={**report('evidence'),'checks':[{'key':'evidence_support','status':'fail','reason':'根拠不足'}],
+           'blueprint_issues':[{'decision_id':'i03','requirement_index':'0'}]}
+        self.assertEqual(progress.obligations(r,{'content_text':'outline'}),['check:evidence_support','decision:i03:0'])
 
     def test_repeated_findings_no_change_and_external_edit_cannot_reset(self):
         a = {'content_text': 'before', 'meta': {}}
