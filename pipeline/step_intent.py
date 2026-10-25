@@ -1,10 +1,12 @@
 import json
 import re
+from datetime import datetime, timezone
 import anthropic
 from .ai import create_with_retry, get_step_config, message_text
-from .db import get_artifact, upsert_artifact
-from .production_brief import prepare, model_product_input, product_record
+from .db import get_artifact, get_optional_artifact, upsert_artifact
+from .production_brief import prepare, model_product_input, product_record, fingerprint
 from .reader_needs import POLICY, output_schema, validate, record, VERSION as NEEDS_VERSION
+from .intent_exploration import VERSION as METHOD_VERSION
 
 MODEL, MAX_TOKENS = get_step_config("search_intent")
 
@@ -35,6 +37,26 @@ QUERY_ATTRS_PROMPT = """\
 """
 
 SYSTEM_PROMPT = POLICY
+
+
+def _save_failed_analysis(job_id, message, sources, request, error):
+    """Retain the received response without accepting it or retrying a paid call."""
+    previous = get_optional_artifact(job_id, 'search_intent_failures')
+    history = json.loads(previous['content_text']) if previous else {'version': 1, 'attempts': []}
+    if history.get('version') != 1 or not isinstance(history.get('attempts'), list):
+        raise ValueError('Invalid saved search-intent failure history')
+    history['attempts'].append({
+        'at': datetime.now(timezone.utc).isoformat(), 'model': MODEL,
+        'source_sha256': fingerprint(sources), 'request_sha256': fingerprint(request),
+        'request': request,
+        'raw_response': message_text(message), 'stop_reason': getattr(message, 'stop_reason', None),
+        'input_tokens': getattr(getattr(message, 'usage', None), 'input_tokens', None),
+        'output_tokens': getattr(getattr(message, 'usage', None), 'output_tokens', None),
+        'error_type': type(error).__name__, 'validation_error': str(error),
+    })
+    upsert_artifact(job_id=job_id, step='search_intent_failures', content_type='application/json',
+                    content_text=json.dumps(history, ensure_ascii=False),
+                    meta={'diagnostic_only': True, 'completed_analysis': False})
 
 
 def _generate_query_attrs(client: anthropic.Anthropic, job_id: str, keyword: str, serp_text: str) -> dict:
@@ -92,16 +114,25 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     payload = {'input_sources':sources, 'production_brief':brief,
                'query_hints':attrs, 'product_context':cached,
                'product_materials':model_product_input(product_input) if new_product else None}
-    message = create_with_retry(client, model=MODEL, max_tokens=MAX_TOKENS,
+    request = dict(model=MODEL, max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT + '\nselectedのidはi01等。採用した問いを調査・構成へ引き継ぐ。商品理解が既存の場合は資料全文を再分析せず、その不明点と条件を維持する。商品理解のvalue_connectionsはこのキーワードだけの訴求へ限定せず、資料から説明できる利用状況と価値を整理する。',
         output_config=output_schema(new_product=new_product),
         messages=[{'role':'user','content':json.dumps(payload, ensure_ascii=False)}])
-    if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
-        from .content_quality import ContentQualityError
-        raise ContentQualityError('検索意図分析が正常終了していません。古い読者理解を流用しません。')
-    value = json.loads(message_text(message))
-    validate(value, sources, product_material_ids=[m['id'] for m in product_input['materials']],
-             has_product=bool(brief['product']), has_cta=bool(brief['cta']))
+    message = create_with_retry(client, **request)
+    try:
+        if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
+            from .content_quality import ContentQualityError
+            raise ContentQualityError('検索意図分析が正常終了していません。古い読者理解を流用しません。')
+        value = json.loads(message_text(message))
+        validate(value, sources, product_material_ids=[m['id'] for m in product_input['materials']],
+                 has_product=bool(brief['product']), has_cta=bool(brief['cta']), require_exploration=True)
+    except Exception as error:
+        try:
+            _save_failed_analysis(job_id, message, sources, request, error)
+        except Exception as save_error:
+            from .content_quality import ContentQualityError
+            raise ContentQualityError('不合格の検索意図応答を保存できませんでした: ' + str(error)) from save_error
+        raise
     if new_product:
         product = product_record(value['product_understanding'], product_input)
     else:
@@ -111,7 +142,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         meta={'input_sha256':product['input_sha256'], 'cache_status':cache_status, 'fact_status':'supplied_not_verified'})
     needs = record(value, brief=brief, intent_sources=sources)
     upsert_artifact(job_id=job_id, step='reader_needs', content_type='application/json',
-        content_text=json.dumps(needs, ensure_ascii=False), meta={'version':NEEDS_VERSION})
+        content_text=json.dumps(needs, ensure_ascii=False), meta={'version':NEEDS_VERSION, 'analysis_method_version':METHOD_VERSION,
+              'analysis_method_sha256':needs['analysis_method_sha256']})
     return upsert_artifact(job_id=job_id, step='search_intent', content_type='text/markdown',
         content_text=value['analysis'], meta={'model':MODEL, 'reader_needs_version':NEEDS_VERSION,
+        'analysis_method_version':METHOD_VERSION, 'analysis_method_sha256':needs['analysis_method_sha256'],
         'input_tokens':message.usage.input_tokens, 'output_tokens':message.usage.output_tokens})

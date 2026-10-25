@@ -1,3 +1,4 @@
+from heading_review_fixture import with_heading_reviews
 import copy
 import json
 import os
@@ -52,7 +53,7 @@ class CompactQualityFlowTests(unittest.TestCase):
         if 'review' in root['properties']:
             result['review']={'needed':review,'block_ids':[self.blocks[2]['id']] if review else [],
                               'source_urls':[self.pages[0]['url']],'reason':'契約条件を確認'}
-        return result,NS(input_tokens=10,output_tokens=2)
+        return with_heading_reviews(result, request),NS(input_tokens=10,output_tokens=2)
 
     def test_brief_keeps_every_question_answer_limit_and_user_setting_without_quoting_twice(self):
         before=copy.deepcopy(self.requirements)
@@ -123,7 +124,7 @@ class CompactQualityFlowTests(unittest.TestCase):
                     if c['key'] in ('coverage','evidence_support'):
                         c.update(status='fail',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'fixture'}],
                                  requires_source_check=c['key']=='evidence_support')
-            return result,usage
+            return with_heading_reviews(result, request),usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,contract={},requirements=self.requirements,sources=self.sources)
         self.assertEqual(calls,['tiered_audit_research','tiered_research_evidence_screen'])
@@ -163,7 +164,7 @@ class CompactQualityFlowTests(unittest.TestCase):
                 c['requires_source_check']=False
                 if c['key']=='evidence_support':
                     c.update(status='fail',reason='採用済みの決済方法別条件が構成から欠落。条件を補う。',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'条件'}])
-            return result,usage
+            return with_heading_reviews(result, request),usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
                             contract={},requirements=self.requirements,sources=self.sources)
@@ -180,7 +181,7 @@ class CompactQualityFlowTests(unittest.TestCase):
                     c['requires_source_check']=False
                     if c['key']=='comparison_conditions':c.update(status='fail',reason='契約期間が欠落',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'期間'}])
                     if c['key']=='evidence_support':c.update(status='fail',requires_source_check=True,reason='機能表との対応確認が必要',affected_blocks=[{'id':self.blocks[2]['id'],'reason':'機能'}])
-            return result,usage
+            return with_heading_reviews(result, request),usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
                             contract={},requirements=self.requirements,sources=self.sources)
@@ -203,7 +204,7 @@ class CompactQualityFlowTests(unittest.TestCase):
         def send(job,step,request):
             value,usage=self.reply(request)
             value['checks'][0]['requires_source_check']='false'
-            return value,usage
+            return with_heading_reviews(value, request),usage
         with patch('pipeline.tiered_research.checked_request',side_effect=send) as call:
             with self.assertRaises(cq.ContentQualityError):
                 cq.audit(None,stage='research',text=self.text,facts='',outline=self.text,
@@ -252,20 +253,18 @@ class CompactQualityFlowTests(unittest.TestCase):
                 if mode=='source':value['review']['source_urls']=['https://invented.example/']
                 elif mode=='block':value['review']['block_ids']=['block-fake']
                 else:del value['review']
-                return value,usage
+                return with_heading_reviews(value, request),usage
             with self.assertRaises(cq.ContentQualityError):self.run_evidence(send)
 
-    def test_known_source_trailing_slash_does_not_require_another_model_response(self):
+    def test_unfetched_non_root_trailing_slash_is_not_the_same_source(self):
         calls=[]
         def send(job,step,request):
             calls.append(step)
             value,usage=self.reply(request,review=step.endswith('screen'))
             value['review']['source_urls']=[self.pages[0]['url']+'/']
-            return value,usage
-        checks,_,trace=self.run_evidence(send)
-        self.assertTrue(all(c['status']=='pass' for c in checks))
-        self.assertEqual(len(calls),2)
-        self.assertEqual(trace[0]['review']['source_urls'],[self.pages[0]['url']])
+            return with_heading_reviews(value, request),usage
+        with self.assertRaises(cq.ContentQualityError):self.run_evidence(send)
+        self.assertEqual(len(calls),1)
 
     def test_document_hash_does_not_trigger_paid_sampling(self):
         calls=[]

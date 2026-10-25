@@ -12,6 +12,7 @@ from pipeline.outline_policy import current_policy
 from test_claim_evidence import fixture as claim_fixture
 from test_reader_value_flow import plan_fixture,response
 from pipeline import research_requirements as req
+from reader_journey_fixture import outline_journey
 
 
 def fixture():
@@ -31,7 +32,10 @@ def fixture():
             'after':{'resolved_questions':['閲覧と送信にはどのプランが必要か'],'understanding':'閲覧と送信で適用条件が異なる',
                 'decision':'自分の用途に必要なプランを選べる','action':'','emotion':''},'next_questions':[],'marketing':None},example='',
         format='比較表',items=['利用したい動作','適用プラン'],cta='',budget={'chars':600,'importance':5,'reason':'二つの動作と条件を比較する'})
-    value={'titles':['閲覧と送信の利用条件を比較'],'lead_direction':'知りたい条件と記事で分かることを簡潔に示す',
+    value={'titles':['閲覧と送信の利用条件を比較'],
+           'reader_focus':{'need_ids':['i01'],'motivation_ref':None,'felt_response':'',
+               'current_understanding':'利用したい動作は決まっている','open_question':'どのプランが必要か','desired_experience':''},
+           'lead_direction':bp.LEAD_DIRECTIONS['direct_answer'],
            'sections':[section],'omissions':[]}
     return plan,pages,matrix,ctx,value
 
@@ -46,7 +50,7 @@ def verdict(ctx, *, missing=None,kind='answer_missing'):
         rows[d['id']]={'requirements':{str(i):{'status':kind if missing==i else 'pass','reason':'動作と実条件を照合した具体的説明',
             'section_ids':['s01']} for i in range(len(d['answer_requirements']))},
             'order':{'status':'pass','reason':'用途の回答が商品紹介に先行','section_ids':['s01']}}
-    result={'blueprint_reviews':rows,'reader_progression_reviews':{sid:{'status':'pass','reason':'この章の回答範囲・変化・接続を合成入力で照合'} for sid in ctx.get('progression_section_ids',[])}}
+    result={'blueprint_reviews':rows,'reader_progression_reviews':{sid:{'status':'pass','reason':'この章の回答範囲・変化・接続を合成入力で照合','journey':outline_journey(ctx,sid)} for sid in ctx.get('progression_section_ids',[])}}
     if 'lead_direction' in ctx:
         from pipeline.lead_review import KEYS
         result['lead_review']={key:{'status':'pass','reason':'合成したリード確認結果','affected_blocks':[]} for key in KEYS}

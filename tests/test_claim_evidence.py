@@ -8,7 +8,7 @@ from pipeline import claim_evidence as ce, research_requirements as req
 from pipeline.content_quality import ContentQualityError
 from pipeline.generation_context import decision_bundle,authoring_intent,registered_for_authoring,repair_requirements
 from pipeline.source_spans import indexed_sources,expand_references,span_schema
-from pipeline.tiered_research import validate_visible_matrix,needs_adjudication
+from pipeline.tiered_research import validate_visible_matrix,needs_adjudication,record_source_review
 
 
 def fixture():
@@ -27,6 +27,27 @@ def fixture():
 
 
 class ClaimEvidenceTests(unittest.TestCase):
+    def test_reviewed_source_survives_empty_claims_for_optional_omission_only(self):
+        for quoted in (True,False):
+            plan,pages,value=fixture();question=plan['items'][0]
+            question.update(required=False,priority='supporting',source_requirement='expert_allowed',official_check_required=False)
+            item=value['items'][0]
+            item.update(claims=[],official_checked_urls=[],omission_reason='本文では補足を使わない')
+            if not quoted:item['evidence'][0]['quote']='提示原文にはない引用'
+            req.validate_matrix(value,plan,pages)
+            self.assertEqual(item['evidence'],[])
+            self.assertTrue(item['claim_evidence'])
+            record_source_review(value['items'],pages[:1])
+            # The second URL was not visible and must not be recorded.
+            self.assertEqual(item.get('reviewed_source_urls',[]),[pages[0]['url']] if quoted else [])
+            req.propose_optional_omissions(value['items'],plan,pages)
+            gaps=req.validate_matrix(value,plan,pages)
+            self.assertEqual(bool(gaps),not quoted)
+            self.assertEqual(req.accepted_facts(value,plan),'')
+            if quoted:
+                value.update(coverage_sufficient=False,coverage_reason='読者判断に必要',coverage_issues=[{'id':'q1','reason':'省略不可'}])
+                self.assertTrue(req.validate_matrix(value,plan,pages))
+
     def test_answer_is_derived_from_individual_claims_and_scoped_evidence(self):
         plan,pages,value=fixture();value['items'][0]['answer']='古い送信可能という合成文'
         value['items'][0]['claims'][0]['id']='untrusted-old-id'
@@ -40,6 +61,8 @@ class ClaimEvidenceTests(unittest.TestCase):
         props=req.MATRIX_SCHEMA['format']['schema']['properties']['items']['items']['properties']
         for key in ('answer','publication_conditions','status','basis'):self.assertNotIn(key,props)
         self.assertIn('conditions',props['claims']['items']['required'])
+        for key in ('text','subject','operation'):
+            self.assertEqual(props['claims']['items']['properties'][key]['minLength'],1)
 
     def test_two_operations_keep_their_own_plan_and_source_mapping(self):
         plan,pages,value=fixture();second=copy.deepcopy(value['items'][0]['claims'][0])

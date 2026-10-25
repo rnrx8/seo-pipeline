@@ -4,7 +4,7 @@ import json
 import anthropic
 from .ai import create_with_retry, get_step_config, is_openai_model
 from .content_quality import response_text, ContentQualityError
-from .evidence_policy import EVIDENCE_POLICY
+from .evidence_policy import EVIDENCE_POLICY, SOURCE_REQUIREMENT_PLANNING_POLICY
 from .db import upsert_artifact
 from .reader_decisions import POLICY as DECISION_POLICY, PLAN_REVIEW_POLICY
 
@@ -33,6 +33,7 @@ from .competitor_context import GAP_POLICY
 PLAN_REVIEW_SYSTEM += GAP_POLICY + '\ncontent_gapsの不足候補に具体的な確認箇所があるか、未取得・抜粋外の不明を全記事の不足へ広げていないか確認し、問題はoverallに指摘する。'
 from .reader_needs import ANSWER_SCOPE_POLICY
 PLAN_REVIEW_SYSTEM += '\n' + ANSWER_SCOPE_POLICY
+PLAN_REVIEW_SYSTEM += '\n' + SOURCE_REQUIREMENT_PLANNING_POLICY
 PLAN_REVIEW_SCHEMA={'format':{'type':'json_schema','schema':{'type':'object','properties':{
     'valid':{'type':'boolean'},'issues':{'type':'array','items':{'type':'object','properties':{
         'id':{'type':'string'},'reason':{'type':'string'}},'required':['id','reason'],'additionalProperties':False}}},
@@ -48,6 +49,9 @@ def review_schema(plan):
         'official_check_required':{'type':'boolean'}},
         'required':['answer_scope','source_requirement','official_check_required'], 'additionalProperties':False}
     ids = [q['id'] for q in plan['items']]
+    # Decision-level findings belong to overall; only question IDs can be
+    # addressed as individual research obligations by the repair stage.
+    root['properties']['issues']['items']['properties']['id']['enum'] = [*ids, 'overall']
     root['properties']['claim_checks'] = {'type':'object', 'properties':{key:copy.deepcopy(check) for key in ids},
                                           'required':ids, 'additionalProperties':False}
     root['required'].append('claim_checks')

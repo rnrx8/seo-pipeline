@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v13-reread-capacity'
+VERSION = 'focused-research-v14-linked-conditions'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -36,12 +36,18 @@ def enabled():
     return os.getenv('QUALITY_RESEARCH_ROUTING', '') == 'focused'
 
 
-def related_pages(pages, candidates):
+def related_pages(pages, candidates, *, source_catalog=None):
     from .fresh_sources import normalize_url
+    from .research_verification import subject_sources
     urls = {normalize_url(u) for i in candidates for u in i.get('official_checked_urls', [])}
     urls.update(normalize_url(r['url']) for i in candidates for r in i.get('evidence', []))
     urls.update(normalize_url(u) for i in candidates for u in i.get('reviewed_source_urls', []))
-    selected = [p for p in pages if normalize_url(p['url']) in urls]
+    # A citation to a product overview must not hide already-fetched linked
+    # pricing/FAQ conditions. Use the raw catalog for link identity, but return
+    # only bodies in this request's actual visible view. Never fetch here.
+    linked = subject_sources(source_catalog if source_catalog is not None else pages, urls)
+    selected_urls = {normalize_url(p['url']) for p in linked}
+    selected = [p for p in pages if normalize_url(p['url']) in selected_urls]
     # An unavailable official body is not a reason to hide saved secondary sources.
     return selected if any(p.get('text') and p.get('status', 'success') == 'success' for p in selected) else pages
 
@@ -189,7 +195,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
         pending_ids = {i['id'] for i in pending}
         # Rereading may select one of conflicting sources. Independent review
         # must still see the original alternatives, not only the selected side.
-        focused = related_pages(packed, pending + [i for i in initial_candidates if i['id'] in pending_ids])
+        focused = related_pages(packed, pending + [i for i in initial_candidates if i['id'] in pending_ids],
+                                source_catalog=selected)
         complete = has_all_saved_bodies(focused, selected)
         result = ask(pending, focused, 'gpt-6.1-sol', 'audit', FOCUS_POLICY, True, complete)
         if any(needs_saved_expansion(i) for i in result['items']) and not complete:

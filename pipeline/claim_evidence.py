@@ -24,7 +24,9 @@ def array(item): return {'type':'array','items':item}
 STR = {'type':'string'}
 INDEX = {'type':'integer','minimum':0}
 CLAIM_SCHEMA = obj({
-    'text':STR, 'subject':STR, 'operation':STR,
+    'text':{'type':'string','minLength':1},
+    'subject':{'type':'string','minLength':1},
+    'operation':{'type':'string','minLength':1},
     'answer_type':{'type':'string','enum':['sourced','proposal','inference']},
     'basis':{'type':'string','enum':['primary','guidance','expert','corroborated','historical','unresolved','omitted']},
     'supports_current_conclusion':{'type':'boolean'},

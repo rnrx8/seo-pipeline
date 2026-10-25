@@ -20,16 +20,16 @@ class CompletionTests(unittest.TestCase):
         self.env.start(); self.addCleanup(self.env.stop)
         self.no_network = patch.object(socket.socket, 'connect', side_effect=AssertionError('No network'))
         self.no_network.start(); self.addCleanup(self.no_network.stop)
-        self.text = '# 商品比較\n\n## 選び方\n\nどちらの商品も、持ち運びの基本的な機能は、そろっています。\n\n自分に合うものを選べます。'
+        self.text = '# 商品比較\n\n## 選び方\n\n持ち運ぶ場面で選びます。\n\nどちらの商品も、持ち運びの基本的な機能は、そろっています。\n\n自分に合うものを選べます。'
         self.new = 'どちらの商品も、持ち運びの基本的な機能がそろっています。'
-        self.block = content_blocks(self.text)[2]['id']
+        self.block = next(b['id'] for b in content_blocks(self.text) if b['text'].startswith('どちらの商品も'))
         self.ctx = dict(facts='確認済みの事実', outline='## 選び方', contract={}, requirements={'custom_prompt':'読者に寄り添う'}, sources='資料')
         self.base = self.report(self.text)
 
     def report(self, text):
         fingerprint = quality.snapshot(text, **self.ctx)
         loc = {'id': self.block, 'reason': '主述が不自然'}
-        values = phases(fingerprint)
+        values = phases(fingerprint, text)
         values['language']['checks'][0].update(status='fail', affected_blocks=[loc])
         return dict(stage='article', snapshot=fingerprint, attempt=2, policy_version=quality.POLICY_VERSION,
             valid=False, phases=values, structural_issues=[], readability_issues=[], evidence_pending=False,

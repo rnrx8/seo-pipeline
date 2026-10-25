@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from .step_cta_inject import cta_placement_issues
 
-from .db import get_artifact, get_job, upsert_artifact
+from .db import get_artifact, get_optional_artifact, get_job, upsert_artifact
 from .article_quality import validate_delivery
 from .readability import readability_issues
 from .claim_scope import scope_issues
@@ -21,11 +21,20 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     violations += cta_placement_issues(article['content_text'], (article.get('meta') or {}).get('cta_placement'), (article.get('meta') or {}).get('section_map'))
     outline = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
+    recovery_artifact = get_optional_artifact(job_id, 'editorial_recovery')
+    recovery = None
+    if recovery_artifact:
+        try:
+            recovery = json.loads(recovery_artifact['content_text'])
+            if not isinstance(recovery, dict) or recovery.get('status') != 'completed':
+                raise ValueError('not completed')
+        except (ValueError, TypeError):
+            violations.append({'key': 'editorial_recovery_pending', 'reason': '上流修正と全文QAが未完了です。'})
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
     try:
         from .research_requirements import require_matrix
         from .article_revisions import RUN
-        if RUN.get():
+        if RUN.get() or recovery_artifact:
             from .research_requirements import _require_matrix_strict
             _require_matrix_strict(job_id)
         else:
@@ -44,7 +53,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         context = dict(text=article['content_text'], facts=facts, outline=outline, contract=contract,
                        requirements=final_review_requirements(job, keyword), sources=sources)
         from .article_revisions import RUN
-        if RUN.get():
+        if recovery_artifact and (not isinstance(recovery, dict) or recovery.get('final_snapshot') != snapshot(**context)):
+            violations.append({'key': 'editorial_recovery_not_current', 'reason': '上流修正の最終確認が現在の原稿へ対応していません。'})
+        if RUN.get() or recovery_artifact:
             from .content_quality import _require_audit_strict
             _require_audit_strict(audit_report, snapshot(**context), stage="article", context=context)
         else:
@@ -65,6 +76,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         meta={"stage": "final_article", "valid": not violations},
     )
     if violations:
+        if recovery_artifact:
+            from .editorial_recovery import EditorialRecoveryError
+            raise EditorialRecoveryError(f'Final recovered article violates content contract: {violations}')
         raise ContentQualityError(f"Final article violates content contract: {violations}")
     from .article_revisions import seal
     seal(job_id)

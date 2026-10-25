@@ -5,29 +5,34 @@ import copy
 import hashlib
 import json
 import re
+from .lead_authoring import READER_FOCUS_SCHEMA, DIRECTION_SCHEMA, LEAD_DIRECTIONS, PLANNING_POLICY as READER_FOCUS_POLICY, checked_focus, focus_context
 
-VERSION = 'editorial-blueprint-v2-reader-progression'
+VERSION = 'editorial-blueprint-v4-reader-route'
 POLICY = '''【読者の理解・判断を設計する構成】
 editorial_blueprintを唯一の構成としてJSONで返す。Markdownはコードで描画するため生成しない。
-sectionsは記事順の平坦な配列。idはs01等の一意なID、parent_idは直前の親のID（H2は空文字）。
-各節のquestion/conclusion/answer_elementsに問い・結論・説明事項を記し、reader_progressionに章の前後の変化を設計する。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
+sectionsは記事順の平坦な配列。idは階層にかかわらずsに数字だけを続けた一意なID（s01等）、parent_idは直前の親のID（H2は空文字）。
+記事の主な宛先と読み始める時点の理解・迷いを、ユーザーのターゲット指定と採用した主要な問いから選ぶ。その人が知りたいことを起点に、各節のquestion/conclusion/answer_elementsへ問い・結論・説明事項、reader_progressionへ章の前後の変化を設計する。章の開始状態は前章で分かったことを引き継ぎ、同じ人を毎章初学者へ戻さない。主な宛先を定めても関連する読者や必要な問いを切り捨てず、条件の違いは該当章で扱う。完成本文や料金表の全セルは書かない。重要節では必要な区別・理由・手順・選ぶ条件を具体化する。「詳しく説明」のみは不足。親節は章の結論と子節の役割、子節は具体的な説明を担い、全欄へ同じ説明を複製しない。
 need_idsは読者分析、decision_idsは読者の判断、research_idsは調査質問、answer_elements.claim_idsはaccepted_claimsのIDを参照する。need_idsには部分的に扱う関連ニーズも含められ、そのすべての判断をこの節で完了させる必要はない。decision_idsに対応する分析IDは保持する。計画のresearch_idsは調査の案内であり、他の質問の採用済み主張を関連する判断へ再利用してよい。関連性と回答の十分さは独立確認で評価する。IDの割当ては充足の証明ではない。主張の実条件は参照IDから描画されるため条件・数値を別欄に再入力しない。確認済みの主張を都合よく一般化・組み替えない。一般的な助言・架空の場面例は事実と区別し、効果・料金・専門判断を創作しない。
-H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。感情が選び方に関わる章は、beforeに何を得たい・守りたいからためらうのかを必要な範囲で具体化し、answer_elementsでそれに応える説明・具体策・特徴の作用を割り当てる。afterへ「安心」「期待」と書くだけで、その変化を生む説明を設計済みとしない。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
-H3/H4のreader_progressionは独自の変化を担うときだけ差分を記し、親と重複する場合はnull。親の開始状態・読後状態を子節すべてへ複製しない。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
+H2はreader_progressionでbefore（理解済みのこと・未解決の問い・必要なら心理仮説）、after（この章で解消する疑問・理解・判断・行動・狙う感情の変化）、next_questions（残る/新たに生まれる/意図して意識してもらう問い）、marketing（記事目的への役割・変化を生む説明・次の行動）を設計する。その章の状況・気持ちと回答のつながりは、下記の共通指針に沿ってbeforeとanswer_elementsへ設計する。この章が担う一歩でよく、記事全体の課題を毎章で完結させない。afterの理解/判断/行動は必要なものだけ、emotionは狙う変化がある場合だけ記入する。beforeのemotionは読者全員の実態ではなく設計上の仮説。
+H3/H4も、その節の問いを読む時点で何が分かり、何に迷い、何を得たい・避けたいかを判断する。親章や記事全体の欲求を繰り返すのでなく、その節の選択・行動に関わる固有のためらいや期待があれば、既存のreader_progressionへbefore/afterの差分と、それに応えるanswer_elementsを記す。親と同じ役割で独自の変化を担わない節はnullでよく、全節に心理を創作・複製しない。親と同じ分析IDを参照することだけをnullの理由にしない。既に解消した不安や初学者の状態へ毎節戻さず、次の疑問が生まれるなら解消した問いとのつながりを残す。次の問いがなければnext_questions=[]で完結する。same_sectionはこの節で解消（target_section_idは自分）、next_sectionは後続の節IDへ引継ぎ、related/out_of_scopeはtarget_section_idを空文字にして扱う理由を記す。単なる関連記事を読者の次の疑問と偽らず、前章の読後状態から次章の開始状態がつながるようにする。
 マーケティング目的に沿って認識・感情・行動の変化を意図してよい。潜在課題/願望への気づき、懸念の重要性の認識、新しい選択肢、利用後の変化のイメージ、期待・共感・安心・納得、比較・相談・登録への誘導、問いかけや価値の予告を設計できる。marketingは必要な章だけ指定し、不要ならnull。次の行動は認知・理解が目的なら空文字でもよい。全章にCTAや同じ感情を要求しない。脅迫、虚偽の恐怖/効果/緊急性、判断に重要な条件の隠蔽は行わない。商品の適合条件と確認済み事実を保ち、心理は仮説、感情変化は狙いであって実測効果や全員の感情として断定しない。合理的な助言や価値説明に効果率・同一文章の引用を一律要求しない。
 具体例exampleは役立つ節だけ記入し、不要なら空文字。説明用の仮の場面/操作例とし、実体験や調査結果に偽装しない。
 主回答の概要から必要な詳細まで連続して説明し、その後に個別の商品選択や補足へ進む。方法選びが問いなら、概要に条件に合う方法の短い推奨と理由を示し、比較と各方法で確かめられる設計にする。この推奨は主回答であり、下位の商品紹介による置き換えと混同しない。必要な前提は先に置ける。商品名一覧で方法の違いと向く状況の回答を代替しない。単一手順に不要な比較章を追加しない。depends_onは回答順序に反映し、短い概要だけで個別商品の長い推薦・登録誘導へ進まない。
 採否と説明を確定してからH2全体のbudgetを見積もる（子節込み）。子節のbudgetはchars=0/importance=0/reason空文字。競合文字数は参考であり合計を合わせない。明示的な文字数指定では重複と補足を先に減らし主回答を薄めない。文字数だけを理由に必須論点を削らない。
-omissionsには省く内容と読者判断を損なわない理由を記録する。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
-リード方針は、主題へどう入り、読者にどんな助けを伝えるかという編集上の狙いを簡潔に示す。分析した背景・心理は内容と言葉を選ぶ材料であり、その説明を冒頭の独白や長い人物紹介へ転記する指示ではない。必要な気持ちや迷いを選び、本文を読む理由につなげる。各文の内容・順番・言い回しを逐一指定する台本や、主題・背景・比較軸・推薦・読後判断を別々に必須化する一覧にしない。共通リード基準に沿い、執筆時に短い一続きの導入へ表せる狙いへ絞る。完成リードや共感テンプレートは作らない。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
+omissionsには省く内容と読者判断を損なわない理由を記録する。調査質問IDごとに1件とし、同じ質問で省く細目が複数ある場合は一つのreasonへまとめ、同じresearch_idを重複させない。同じ質問の採用済み部分を使い、未確認の細部だけ省く場合も、その質問IDと省く範囲を記録してよい。essential/requiredの主要回答全体は省略不可。supportingは全件の列挙・採用を求めない。FAQは既出回答を繰り返さず必要な場合だけ。
+lead_directionはschemaの4つの入口（体験・望む変化・判断の難しさ・直接回答）から、reader_focusの人へ合う展開を一つ選ぶ。具体的な事情・実感・望み・今の問いはreader_focusから引き継ぎ、別欄で再要約して別の事情を足さない。文章の穴埋めテンプレートではなく説明の入口の選択であり、実際の言葉・文数・人称は素材と記事目的に合わせる。予告は実際の章の回答と読後判断へ合わせ、何を先に答え何を本文へ任せるかはユーザー指定と記事目的を守る。各H2は共通基準「親見出しの約束と商品紹介の役割」に従い、選定基準と商品の詳しい推薦を同じ問いにすり替えない。CTAは読者設計のcta_roleを守り、商品が役立つ状況と章の読後判断に合う位置だけをctaで指定する。omit/deferならCTAを設計しない。内部ID・分析ラベル・掲載判断の管理文を完成記事へ出さない。
 '''
+POLICY += '\n' + READER_FOCUS_POLICY
+from .reader_journey import PLANNING_POLICY as JOURNEY_PLANNING_POLICY, REVIEW_POLICY as JOURNEY_REVIEW_POLICY
+POLICY += '\n'+JOURNEY_PLANNING_POLICY
 REVIEW_POLICY = '''【編集設計の個別確認】
 blueprint_reviewsを読者判断ごと・answer_requirementsの0始まり番号ごとに判定する。割当てID・表・見出し・出典があるだけでpassにしない。conclusion/answer_elements/reader_progressionと実際の主張・条件を照合し、読者が比較・理解・実行するための説明が設計されているかを確認する。
 statusはpass/answer_missing/evidence_missing。説明や具体性の欠落はanswer_missing、必要な事実が採用資料にない場合だけevidence_missing。supportingの合理的省略はomittedを許可する。主要判断の不足は補足や商品紹介の充実で相殺しない。
-section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは、主回答の詳細を説明せずに個別商品の長い推薦・不要な補足で中断すること、depends_onとの不整合、子節と親の問いの不一致を確認する。概要の条件付きの方法推奨は主回答なので、それ自体を順序違反にしない。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsの各節を個別に確認する。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
+section_idsは実際に回答する節、欠落時は直すべき最寄りの節を示す。orderは、主回答の詳細を説明せずに個別商品の長い推薦・不要な補足で中断すること、depends_onとの不整合、子節と親の問いの不一致を確認する。概要の条件付きの方法推奨は主回答なので、それ自体を順序違反にしない。好みだけではfailにしない。reasonに設計された回答または不足を具体的に示す。reader_progression_reviewsはprogression_section_idsにある全節（reader_progressionがnullの子節も含む）を個別に確認する。計画欄の有無で評価を省略しない。この章が解消する範囲と実際の回答要素、読後の理解/判断/行動、狙う感情を生む説明、次の問いが生じる理由と引継ぎ先の回答、記事目的への役割が対応するか確認する。各子節の問いと回答要素を読み、その節の判断に必要な固有のためらい・欲求を確認する。親章の別の子節にある説明で、その子節の不足を相殺しない。親章全体としての流れも別に確認する。必要な差分が欠ける場合は該当する子節を理由に示し、説明設計の不足として扱う。単にnullであることや感情を強める好みは欠陥にしない。子節は親から引継ぐ状態を踏まえ、記事全体を毎章で解決することや、親の全要素を各子節へ要求しない。不要な感情変化・次の問い・marketingがないことは合格。感情への働きかけ、潜在課題の顕在化、商業的な誘導があること自体を不合格理由にしない。好みや強さの差と、説明不足・根拠不足・遷移の不整合を区別し、欠陥を具体的に示す。statusはpass/answer_missing/evidence_missing。モデルから全体validは返さず、個別結果からコードで集計する。
 '''
 from .lead_review import POLICY as LEAD_REVIEW_POLICY
 REVIEW_POLICY+='\n'+LEAD_REVIEW_POLICY
+REVIEW_POLICY+='\n'+JOURNEY_REVIEW_POLICY
 
 
 def fail(message):
@@ -65,10 +70,12 @@ SECTION_SCHEMA = obj({
     'need_ids':STRINGS,'decision_ids':STRINGS,'research_ids':STRINGS,
     'question':STRING,'conclusion':STRING,
     'answer_elements':{'type':'array','minItems':1,'items':obj({'instruction':STRING,'claim_ids':STRINGS})},
-    'reader_progression':nullable(PROGRESSION_SCHEMA),'example':STRING,
+    'reader_progression':{**nullable(PROGRESSION_SCHEMA),
+        'description':'level=2はまとめを含め必ずobject。before・afterで章の読者の変化を設計する。nullはlevel=3/4で親から引き継ぐ場合のみ。'},'example':STRING,
     'format':{'type':'string','enum':['文章','箇条書き','番号付きリスト','比較表','データ表']},
     'items':STRINGS,'cta':STRING,'budget':BUDGET_SCHEMA})
-SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},'lead_direction':STRING,
+SCHEMA = obj({'titles':{'type':'array','minItems':1,'maxItems':3,'items':STRING},
+    'reader_focus':READER_FOCUS_SCHEMA,'lead_direction':DIRECTION_SCHEMA,
     'sections':{'type':'array','minItems':1,'items':SECTION_SCHEMA},
     'omissions':{'type':'array','items':obj({'research_id':STRING,'reason':STRING})}})
 def model_output_config(schema):
@@ -159,6 +166,7 @@ def canonicalize_research_refs(value, ctx):
 def validate(value, ctx):
     """Structural referential integrity only; semantic acceptance belongs to review."""
     validate_shape(value,SCHEMA)
+    checked_focus(value['reader_focus'],ctx['reader_design'])
     sections=value['sections'];seen={};stack={};h2_titles=set()
     needs={n['id'] for n in ctx['reader_design'].get('reader_needs',[])}
     decisions={d['id']:d for d in ctx['reader_decisions']};questions={q['id']:q for q in ctx['topics']}
@@ -219,6 +227,12 @@ def trace(value, ctx):
 def render(value, ctx):
     lines=['# 記事構成案','', '### タイトル案','']
     lines += ['- '+t for t in value['titles']]
+    focus=focus_context(value['reader_focus'],ctx['reader_design'])
+    lines += ['', '### 記事の宛先と読み始める時点', '']
+    for key,label in [('situation','中心の事情（仮説）'),('felt_response','本人の実感（仮説）'),
+                      ('desired_experience','望む具体的な体験'),('current_understanding','既に考えていること'),
+                      ('open_question','今答えを必要とする問い')]:
+        if focus[key]:lines.append('- '+label+'：'+focus[key])
     lines += ['', '### リード文の設計方針','',value['lead_direction'],'']
     def field(name, val):lines.append('- '+name+'：'+val)
     for s in value['sections']:
@@ -301,7 +315,8 @@ def review_config(config, ctx):
         entries[d['id']]=obj({'requirements':obj(checks),'order':obj({
             'status':{'type':'string','enum':['pass','fail']},'reason':STRING,'section_ids':refs})})
     root['properties']['blueprint_reviews']=obj(entries);root['required'].append('blueprint_reviews')
-    progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING})
+    from .reader_journey import schema as journey_schema
+    progression_check=obj({'status':{'type':'string','enum':['pass','answer_missing','evidence_missing']},'reason':STRING,'journey':journey_schema()})
     root['properties']['reader_progression_reviews']=obj({sid:copy.deepcopy(progression_check) for sid in ctx.get('progression_section_ids',[])})
     root['required'].append('reader_progression_reviews')
     if 'lead_direction' in ctx:
@@ -351,15 +366,26 @@ def apply_review(report, value, ctx):
     return report
 
 
-def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
+def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=()):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
-    expected={'edits','delete_ids','section_order'}|({'lead_direction'} if allow_lead else set())
+    expected=({'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
+              |({'omission_edits'} if omission_targets else set()))
     if set(response)!=expected:fail('編集設計の局所修正形式が不正です。')
     if allow_lead:
         lead=response['lead_direction']
-        if not isinstance(lead,str) or not lead.strip() or lead==value['lead_direction']:
+        candidate['reader_focus']=checked_focus(response['reader_focus'],ctx['reader_design'])
+        if not isinstance(lead,str) or not lead.strip() or (lead==value['lead_direction'] and candidate['reader_focus']==value['reader_focus']):
             fail('指摘されたリード設計が未修正または空です。')
         candidate['lead_direction']=lead
+    if omission_targets:
+        omissions={o['research_id']:o for o in candidate['omissions']};changed=set()
+        for edit in response['omission_edits']:
+            qid=edit['research_id']
+            if qid not in omission_targets or qid not in omissions or qid in changed:
+                fail('対象外・重複・新規の省略項目は修正できません。')
+            if not isinstance(edit['reason'],str) or not edit['reason'].strip() or edit['reason']==omissions[qid]['reason']:
+                fail('省略理由が空または未修正です。')
+            omissions[qid]['reason']=edit['reason'];changed.add(qid)
     for edit in response['edits']:
         sid=edit['id'];s=edit['section']
         if sid in seen or sid!=s['id'] or (sid not in targets and (not structural or sid in by_id)):fail('対象外・重複の節を修正できません。')
@@ -384,20 +410,29 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False):
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_config(*, allow_lead=False):
+def repair_schema(*, allow_lead=False, allow_omissions=False):
     fields={
         'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
         'delete_ids':STRINGS,'section_order':STRINGS}
-    if allow_lead:fields['lead_direction']=STRING
-    return model_output_config(obj(fields))
+    if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
+    if allow_omissions:fields['omission_edits']={'type':'array','items':obj({'research_id':STRING,'reason':STRING})}
+    return obj(fields)
+
+
+def repair_config(*, allow_lead=False, allow_omissions=False):
+    return model_output_config(repair_schema(allow_lead=allow_lead,allow_omissions=allow_omissions))
 
 
 def review_context(artifact):
     value=require_projection(artifact)
     if value is None:return None
     ctx=artifact['meta']['blueprint_context']
-    return {'version':VERSION,'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
-        'progression_section_ids':[s['id'] for s in value['sections'] if s['reader_progression'] is not None],
+    from .reader_journey import outline_evidence
+    return {'version':VERSION,'reader_focus':focus_context(value['reader_focus'],ctx['reader_design']),
+        'lead_direction':value['lead_direction'],'lead_block_ids':lead_block_ids(artifact),'section_ids':[s['id'] for s in value['sections']],
+        # A nullable planning field cannot opt a child out of reader-value QA.
+        'progression_section_ids':[s['id'] for s in value['sections']],
+        'journey_sections':outline_evidence(value['sections']),
         'reader_decisions':copy.deepcopy(ctx['reader_decisions']),
         'inputs_sha256':artifact['meta']['blueprint_inputs_sha256'],'blueprint_sha256':fingerprint(value)}
 
@@ -415,8 +450,8 @@ def lead_block_ids(artifact):
     value=require_projection(artifact);text=artifact['content_text']
     lead=value['lead_direction']
     if not lead.strip():return []
-    start=text.index(lead,text.index('### リード文の設計方針'))
-    end=start+len(lead);cursor=0;ids=set()
+    end=text.index(lead,text.index('### リード文の設計方針'))+len(lead)
+    start=text.index('### 記事の宛先と読み始める時点');cursor=0;ids=set()
     for block in content_blocks(text):
         a=text.index(block['text'],cursor);cursor=a+len(block['text'])
         if a<end and cursor>start:ids.add(block['id'])
@@ -427,6 +462,18 @@ def lead_repair_allowed(artifact, report):
     """Grant lead edits only for exact reviewed blocks in the rendered lead."""
     ids=set(lead_block_ids(artifact))
     return any(loc['id'] in ids for check in report['checks'] if check['status']=='fail' for loc in check.get('affected_blocks',[]))
+
+
+def omission_repair_targets(artifact, report):
+    """Permit reason-only corrections; preserve the adopted scope and question IDs."""
+    from .content_edits import content_blocks
+    value=require_projection(artifact);omissions=value['omissions']
+    failed=[c for c in report['checks'] if c['status']=='fail']
+    if any(c['key']!='coverage' and not c.get('affected_blocks') for c in failed):
+        return [o['research_id'] for o in omissions]
+    blocks={b['id']:b['text'] for b in content_blocks(artifact['content_text'])}
+    shown='\n'.join(blocks.get(loc['id'],'') for c in failed for loc in c.get('affected_blocks',[]))
+    return [o['research_id'] for o in omissions if '- '+o['research_id']+'：'+o['reason'] in shown]
 
 
 def repair_targets(artifact, report):
@@ -451,7 +498,10 @@ def repair_targets(artifact, report):
         targets.update(s['id'] for s in value['sections'] if s['title']==title)
     # Unlocalized legacy audit checks explicitly scope to the current design,
     # not an unrelated prose block; unrelated sections remain read-only by policy.
-    if not targets and not lead_repair_allowed(artifact,report):targets={s['id'] for s in value['sections']}
+    unlocalized = any(c['status']=='fail' and c['key']!='coverage' and not c.get('affected_blocks')
+                      for c in report['checks'])
+    if unlocalized or (not targets and not lead_repair_allowed(artifact,report)):
+        targets.update(s['id'] for s in value['sections'])
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     if structural:
         # Changing a chapter's question can require reparenting its children.
@@ -479,22 +529,24 @@ def repair(job_id, keyword, report, artifact, client):
     job=get_job(job_id)
     targets=repair_targets(artifact,report)
     allow_lead=lead_repair_allowed(artifact,report)
+    omission_targets=omission_repair_targets(artifact,report)
     structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
     from .evidence_policy import REVIEW_RESOLUTION_POLICY
     from .reader_presentation import READER_PRESENTATION_POLICY
     from .generation_context import POLICY as EVIDENCE_POLICY
     model,limit=get_step_config('content_repair')
-    output=repair_config(allow_lead=allow_lead)
+    output=repair_config(allow_lead=allow_lead,allow_omissions=bool(omission_targets))
     request=dict(model=model,max_tokens=min(limit,6000),output_config=output,
         system=REVIEW_RESOLUTION_POLICY+READER_PRESENTATION_POLICY+EVIDENCE_POLICY+POLICY+'''
 今回は局所修正。editsには指摘箇所と同じ誤りを直す節だけを全フィールドで返す。全文再出力は禁止。
-既存節のうちtarget_section_ids以外は読取専用。タイトル案・省略理由は維持する。
-lead_edit_allowed=trueの場合だけlead_directionに指摘を解決する導入方針を返す。それ以外はリードを変更せず、lead_directionキーも返さない。リードだけの修正ならeditsは空配列でよい。
+既存節のうちtarget_section_ids以外は読取専用。タイトル案は維持する。
+omission_reason_targetsがある場合だけomission_editsで指摘された既存IDの省略理由を修正できる。採否や掲載範囲を変えず、原文と不一致の「未確認」等の説明だけを正す。省略項目の追加・削除・ID変更は不可。対象のない理由は維持する。指摘に関係する修正がなければ空配列。それ以外は省略理由を維持しomission_editsも返さない。
+lead_edit_allowed=trueの場合だけlead_directionとreader_focusを返す。指摘された宛先・背景・流れを直し、指摘のない読者選択は維持する。それ以外はどちらも変更せずキーも返さない。リードだけの修正ならeditsは空配列でよい。
 structural=trueのときだけ関連節の追加・削除・順序・階層変更を許可する。新しい節には未使用IDを付ける。
 section_orderは追加・移動・削除が必要なときのみ修正後全IDを順に返し、変更不要なら空配列。delete_idsも不要なら空配列。
 主回答の説明と根拠・条件・必須論点を維持し、文字数合わせの水増し・追加調査・未確認の断定をしない。''',
         messages=[{'role':'user','content':json.dumps({'keyword':keyword,'blueprint':value,'accepted_context':ctx,
-            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
+            'target_section_ids':targets,'lead_edit_allowed':allow_lead,'omission_reason_targets':omission_targets,'structural':structural,'word_count_setting':job.get('word_count_setting'),'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'blueprint_issues':report.get('blueprint_issues',[]),'structural_issues':report.get('structural_issues',[])},ensure_ascii=False)}])
     if tiered_review_enabled():
         from .tiered_research import checked_request
@@ -504,7 +556,7 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
         if getattr(msg,'stop_reason',None)!='end_turn':fail('編集設計の局所修正が途中で中断しました。未適用です。')
         response=json.loads(message_text(msg))
     validate_shape(response,output['format']['schema'])
-    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead)
+    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
     issues=validate_structure(text,contract,outline=True)+budget_issues(candidate,job.get('word_count_setting'))
     if issues:fail('編集設計の修正後も必須構造が不足しています: '+json.dumps(issues,ensure_ascii=False))
@@ -513,8 +565,10 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
     upsert_artifact(job_id=job_id,step='research_validation',content_type='application/json',
         content_text=json.dumps({'valid':False,'status':'local_repair_requires_recheck'}),meta={'valid':False})
     from .outline_design import topic_assignments
+    from .outline_policy import current_policy
     return upsert_artifact(job_id=job_id,step='outline',content_type='text/markdown',content_text=text,
-        meta={**artifact['meta'],**metadata(candidate,ctx),'local_repaired':True,'audited':False,'topic_assignments':topic_assignments(text)})
+        meta={**artifact['meta'],**metadata(candidate,ctx),'editorial_policy':current_policy(),
+              'local_repaired':True,'audited':False,'topic_assignments':topic_assignments(text)})
 
 
 def budget_issues(value, setting):
@@ -584,10 +638,12 @@ def checked_progression_reviews(value, ctx):
     ids=ctx.get('progression_section_ids',[]);rows=value.get('reader_progression_reviews');issues=[]
     if not isinstance(rows,dict) or set(rows)!=set(ids):fail('章ごとの読者の変化・導線の確認が不足しています。')
     for sid,row in rows.items():
-        if (not isinstance(row,dict) or set(row)!={'status','reason'}
+        if (not isinstance(row,dict) or set(row)!={'status','reason','journey'}
             or row['status'] not in ('pass','answer_missing','evidence_missing')
             or not isinstance(row['reason'],str) or not row['reason'].strip()):fail('章ごとの変化・導線の確認結果が不正です。')
-        if row['status']!='pass':
+        from .reader_journey import checked as checked_journey,chapter_evidence
+        missing=checked_journey(row['journey'],chapter_evidence(sid,ctx.get('journey_sections',{})))
+        if row['status']!='pass' or missing:
             issues.append({'section_id':sid,'section_ids':[sid],'requirement_index':'reader_progression',
-                'reason':row['reason'],'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
+                'reason':'\n'.join([row['reason'],*missing]),'repair_kind':'source' if row['status']=='evidence_missing' else 'editorial'})
     return issues

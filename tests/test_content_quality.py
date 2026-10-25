@@ -124,7 +124,7 @@ class QualityTests(unittest.TestCase):
                      'outline': {'meta':{'editorial_policy':current_policy()},'content_text': '### H2：比較'},
                      'content_contract': {'content_text': '{"required_sections":[]}'},
                      'fresh_sources': SOURCE, 'fact_sheet': {'content_text': ''}}
-        with patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
+        with patch.object(step_final_validate, 'get_optional_artifact', return_value=None), patch.object(step_final_validate, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
              patch.object(step_final_validate, 'get_job', return_value={}), \
              patch.object(step_final_validate, 'upsert_artifact', side_effect=lambda **kw: kw) as save:
             with self.assertRaises(quality.ContentQualityError):step_final_validate.run('j', '比較')
@@ -147,6 +147,32 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(repair.call_count, 1)
         self.assertEqual(audit.call_args.kwargs['text'], '## 比較\n一度修正した説明。')
         self.assertFalse(json.loads([c.kwargs for c in save.call_args_list if c.kwargs['step'] == 'content_audit'][-1]['content_text'])['valid'])
+
+    def test_rewritten_article_gets_one_terminal_full_pass_without_raising_trial_caps(self):
+        import os
+        from pipeline.editorial_recovery import AUDIT_RECOVERY
+        for mode, expected in [('unlimited', 3), ('bounded', 2)]:
+            artifacts = {'article': {'content_text': '## 比較\n十分な説明。'},
+                         'outline': {'content_text': '### H2：比較'},
+                         'content_contract': {'content_text': '{"required_sections":[]}'},
+                         'fresh_sources': SOURCE, 'fact_sheet': {'content_text': '> 確認済みの事実 [confirmed]'}}
+            responses = [SimpleNamespace(stop_reason='end_turn', content=[SimpleNamespace(text=json.dumps(
+                {'edits': [{'id': 'block-0000', 'new': '## 比較\n' + text}]}))])
+                for text in ('一度修正した説明。', '修正した説明。')]
+            token = AUDIT_RECOVERY.set(True)
+            try:
+                with self.subTest(mode=mode), patch.dict(os.environ, {'QUALITY_BUDGET_MODE': mode}), \
+                     patch.object(step_content_audit, 'get_artifact', side_effect=lambda _, s: artifacts[s]), \
+                     patch.object(step_content_audit, 'get_job', return_value={}), \
+                     patch.object(step_content_audit.anthropic, 'Anthropic'), \
+                     patch.object(step_content_audit, 'audit', side_effect=lambda *a, **kw: report('conclusion_consistency')) as audit, \
+                     patch.object(step_content_audit, 'create_with_retry', side_effect=responses) as repair, \
+                     patch.object(step_content_audit, 'upsert_artifact', side_effect=lambda **kw: kw):
+                    with self.assertRaises(quality.ContentQualityError):step_content_audit.run('j', '比較')
+                    self.assertEqual(audit.call_count, expected)
+                    self.assertEqual(repair.call_count, expected - 1)
+            finally:
+                AUDIT_RECOVERY.reset(token)
 
     def test_outline_gap_repairs_once_without_recursive_research_and_still_fails(self):
         from pipeline import step_fact_sheet, step_content_contract, step_outline, step_structure_guard

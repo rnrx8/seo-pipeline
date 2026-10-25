@@ -6,6 +6,19 @@ from .db import get_optional_artifact, upsert_artifact
 from .fresh_sources import run_with_fetch, extract_urls, normalize_url, DIRECT_POLICY, FETCH_TOOL, ResearchResponseError
 from .content_quality import digest, ContentQualityError
 
+COLLECTION_CONTEXT_VERSION = 'collection-context-v1'
+
+
+def collection_context(plan, question_ids):
+    """Keep neighboring questions visible without assigning their research twice."""
+    selected=set(question_ids)
+    decisions=[{k:d[k] for k in ('id','question','scope','research_ids') if k in d}
+               for d in plan.get('reader_decisions',[]) if selected & set(d.get('research_ids',[]))]
+    related={q for d in decisions for q in d.get('research_ids',[])}
+    return {'reader_questions':decisions,
+            'other_questions':[{k:q[k] for k in ('id','subject','question')} for q in plan['items']
+                               if q['id'] in related-selected]}
+
 
 def batches(plan):
     grouped = {}
@@ -133,7 +146,9 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
             task={**task,'items':[i for i in task['items'] if i['id'] in ids]}
             if not task['items']:continue
             task_ids={i['id'] for i in task['items']}
-        request_key=digest(json.dumps({'version':'subject-bounded-search-v3-answer-notes','plan':plan_hash,'task':task,
+        article_context=collection_context(plan,task_ids)
+        request_key=digest(json.dumps({'version':'subject-bounded-search-v4-article-context',
+            'context_version':COLLECTION_CONTEXT_VERSION,'article_context':article_context,'plan':plan_hash,'task':task,
             'gaps':gap_rows,'system':system+DIRECT_POLICY,'prompt':prompt,'model':model,
             'search_tool':tool,'fetch_tool':FETCH_TOOL,'max_rounds':rounds,'max_tokens':tokens},ensure_ascii=False,sort_keys=True))
         receipt=get_optional_artifact(job_id,'collection_receipt_'+request_key)
@@ -146,7 +161,9 @@ def collect(job_id, client, *, plan, fresh, system, prompt, model, search_tool, 
         # List known URLs, but do not drown this subject in other subjects' bodies.
         index_context = '\n取得済み資料索引（必要な本文はfetch_current_pageで読む）\n' + json.dumps([
             {k:p.get(k) for k in ('url','title','status')} for p in fresh.pages.values()],ensure_ascii=False)
-        focused = (prompt + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
+        focused = (prompt + '\n## 記事内の役割分担（調査対象を区別する参照情報）\n' + json.dumps(article_context,ensure_ascii=False)
+            + '\n他の質問は今回の回答対象ではない。同じ一般名で呼ばれる対象も、記事で分けた範囲を保ち、隣の質問の資料・回答で今回の問いを代替しない。'
+            + '\n## 今回の調査担当（この対象と質問だけを調べる）\n' + json.dumps(task,ensure_ascii=False)
             + '\n必須の回答と主要な比較条件から確認する。同じ対象の関連資料をまとめて読み、補助質問ごとに個別検索を義務にしない。補助情報が関連資料にもなければ、探索済み範囲と記事から省く候補を記録し、判定は後段へ渡す。未探索・取得失敗を探索済みとしない。'
             + '\n出力は記事本文や資料の全文転記ではなく、担当質問への執筆用根拠メモとする。質問IDごとに、直接の回答、回答に必要な対象・プラン・期間等の条件、根拠の順に短く記録する。'
               'すべての担当質問を一巡して回答し、資料の掲載項目を網羅するために一問の説明を膨らませない。代表プランを尋ねる質問にはその料金・利用条件を答え、全プラン・全期間の表は質問が求める場合に限る。'

@@ -117,6 +117,8 @@ MATRIX_SCHEMA = claim_response_schema(MATRIX_SCHEMA)
 
 from .reader_needs import ANSWER_SCOPE_POLICY
 PLAN_SYSTEM += '\n' + ANSWER_SCOPE_POLICY
+from .evidence_policy import SOURCE_REQUIREMENT_PLANNING_POLICY
+PLAN_SYSTEM += '\n' + SOURCE_REQUIREMENT_PLANNING_POLICY
 
 
 def plan_policy():
@@ -272,7 +274,17 @@ def plan(job_id, keyword, api_key=None):
                 meta={'model':model,'input_tokens':inputs,'output_tokens':outputs,'planning_review_passed':True})
         payload['previous_plan']=value
         payload['planning_issues']=verdict['issues']
-    raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
+    # A full-plan retry can introduce new obligations. Use the same bounded
+    # local repair as policy revalidation, without publishing a failed plan.
+    value,verdict,added_inputs,added_outputs=_repair_plan_candidate(
+        job_id,value,verdict,payload,api_key,prefix='planning')
+    inputs+=added_inputs;outputs+=added_outputs
+    if not verdict['valid']:
+        raise ContentQualityError('調査計画の必須範囲・比較条件が未解決です。調査を開始せず計画確認結果を確認してください。')
+    value['policy_sha256']=plan_policy()
+    return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',
+        content_text=json.dumps(value,ensure_ascii=False),meta={'model':model,'input_tokens':inputs,
+        'output_tokens':outputs,'planning_review_passed':True,'planning_local_repaired':True})
 
 
 def apply_plan_repair(value, changes, *, reviewed_priority_ids=()):
@@ -337,6 +349,30 @@ def plan_repair_schema(value):
         'required':list(props),'additionalProperties':False}}}
 
 
+def _repair_plan_candidate(job_id, value, verdict, context, api_key=None, *, prefix):
+    """Patch only failed obligations, then independently review before adoption."""
+    from .research_plan_review import review
+    inputs=outputs=0
+    # A bounded targeted correction preserves IDs and unaffected questions.
+    from .ai import tiered_review_enabled
+    model,budget=get_step_config('content_repair' if tiered_review_enabled() else 'search_intent')
+    msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
+        model=model,max_tokens=budget if tiered_review_enabled() else 4000,
+        system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。独立した計画確認で具体的に指摘されたIDは、AIによる必須分類が過剰であれば重要度を訂正し、不要な義務は理由付きで削除してよい。ユーザー明示の要件と検索への主要な回答は維持し、ユーザー設定と照合する。指摘対象外の必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
+        output_config=plan_repair_schema(value),
+        messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
+    raw=response_text(msg)
+    upsert_artifact(job_id=job_id,step=f'research_plan_{prefix}_repair_response',content_type='application/json',content_text=raw,
+        meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
+    context={**context,'previous_plan':value,'proposed_changes':json.loads(raw)}
+    value=apply_plan_repair(value,json.loads(raw), reviewed_priority_ids={i['id'] for i in verdict['issues'] if i['id'] != 'overall'})
+    upsert_artifact(job_id=job_id,step=f'research_plan_{prefix}_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
+    inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
+    verdict,usage=review(job_id,value,context,prefix+'_repaired',api_key)
+    inputs+=usage.input_tokens;outputs+=usage.output_tokens
+    return value, verdict, inputs, outputs
+
+
 def revalidate_plan(job_id, keyword, api_key=None):
     """Explicit policy-update resume: preserve questions only after fresh plan review."""
     from .research_plan_review import review
@@ -353,23 +389,9 @@ def revalidate_plan(job_id, keyword, api_key=None):
     verdict,usage=review(job_id,value,context,'policy',api_key)
     inputs=usage.input_tokens;outputs=usage.output_tokens
     if not verdict['valid']:
-        # A bounded targeted correction preserves IDs and unaffected questions.
-        from .ai import tiered_review_enabled
-        model,budget=get_step_config('content_repair' if tiered_review_enabled() else 'search_intent')
-        msg=create_with_retry(None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),
-            model=model,max_tokens=budget if tiered_review_enabled() else 4000,
-            system=PLAN_SYSTEM+'\n既存計画の指摘箇所だけを修正する。変更する既存項目をupdates、新設項目をadditionsとして返す。既存IDとsubjectは維持し、無関係な項目は返さない。ユーザーの必須要件は維持する。AIが作った重複・検索意図に不要な細目はremovalsで整理できる。各削除にid・reason・replaced_by（統合先ID、不要な補助情報は空配列）を付ける。独立した計画確認で具体的に指摘されたIDは、AIによる必須分類が過剰であれば重要度を訂正し、不要な義務は理由付きで削除してよい。ユーザー明示の要件と検索への主要な回答は維持し、ユーザー設定と照合する。指摘対象外の必須質問は同じ対象の必須質問へ意味を保って統合する場合のみ削除可。情報が見つからないからという理由で必須を下げない。補助条件を分離しても、不要なら新しい調査義務として追加しない。同じ欠陥が他対象の質問にもある場合はその質問もまとめて修正する。candidate_servicesとscope_reasonは修正後の全体値を必ず返す。対象の追加・除外は入力制約と指摘に従い、比較対象一覧・選定理由・共通質問の対象を同じ方針に揃える。変更不要なら既存の値をそのまま返す。',
-            output_config=plan_repair_schema(value),
-            messages=[{'role':'user','content':json.dumps({'plan':value,'issues':verdict['issues'],'context':context},ensure_ascii=False)}])
-        raw=response_text(msg)
-        upsert_artifact(job_id=job_id,step='research_plan_policy_repair_response',content_type='application/json',content_text=raw,
-            meta={'model':model,'input_tokens':msg.usage.input_tokens,'output_tokens':msg.usage.output_tokens})
-        context={**context,'previous_plan':value,'proposed_changes':json.loads(raw)}
-        value=apply_plan_repair(value,json.loads(raw), reviewed_priority_ids={i['id'] for i in verdict['issues'] if i['id'] != 'overall'})
-        upsert_artifact(job_id=job_id,step='research_plan_policy_candidate',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False))
-        inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
-        verdict,usage=review(job_id,value,context,'policy_repaired',api_key)
-        inputs+=usage.input_tokens;outputs+=usage.output_tokens
+        value,verdict,added_inputs,added_outputs=_repair_plan_candidate(
+            job_id,value,verdict,context,api_key,prefix='policy')
+        inputs+=added_inputs;outputs+=added_outputs
         if not verdict['valid']:
             raise ContentQualityError('現在の方針で調査計画が未合格です。既存計画の確認結果を確認してください。')
     upsert_artifact(job_id=job_id,step='research_plan_previous_policy',content_type='application/json',
@@ -738,6 +760,26 @@ def resolve_current_findings(job_id, keyword, plan, matrix, api_key=None):
     state['status']='completed';save()
     return True
 
+def material_revision(pages, facts):
+    """Bind retries to actual source/answer changes, not refetch timestamps."""
+    from .research_collection import source_fingerprint
+    by_url={p['url']:p for p in pages}
+    return digest(json.dumps({'sources':source_fingerprint(by_url,sorted(by_url)),
+                              'facts':facts},ensure_ascii=False,sort_keys=True))
+
+
+def failed_material_unchanged(job_id, previous):
+    if not previous.get('material_revision') and not (
+            previous.get('attempts_sha256') and previous.get('facts_sha256')):
+        return True  # Legacy failure without a bound input remains protected.
+    source_text=get_artifact(job_id,'fresh_sources')['content_text']
+    facts=get_artifact(job_id,'fact_sheet')['content_text']
+    if previous.get('material_revision'):
+        return previous['material_revision']==material_revision(json.loads(source_text),facts)
+    return (previous['attempts_sha256']==digest(source_text)
+            and previous['facts_sha256']==digest(facts))
+
+
 def verify(job_id, keyword, api_key=None):
     """Resolve specific findings without dropping questions or unbounded replay."""
     plan_value=load_plan(job_id)
@@ -745,14 +787,16 @@ def verify(job_id, keyword, api_key=None):
     from .research_collection import recover_empty_collections
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
     previous_value=json.loads(previous['content_text']) if previous else {}
+    material_updated=(previous_value.get('valid') is False and not failed_material_unchanged(job_id,previous_value))
     if (previous_value.get('valid') is False and previous_value.get('attempt')==3 and previous_value.get('policy_sha256')==matrix_policy()
-            and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))):
+            and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
+            and not material_updated):
         raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
     resolution=False
-    if (previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
+    if (not material_updated and previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
             and previous_value['attempt']>=2):
         resolution=resolve_current_findings(job_id,keyword,plan_value,previous_value,api_key)
-    pending=None if recovered or resolution else resume_research_gaps(previous,plan_value)
+    pending=None if recovered or resolution or material_updated else resume_research_gaps(previous,plan_value)
     refresh_dynamic_sources(job_id)
     supplement=get_optional_artifact(job_id,'research_supplement')
     # A policy update invalidates verdicts, not the already-used retrieval budget.
@@ -787,7 +831,8 @@ def verify(job_id, keyword, api_key=None):
             facts=accepted_facts(value,plan_value)
             upsert_artifact(job_id=job_id,step='fact_sheet',content_type='text/markdown',content_text=facts,
                 meta={**original.get('meta',{}),'canonical_research_answers':True})
-        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1, plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
+        value.update(valid=not gaps, policy_sha256=matrix_policy(), gaps=gaps, attempt=attempt+1,
+                     material_revision=material_revision(pages,facts), plan_sha256=digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True)),
                      sources_sha256=digest(sources), attempts_sha256=digest(get_artifact(job_id,'fresh_sources')['content_text']), facts_sha256=digest(facts))
         for step in (f'research_matrix_{attempt+1}','research_matrix'):
             saved=upsert_artifact(job_id=job_id,step=step,content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),

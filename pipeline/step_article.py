@@ -27,7 +27,7 @@ SYSTEM_PROMPT = WRITING_POLICY + "\n" + """\
 【執筆ルール】
 
 ▼ 文体
-- 本文はです・ます調に統一（見出し・表・リストは除く）
+- 共通提示基準「読者と同じ目線の自然な解説」に従う。
 """ + SENTENCE_STYLE_POLICY + """
 - 不要な修飾語・接続詞は削除する（ただし「削っても意味が通じ、かつ読んだ時の温度感が変わらないもの」だけ削る）
 
@@ -507,6 +507,54 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
+def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
+    """Write the final lead, with at most one length correction; never a QA pass."""
+    from .editorial_blueprint import require_projection, validate_shape, fingerprint
+    from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, lead_char_limit, WRITE_SCHEMA
+    value = require_projection(outline)
+    if value is None:
+        return text, 0, 0, None
+    requirements = {k:job[k] for k in ('article_purpose','target_audience','custom_prompt','tone_style','citation_style') if job.get(k)}
+    requirements['learned_style_rules'] = [r['rule_text'] for r in learned_rules if r.get('rule_text')]
+    payload = editing_payload(text, value, outline['meta']['blueprint_context'], keyword, requirements)
+    limit = lead_char_limit(requirements)
+    payload['lead_max_chars'] = limit
+    attempts = []
+    total_input = total_output = 0
+    for attempt in range(2):
+        request = writer_request(payload, model=get_step_config('article')[0])
+        msg = create_with_retry(client, **request)
+        total_input += msg.usage.input_tokens
+        total_output += msg.usage.output_tokens
+        if getattr(msg, 'stop_reason', None) != 'end_turn':
+            raise ContentQualityError('リードの仕上げが正常終了していません。初稿は保持します。')
+        try:
+            result = json.loads(message_text(msg))
+        except (TypeError, ValueError) as exc:
+            raise ContentQualityError('リードの仕上げ形式が不正です。初稿は保持します。') from exc
+        validate_shape(result, WRITE_SCHEMA)
+        revised = replace_lead(text, result['lead'])
+        if explicit_risk_guarantees(result['lead']):
+            raise ContentQualityError('仕上げリードに未検証の結果保証があります。初稿は保持します。')
+        attempts.append({'request_sha256':fingerprint(request),'lead':result['lead'],'chars':len(result['lead'])})
+        if len(result['lead']) <= limit:
+            break
+        if attempt == 0:
+            payload['draft_lead'] = result['lead']
+            payload['scope_feedback'] = (f'実測{len(result["lead"])}字で、今回の上限{limit}字を超えています。'
+                '主題・原因と本人の実感・本文を読む理由を保ち、重なる説明から短く整えてください。')
+    import hashlib
+    start, end = lead_span(text)
+    meta = {'version':VERSION, 'source_text_sha256':hashlib.sha256(text.encode()).hexdigest(),
+            'request_sha256':fingerprint(request), 'reader_focus':value['reader_focus'],
+            'authoring_context':payload, 'attempts':attempts, 'max_chars':limit,
+            'status':'edited_pending_qa' if len(result['lead']) <= limit else 'needs_length_revision',
+            'draft_lead':text[start:end], 'finished_lead':result['lead'],
+            'body_preserved':text[_re.search(r'^##\s+',text,_re.M).start():] == revised[_re.search(r'^##\s+',revised,_re.M).start():],
+            'semantically_accepted':False}
+    return revised, total_input, total_output, meta
+
+
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
@@ -601,6 +649,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     word_count_setting = planning_setting(job, outline)
 
     # Load volume design from outline and service_map if available
+    blueprint_value = None
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import require_projection, context
         from .research_requirements import load_plan
@@ -652,6 +701,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # Per-part max tokens from volume design splits
     if volume_sections:
         p1_secs, p2_secs, p3_secs = _split_sections_into_parts(volume_sections)
+        from .article_design import part_reader_brief
+        part1_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p1_secs])
+        part2_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p2_secs])
+        part3_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p3_secs])
         p1_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p1_secs) if p1_secs else None)
         p2_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p2_secs) if p2_secs else None)
         p3_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p3_secs) if p3_secs else None)
@@ -765,6 +818,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if _re.search(r'\[hypothesis\]', article_text, _re.IGNORECASE):
             warn("Structure repair introduced [hypothesis] content")
 
+    article_text, ti, to, lead_edit = _finish_reader_lead(client, article_text, outline, keyword, job, learned_rules)
+    total_input += ti
+    total_output += to
+    if lead_edit is not None:
+        upsert_artifact(job_id=job_id, step='article_lead_edit', content_type='application/json',
+                        content_text=json.dumps(lead_edit,ensure_ascii=False),
+                        meta={'model':get_step_config('article')[0], 'input_tokens':ti,'output_tokens':to,'audited':False})
+        if lead_edit['status'] != 'edited_pending_qa':
+            raise ContentQualityError('リードの長さ指定を満たせませんでした。初稿と仕上げ履歴を保持し、記事は更新しません。')
+
     delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
@@ -784,6 +847,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "output_tokens": total_output,
             "parts": 3,
             **reader_meta,
+            'lead_edit_version':lead_edit['version'] if lead_edit else None,
             "section_map": bind_sections(article_text, outline_text, contract),
             "structure_repaired": structure_repaired,
             "duplicate_service_h2s_removed": duplicate_service_h2s_removed,
