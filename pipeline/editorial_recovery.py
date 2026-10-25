@@ -358,5 +358,6 @@ def run(job_id, keyword, api_key=None):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise EditorialRecoveryError('同じ記事の品質確認・上流修正が実行中です。重複送信しません。') from exc
+            from .content_quality import GenerationBusyError
+            raise GenerationBusyError('同じ記事の品質確認・上流修正が実行中です。重複送信しません。') from exc
         return _run(job_id, keyword, api_key)

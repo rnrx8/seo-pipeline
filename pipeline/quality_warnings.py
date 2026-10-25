@@ -7,9 +7,38 @@ from functools import wraps
 from contextlib import contextmanager
 
 _CONTEXT = ContextVar('quality_warning_context', default=None)
+_DRAFT = ContextVar('current_stage_completed_draft', default=None)
 WARNING_ACCOUNT = 'nishi.aworks@gmail.com'
 SOFT_STAGES = {'research_completeness', 'structure_guard', 'research_validation',
-               'review', 'fact_review', 'content_audit'}
+               'service_map', 'cta_inject', 'review', 'fact_review', 'content_audit',
+               'final_structure_validation'}
+POST_DRAFT_STAGES = {'cta_inject', 'review', 'fact_review', 'content_audit',
+                     'final_structure_validation'}
+
+
+def has_saved_draft(job_id):
+    """Only a persisted body can substitute for an optional finishing step."""
+    from .db import get_optional_artifact
+    artifact = get_optional_artifact(job_id, 'article')
+    return bool(artifact and isinstance(artifact.get('content_text'), str)
+                and artifact['content_text'].strip())
+
+
+def retain_generated_draft(artifact):
+    """Register this invocation's assembled body before optional finishing.
+
+    A previous job draft is deliberately never loaded as this checkpoint.
+    """
+    if enabled():_DRAFT.set(artifact)
+
+
+def mark_review_needed(job_id, *, artifact=None):
+    from .db import get_artifact, upsert_artifact
+    value=artifact or get_artifact(job_id,'article')
+    return upsert_artifact(job_id=job_id,step='article',content_type=value.get('content_type','text/markdown'),
+        content_text=value['content_text'],meta={**(value.get('meta') or {}),
+            'content_audited':False,'content_audit_snapshot':None,
+            'publication_approved':False,'completion_with_warnings':True})
 
 
 def resolve_after_final(job_id):
@@ -63,34 +92,44 @@ def warn(message):
     # Persist before continuing; inability to retain the warning is a real failure.
     upsert_artifact(job_id=job_id, step='quality_warnings', content_type='application/json',
                     content_text=json.dumps(value, ensure_ascii=False))
-    email = get_user_email(get_job(job_id).get('tenant_id', ''))
-    if email.lower() != WARNING_ACCOUNT:
-        from .notify import alert_quality_warning
-        alert_quality_warning(job_id, email, stage, str(message))
+    # Alert delivery is optional; the persisted warning is the source of truth.
+    try:
+        email = get_user_email(get_job(job_id).get('tenant_id', ''))
+        if email.lower() != WARNING_ACCOUNT:
+            from .notify import alert_quality_warning
+            alert_quality_warning(job_id, email, stage, str(message))
+    except Exception as exc:
+        print('[quality_warning] Notification unavailable: '+type(exc).__name__)
 
 def scoped(fn, stage):
     @wraps(fn)
     def run(job_id, *args, **kwargs):
         token = _CONTEXT.set((job_id, stage))
+        draft_token = _DRAFT.set(None)
         try:
             from .content_quality import ContentQualityError
             try:
                 result = fn(job_id, *args, **kwargs)
-            except ContentQualityError as exc:
-                from .editorial_recovery import EditorialRecoveryError, UpstreamRepairRequired
+            except Exception as exc:
                 from .draft_readiness import DraftReadinessError
-                if isinstance(exc, (EditorialRecoveryError, UpstreamRepairRequired, DraftReadinessError)):
+                from .content_quality import GenerationBusyError
+                # This policy belongs to the stage boundary, not exception
+                # subclasses introduced by individual repair controllers.
+                assembled = _DRAFT.get() if stage == 'article' else None
+                if (stage not in SOFT_STAGES and not assembled) or isinstance(exc, (DraftReadinessError,GenerationBusyError)):
                     raise
-                # Editorial diagnostics may continue to actual article QA.
-                # An unavailable provider must preserve its cause/current
-                # stage, rather than being masked by the next prerequisite.
-                if stage not in SOFT_STAGES:
+                if not isinstance(exc,ContentQualityError) and stage not in POST_DRAFT_STAGES and not assembled:
                     raise
                 provider_unavailable = bool(re.search(
                     r'残高|利用枠|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|response\.incomplete|応答が未完了|timeout|timed out|connection|429|502|503', str(exc), re.I))
-                if provider_unavailable:raise
+                saved_draft = bool(assembled) or (stage in POST_DRAFT_STAGES and has_saved_draft(job_id))
+                # Before a body exists, unavailable services cannot be treated
+                # as successful generation. Afterward, retain the usable draft
+                # even if optional QA/repair fails. Never send a retry here.
+                if provider_unavailable and not saved_draft:raise
+                if not isinstance(exc,ContentQualityError) and not saved_draft:raise
                 warn(str(exc))
-                result = None
+                result = mark_review_needed(job_id,artifact=assembled) if saved_draft else None
             if stage == 'structure_guard':
                 from .db import get_optional_artifact
                 report = get_optional_artifact(job_id, 'structure_validation')
@@ -100,5 +139,6 @@ def scoped(fn, stage):
                         warn(value.get('error') or '構成の確認事項が残っています。')
             return result
         finally:
+            _DRAFT.reset(draft_token)
             _CONTEXT.reset(token)
     return run

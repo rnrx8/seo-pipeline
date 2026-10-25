@@ -299,7 +299,11 @@ def require_projection(artifact, ctx=None):
     if meta['blueprint_version']!=VERSION:fail('編集設計の版が現在と一致しません。')
     saved=meta.get('blueprint_context');value=meta.get('editorial_blueprint')
     if not isinstance(saved,dict) or meta.get('blueprint_inputs_sha256')!=fingerprint(saved):fail('編集設計の採用資料が不整合です。')
-    if ctx is not None and fingerprint(ctx)!=meta['blueprint_inputs_sha256']:fail('編集設計後に読者設計・調査回答が変更されています。再確認が必要です。')
+    if ctx is not None and fingerprint(ctx)!=meta['blueprint_inputs_sha256']:
+        from .quality_warnings import enabled, warn
+        message='編集設計後に読者設計・調査回答が変更されています。執筆には現在の確認済み回答だけを使用します。'
+        if not enabled():fail(message)
+        warn(message)
     validate(value,saved)
     if artifact['content_text']!=render(value,saved) or meta.get('reader_trace')!=trace(value,saved):fail('編集設計と表示用構成・対応表が一致しません。')
     return value

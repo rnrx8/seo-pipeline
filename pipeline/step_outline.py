@@ -258,7 +258,8 @@ def ensure_complete_volume_design(outline_text: str, word_count_setting: str | N
         return outline_text, normalized
 
     if reference_only:
-        raise ContentQualityError('構成の内容に基づく章別分量の設計が不足しています。競合参考値から機械的に配分を補いません。')
+        from .quality_warnings import warn
+        warn('章別分量の参考値が不足しています。既存見出しを保持し、執筆用の配分を補って続けます。')
 
     if sum(floors) > target:
         from .quality_warnings import warn
@@ -534,7 +535,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     if design_issues:
         upsert_artifact(job_id=job_id, step="outline_design_incomplete", content_type="text/markdown",
                         content_text=outline_text, meta={"issues": design_issues, "audited": False})
-        raise ContentQualityError("構成の論点割当て・回答設計が不足しています: " + json.dumps(design_issues, ensure_ascii=False))
+        from .quality_warnings import warn
+        warn("構成の論点割当て・回答設計に確認事項があります: " + json.dumps(design_issues, ensure_ascii=False))
     if volume_repaired:
         print("[outline] Normalized outline headings or section volume design")
 

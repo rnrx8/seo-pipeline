@@ -26,6 +26,10 @@ class ContentPatchValidationError(ContentQualityError):
     """A fully saved patch is invalid and has not been applied."""
 
 
+class GenerationBusyError(ContentQualityError):
+    """Another worker owns this job; never mutate its delivery state."""
+
+
 def confirmed_facts(text: str) -> str:
     """Only explicitly confirmed paragraphs cross the research/writing boundary.
 

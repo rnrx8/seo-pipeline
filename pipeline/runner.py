@@ -3,6 +3,7 @@ import time
 from .db import insert_job, update_job_status, get_job
 from .step_plan import build_step_plan, requires_rate_limit_delay
 from .ai import validate_model_credentials
+from .content_quality import GenerationBusyError
 
 # Seconds to wait between Claude API steps to avoid rate limits (tokens/min)
 STEP_DELAY = 15
@@ -37,6 +38,8 @@ def run_pipeline(keyword: str, job_id: str | None = None) -> str:
 
         update_job_status(job_id, "done")
         print(f"\n=== Done (job_id={job_id}) ===\n")
+    except GenerationBusyError:
+        return job_id
     except Exception:
         update_job_status(job_id, "failed")
         raise

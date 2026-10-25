@@ -31,14 +31,15 @@ class DraftReadinessTests(unittest.TestCase):
         self.assertNotIn('valid',report);self.assertEqual(before,self.store)
         with self.assertRaises(cq.ContentQualityError):cq._require_audit_strict(report,'current',stage='article')
 
-    def test_current_matrix_is_strict_even_inside_warning_stage(self):
-        from pipeline.research_requirements import require_matrix
-        def strict_probe(*a):
-            self.assertFalse(warnings.enabled())
-            raise cq.ContentQualityError('current facts unavailable')
-        with patch('pipeline.research_requirements.require_matrix',side_effect=strict_probe),patch.object(warnings,'warn') as warn:
-            with self.assertRaises(ready.DraftReadinessError):warnings.scoped(lambda *a:self.evaluate(),'research_validation')('job')
-        warn.assert_not_called();self.assertFalse(warnings.enabled())
+    def test_incomplete_current_matrix_is_advisory_without_approving_publication(self):
+        matrix={**self.matrix,'valid':False}
+        def checked(*a):
+            self.assertTrue(warnings.enabled())
+            return matrix
+        with patch('pipeline.research_requirements.require_matrix',side_effect=checked),patch.object(warnings,'warn'):
+            report=warnings.scoped(lambda *a:self.evaluate(),'research_validation')('job')
+        self.assertTrue(report['ready_for_draft']);self.assertFalse(report['publication_approved'])
+        self.assertFalse(report['checks']['research_current']);self.assertFalse(warnings.enabled())
 
     def test_missing_input_and_changed_outline_cannot_start_writer(self):
         for key in ('content_contract','fact_sheet','fresh_sources'):
@@ -79,7 +80,7 @@ class DraftReadinessTests(unittest.TestCase):
         for stage in warnings.SOFT_STAGES:
             original=cq.ContentQualityError('insufficient_quota')
             def fail(*a):raise original
-            with self.subTest(stage=stage),patch.object(warnings,'warn') as warn:
+            with self.subTest(stage=stage),patch.object(warnings,'warn') as warn,patch.object(warnings,'has_saved_draft',return_value=False):
                 with self.assertRaises(cq.ContentQualityError) as err:warnings.scoped(fail,stage)('job')
                 self.assertIs(err.exception,original);warn.assert_not_called()
 

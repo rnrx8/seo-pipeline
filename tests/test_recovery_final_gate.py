@@ -1,4 +1,4 @@
-"""Recovered jobs cannot turn a failed/missing final check into a warning/done."""
+"""A draft can finish with warnings, while publication validation stays failed."""
 import copy
 import json
 import unittest
@@ -34,24 +34,27 @@ class RecoveryFinalGateTests(unittest.TestCase):
             seal = stack.enter_context(patch('pipeline.article_revisions.seal'))
             expected_failure = (status is not None and status != 'completed') or matrix_error or audit_error or snapshot != 'current'
             if expected_failure:
-                with self.assertRaises(recovery.EditorialRecoveryError if status else cq.ContentQualityError):scoped(final.run, 'final_structure_validation')('job', 'kw')
+                result=scoped(final.run, 'final_structure_validation')('job', 'kw')
                 seal.assert_not_called()
-                self.assertFalse(json.loads(records['structure_validation_final']['content_text'])['valid'])
+                self.assertFalse(json.loads(result['content_text'])['valid'])
+                self.assertTrue(records['article']['meta']['completion_with_warnings'])
+                self.assertFalse(records['article']['meta']['content_audited']);warn.assert_called_once()
             else:
                 result = scoped(final.run, 'final_structure_validation')('job', 'kw')
                 self.assertTrue(json.loads(result['content_text'])['valid']);seal.assert_called_once()
-            warn.assert_not_called();legacy_matrix.assert_not_called();legacy_audit.assert_not_called()
+            if not expected_failure:warn.assert_not_called()
+            legacy_matrix.assert_not_called();legacy_audit.assert_not_called()
             strict_matrix.assert_called_once();strict_audit.assert_called_once()
 
     def test_completed_current_recovery_requires_strict_matrix_and_full_audit(self):self.run_final()
-    def test_pending_recovery_cannot_seal_or_continue_as_warning(self):self.run_final('running')
-    def test_failed_recovery_cannot_seal_or_continue_as_warning(self):self.run_final('failed')
-    def test_changed_sources_block_completion(self):self.run_final(matrix_error=True)
-    def test_failed_audit_blocks_completion(self):self.run_final(audit_error=True)
-    def test_old_recovery_snapshot_blocks_completion(self):self.run_final(snapshot='old')
+    def test_pending_recovery_delivers_without_publication_seal(self):self.run_final('running')
+    def test_failed_recovery_delivers_without_publication_seal(self):self.run_final('failed')
+    def test_changed_sources_leave_publication_unapproved(self):self.run_final(matrix_error=True)
+    def test_failed_audit_delivers_with_warning(self):self.run_final(audit_error=True)
+    def test_old_recovery_snapshot_is_not_publication_approval(self):self.run_final(snapshot='old')
     def test_normal_job_without_revision_or_recovery_uses_same_strict_checks(self):self.run_final(status=None)
-    def test_normal_job_cannot_warn_past_failed_research(self):self.run_final(status=None,matrix_error=True)
-    def test_normal_job_cannot_warn_past_failed_article_qa(self):self.run_final(status=None,audit_error=True)
+    def test_normal_job_delivers_with_failed_research_warning(self):self.run_final(status=None,matrix_error=True)
+    def test_normal_job_delivers_with_failed_article_qa_warning(self):self.run_final(status=None,audit_error=True)
 
 
 if __name__ == '__main__':unittest.main()

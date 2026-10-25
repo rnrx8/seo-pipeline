@@ -4,6 +4,10 @@ from pipeline.content_quality import ContentQualityError
 from pipeline.quality_warnings import scoped, enabled
 
 class WarningPolicyTest(unittest.TestCase):
+    def setUp(self):
+        stub=patch("pipeline.quality_warnings.has_saved_draft",return_value=False)
+        stub.start();self.addCleanup(stub.stop)
+
     def test_quality_failure_continues_without_leaking_context(self):
         def fail(*args, **kwargs):
             self.assertTrue(enabled())
@@ -49,7 +53,7 @@ class WarningPolicyTest(unittest.TestCase):
         self.assertIn('"decisions": []', result)
         self.assertTrue(warning.called)
 
-    def test_non_quality_exception_is_not_hidden(self):
+    def test_non_quality_exception_without_body_is_not_hidden(self):
         def fail(*args, **kwargs): raise ConnectionError('network')
         with self.assertRaises(ConnectionError): scoped(fail, 'content_audit')('job')
 

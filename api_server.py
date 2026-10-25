@@ -16,6 +16,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from pipeline.article_revisions import revision_run
+from pipeline.content_quality import GenerationBusyError
 from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, upsert_artifact, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
 from pipeline.step_plan import build_step_plan, requires_rate_limit_delay, research_resume_stage  # noqa: E402
@@ -166,6 +167,11 @@ def _run_pipeline(job_id: str, keyword: str, resume_from: str | None = None) -> 
         update_job_step(job_id, None)
         update_job_status(job_id, "done")
         print(f"\n=== Done (job_id={job_id}) ===\n")
+    except GenerationBusyError:
+        # Another worker still owns the job. Do not turn its running generation
+        # into a failed/done status or send the same work again.
+        print('[pipeline] Existing worker continues; duplicate controller exits')
+        return
     except Exception as exc:
         from pipeline.autofix import classify_error, create_github_issue
         error_info = classify_error(exc)

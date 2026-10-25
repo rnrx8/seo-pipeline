@@ -219,15 +219,15 @@ class RecoveryExecutionTests(unittest.TestCase):
             recovery.run('job', 'keyword')
             self.assertEqual(events, [k for k, _ in steps][2:]); audit.assert_not_called()
 
-    def test_running_or_failed_checkpoint_is_not_resent_or_softened(self):
+    def test_running_or_failed_checkpoint_is_not_resent_and_retains_draft(self):
         for status in ('running', 'failed'):
             with self.subTest(status=status), ExitStack() as stack:
                 records, report, events, _, audit, _, _ = self.harness(stack)
                 state = recovery.begin('job', 'keyword', report); state['status'] = status
                 recovery.save('job', 'editorial_recovery', state)
-                with patch.object(quality_warnings, 'warn') as warn, self.assertRaises(recovery.EditorialRecoveryError):
+                with patch.object(quality_warnings,'has_saved_draft',return_value=True), patch.object(quality_warnings,'mark_review_needed') as mark, patch.object(quality_warnings, 'warn') as warn:
                     quality_warnings.scoped(recovery.run, 'content_audit')('job', 'keyword')
-                self.assertEqual(events, []); audit.assert_not_called(); warn.assert_not_called()
+                self.assertEqual(events, []); audit.assert_not_called(); warn.assert_called_once();mark.assert_called_once()
 
     def test_changed_input_or_article_stops_before_any_step(self):
         for change in ('article', 'outline', 'material'):
@@ -251,7 +251,7 @@ class RecoveryExecutionTests(unittest.TestCase):
             with self.assertRaises(recovery.EditorialRecoveryError): recovery.run('job', 'keyword')
             fail.assert_called_once(); audit.assert_called_once()
 
-    def test_missing_final_phase_cannot_be_marked_complete_or_softened(self):
+    def test_missing_final_phase_stays_failed_while_saved_body_is_delivered(self):
         with ExitStack() as stack:
             records, _, events, steps, _, _, plan = self.harness(stack)
             def bad_audit(*args, **kw):
@@ -259,11 +259,11 @@ class RecoveryExecutionTests(unittest.TestCase):
                 report = passed(context); report['phases'].pop('organization')
                 records['content_audit'] = {'content_text': json.dumps(report)}
             plan.return_value = steps[:-1] + [('content_audit', bad_audit)]
-            with patch.object(quality_warnings, 'warn') as warn, self.assertRaises(recovery.EditorialRecoveryError):
+            with patch.object(quality_warnings,'has_saved_draft',return_value=True), patch.object(quality_warnings,'mark_review_needed') as mark, patch.object(quality_warnings, 'warn') as warn:
                 quality_warnings.scoped(recovery.run, 'content_audit')('job', 'keyword')
             self.assertEqual(json.loads(records['editorial_recovery']['content_text'])['status'], 'failed')
             self.assertTrue(records['article']['meta']['editorial_recovery_pending'])
-            warn.assert_not_called()
+            warn.assert_called_once();mark.assert_called_once()
 
     def test_corrupt_completion_list_does_not_skip_unverified_steps(self):
         with ExitStack() as stack:
@@ -297,7 +297,7 @@ class RecoveryExecutionTests(unittest.TestCase):
             path = Path(os.environ['QUALITY_BUDGET_DIR']) / (recovery.digest('job') + '.editorial-recovery.lock')
             with path.open('a') as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                with self.assertRaisesRegex(recovery.EditorialRecoveryError, '実行中'): recovery.run('job', 'keyword')
+                with self.assertRaisesRegex(cq.GenerationBusyError, '実行中'): recovery.run('job', 'keyword')
             self.assertEqual(events, []); audit.assert_not_called()
 
     def test_completed_invalid_patch_can_resume_from_saved_responses_without_replaying_writer(self):

@@ -1,4 +1,4 @@
-"""Fail a job when its final article violates protected structural requirements."""
+"""Record publication readiness separately from delivering the saved draft."""
 from __future__ import annotations
 
 import json
@@ -70,11 +70,24 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         meta={"stage": "final_article", "valid": not violations},
     )
     if violations:
+        from .quality_warnings import enabled, warn
+        if enabled():
+            # Completion is not publication approval. Keep all failed checks,
+            # recovery state and cost receipts; never seal an unverified body.
+            warn('記事は生成済みです。公開前の確認事項: '+json.dumps(violations,ensure_ascii=False))
+            upsert_artifact(job_id=job_id,step='article',content_type=article.get('content_type','text/markdown'),
+                content_text=article['content_text'],meta={**(article.get('meta') or {}),
+                    'content_audited':False,'content_audit_snapshot':None,
+                    'publication_approved':False,'completion_with_warnings':True})
+            return artifact
         if recovery_artifact:
             from .editorial_recovery import EditorialRecoveryError
             raise EditorialRecoveryError(f'Final recovered article violates content contract: {violations}')
         raise ContentQualityError(f"Final article violates content contract: {violations}")
     from .article_revisions import seal
+    if (article.get('meta') or {}).get('completion_with_warnings'):
+        upsert_artifact(job_id=job_id,step='article',content_type=article.get('content_type','text/markdown'),
+            content_text=article['content_text'],meta={**article['meta'],'completion_with_warnings':False})
     seal(job_id)
     from .quality_warnings import resolve_after_final
     warnings = get_optional_artifact(job_id,'quality_warnings')

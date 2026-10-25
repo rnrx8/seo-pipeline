@@ -791,13 +791,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     # Preserve the writer output separately. Later review steps may update `article`,
     # but diagnostics must retain what the writing model originally produced.
-    upsert_artifact(
+    draft_artifact = upsert_artifact(
         job_id=job_id,
         step="article_draft",
         content_type="text/markdown",
         content_text=article_text,
         meta={"model": get_step_config("article")[0], "input_tokens": total_input, "output_tokens": total_output, "parts": 3},
     )
+    from .quality_warnings import retain_generated_draft
+    retain_generated_draft(draft_artifact)
 
     # --- A: [hypothesis] validation ---
     hypothesis_hits = _re.findall(r'\[hypothesis\]', article_text, _re.IGNORECASE)
@@ -840,7 +842,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                         content_text=json.dumps(lead_edit,ensure_ascii=False),
                         meta={'model':get_step_config('article')[0], 'input_tokens':ti,'output_tokens':to,'audited':False})
         if lead_edit['status'] != 'edited_pending_qa':
-            raise ContentQualityError('リードの長さ指定を満たせませんでした。初稿と仕上げ履歴を保持し、記事は更新しません。')
+            warn('リードの長さに確認事項があります。本文と仕上げ履歴を保持して生成を続けます。')
 
     if citation_registry is not None:
         article_text = render(article_text, citation_registry)
