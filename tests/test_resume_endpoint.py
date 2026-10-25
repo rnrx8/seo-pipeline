@@ -79,3 +79,13 @@ class ResumeTests(unittest.TestCase):
             self.assertEqual(exc.exception.status_code,403)
 
 if __name__=='__main__':unittest.main()
+class ArticleAuditResumeTests(unittest.TestCase):
+    def test_final_failure_returns_to_unfinished_qa_not_writer(self):
+        from pipeline.step_plan import research_resume_stage
+        keys=['article','content_audit','final_structure_validation']
+        for content in (None, '{"valid": false, "error": "response.incomplete"}', 'invalid'):
+            load=lambda job,key: {'content_text':content} if content is not None else None
+            self.assertEqual(research_resume_stage('j','final_structure_validation',keys,load),'content_audit')
+        self.assertEqual(research_resume_stage('j','final_structure_validation',keys,
+            lambda *args:{'content_text':'{"valid": true}'}),'final_structure_validation')
+

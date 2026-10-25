@@ -64,7 +64,7 @@ def scoped(fn, stage):
                 if stage not in SOFT_STAGES:
                     raise
                 provider_unavailable = bool(re.search(
-                    r'残高|利用枠|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|timeout|timed out|connection|429|502|503', str(exc), re.I))
+                    r'残高|利用枠|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|response\.incomplete|応答が未完了|timeout|timed out|connection|429|502|503', str(exc), re.I))
                 if provider_unavailable:raise
                 warn(str(exc))
                 result = None

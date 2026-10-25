@@ -36,6 +36,23 @@ def requires_rate_limit_delay(step_key: str) -> bool:
 
 
 def research_resume_stage(job_id, stage, keys, load):
+    stage = _research_resume_stage(job_id, stage, keys, load)
+    # Old warn-through runs can fail at final validation even though the actual
+    # unfinished prerequisite is article QA. Resume that saved draft's audit,
+    # never the writer or a final check that cannot repair its prerequisite.
+    audit = 'content_audit'
+    if audit in keys and stage in keys and keys.index(stage) > keys.index(audit):
+        saved = load(job_id, audit)
+        try:
+            report = json.loads(saved['content_text']) if saved else {}
+        except (ValueError, TypeError):
+            report = {}
+        if not isinstance(report, dict) or report.get('valid') is not True:
+            return audit
+    return stage
+
+
+def _research_resume_stage(job_id, stage, keys, load):
     """Repair structured research prerequisites before resuming a later stage.
 
     The location of a failure does not prove its research gate passed. Reuse

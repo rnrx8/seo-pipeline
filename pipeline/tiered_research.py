@@ -85,6 +85,15 @@ def structured_review_output_limit(request):
  questions=props.get('items',{}).get('properties',{})
  if questions and request['model']=='gpt-6.1-sol':
   original=max(original,min(32000,2000+900*len(questions)))
+ # Organization includes a verdict for every heading/opening, literal opening
+ # quotes, and each parent/child relation. Size the actual required output,
+ # rather than applying the small global-check budget to this expanded schema.
+ headings=props.get('heading_answer_reviews',{}).get('properties',{})
+ scopes=props.get('heading_scope_reviews',{}).get('properties',{})
+ if headings or scopes:
+  quote_chars=sum(len(row.get('properties',{}).get('opening_quote',{}).get('enum',[''])[0]) for row in headings.values())
+  children=sum(len(row.get('properties',{})) for row in scopes.values())
+  original=max(original,min(32000,2000+500*len(headings)+200*children+2*quote_chars))
  journeys=props.get('reader_journeys',{}).get('properties',{})
  if journeys:
   return max(original,min(32000,2000+2200*len(journeys)))

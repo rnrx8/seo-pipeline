@@ -30,6 +30,16 @@ class WarningPolicyTest(unittest.TestCase):
             warning.assert_not_called()
         self.assertFalse(enabled())
 
+    def test_incomplete_review_is_not_masked_by_later_final_validation(self):
+        for message in ('品質確認の応答が未完了です（response.incomplete: 出力上限）。',
+                        'response.incomplete: max_output_tokens'):
+            def fail(*args, **kwargs): raise ContentQualityError(message)
+            with patch('pipeline.quality_warnings.warn') as warning:
+                with self.assertRaisesRegex(ContentQualityError,'incomplete|未完了'):
+                    scoped(fail,'content_audit')('job')
+                warning.assert_not_called()
+            self.assertFalse(enabled())
+
     def test_pending_research_without_items_does_not_crash_or_invent_answers(self):
         from pipeline.generation_context import decision_bundle
         with patch('pipeline.quality_warnings.warn') as warning:

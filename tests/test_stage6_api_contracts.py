@@ -36,6 +36,23 @@ class Stage6ApiContractTests(unittest.TestCase):
         expected={**request,'max_tokens':23200}
         self.assertEqual(send.call_args.kwargs,expected)
 
+    def test_organization_capacity_counts_heading_quotes_and_child_verdicts(self):
+        from pipeline.heading_answers import output_config as heading_config
+        from pipeline.heading_scope import output_config as scope_config
+        headings=[{'id':f'heading-{i:04d}','opening_quote':'家族の暮らしに合わせて図面を確認します。'*3} for i in range(24)]
+        scopes=[{'id':'s01','children':[{'id':f's{i:02d}'} for i in range(2,22)]}]
+        config=scope_config(heading_config(cq.audit_output_config(['prose_quality']),headings),scopes)
+        request={'model':'gpt-6.1-sol','max_tokens':6000,'output_config':config}
+        original=copy.deepcopy(request)
+        limit=tr.structured_review_output_limit(request)
+        self.assertGreaterEqual(limit,18000)
+        self.assertEqual(tr.structured_review_output_limit({**request,'max_tokens':limit}),limit)
+        self.assertEqual(request,original)
+        self.assertEqual(tr.structured_review_output_limit({**request,'model':'claude-opus-5-5'}),6000)
+        with patch.object(tr,'cached_result',return_value={'completed':True}),patch.object(tr,'create_with_retry') as send:
+            result,_=tr.checked_request('j','tiered_article_organization',request)
+        self.assertTrue(result['completed']);send.assert_not_called()
+
     def test_wide_research_adjudication_fits_observed_complete_response(self):
         from pipeline.research_requirements import MATRIX_SCHEMA
         from pipeline.source_spans import span_schema
