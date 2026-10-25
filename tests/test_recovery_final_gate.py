@@ -14,7 +14,7 @@ class RecoveryFinalGateTests(unittest.TestCase):
                    'outline': {'content_text': '構成'}, 'content_contract': {'content_text': '{}'},
                    'fact_sheet': {'content_text': ''}, 'fresh_sources': {'content_text': '[{"url":"https://official.example/","status":"success","text":"公式取得本文"}]'},
                    'content_audit': {'content_text': '{}'}}
-        record = {'content_text': json.dumps({'status': status, 'final_snapshot': snapshot})}
+        record = {'content_text': json.dumps({'status': status, 'final_snapshot': snapshot})} if status else None
         with ExitStack() as stack:
             for key in ('readability_issues', 'validate_structure', 'cta_placement_issues', 'validate_delivery', 'scope_issues'):
                 stack.enter_context(patch.object(final, key, return_value=[]))
@@ -29,12 +29,12 @@ class RecoveryFinalGateTests(unittest.TestCase):
             strict_audit = stack.enter_context(patch('pipeline.content_quality._require_audit_strict',
                 side_effect=cq.ContentQualityError('QAが未合格') if audit_error else None))
             legacy_matrix = stack.enter_context(patch('pipeline.research_requirements.require_matrix', return_value={}))
-            legacy_audit = stack.enter_context(patch.object(final, 'require_audit'))
+            legacy_audit = stack.enter_context(patch.object(cq, 'require_audit'))
             warn = stack.enter_context(patch('pipeline.quality_warnings.warn'))
             seal = stack.enter_context(patch('pipeline.article_revisions.seal'))
-            expected_failure = status != 'completed' or matrix_error or audit_error or snapshot != 'current'
+            expected_failure = (status is not None and status != 'completed') or matrix_error or audit_error or snapshot != 'current'
             if expected_failure:
-                with self.assertRaises(recovery.EditorialRecoveryError):scoped(final.run, 'final_structure_validation')('job', 'kw')
+                with self.assertRaises(recovery.EditorialRecoveryError if status else cq.ContentQualityError):scoped(final.run, 'final_structure_validation')('job', 'kw')
                 seal.assert_not_called()
                 self.assertFalse(json.loads(records['structure_validation_final']['content_text'])['valid'])
             else:
@@ -49,6 +49,9 @@ class RecoveryFinalGateTests(unittest.TestCase):
     def test_changed_sources_block_completion(self):self.run_final(matrix_error=True)
     def test_failed_audit_blocks_completion(self):self.run_final(audit_error=True)
     def test_old_recovery_snapshot_blocks_completion(self):self.run_final(snapshot='old')
+    def test_normal_job_without_revision_or_recovery_uses_same_strict_checks(self):self.run_final(status=None)
+    def test_normal_job_cannot_warn_past_failed_research(self):self.run_final(status=None,matrix_error=True)
+    def test_normal_job_cannot_warn_past_failed_article_qa(self):self.run_final(status=None,audit_error=True)
 
 
 if __name__ == '__main__':unittest.main()

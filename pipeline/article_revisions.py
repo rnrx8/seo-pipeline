@@ -8,7 +8,7 @@ RUN = ContextVar('article_revision_run', default=None)
 BOUND_STEPS = {'serp','serp_verified','query_attrs','search_intent','intent_chains','reference_structure','research_plan',
                'production_brief','product_context','reader_needs','competitor_evidence',
                'fact_sheet','fresh_sources','fresh_sources_review','research_matrix','content_contract',
-               'outline','service_map','article','fact_review_evidence','content_audit','structure_validation_final'}
+               'outline','draft_readiness','service_map','article','fact_review_evidence','content_audit','structure_validation_final'}
 
 
 def enabled():

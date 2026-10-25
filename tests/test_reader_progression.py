@@ -199,10 +199,12 @@ class ReaderProgressionTests(unittest.TestCase):
         self.assertNotIn('reader_state',bp.SECTION_SCHEMA['properties'])
         self.assertNotIn('transition',bp.SECTION_SCHEMA['properties'])
 
-    def test_repair_targets_include_directly_connected_chapters_only(self):
+    def test_content_repair_keeps_connected_chapters_readonly(self):
         _,_,_,ctx,value=chain()
         unrelated=copy.deepcopy(value['sections'][-1]);unrelated.update(id='s04',title='別の補助説明');value['sections'].append(unrelated)
         report={'checks':[],'blueprint_issues':[{'section_ids':['s02']}]}
+        self.assertEqual(bp.repair_targets(artifact(value,ctx),report),['s02'])
+        report['blueprint_issues'][0]['repair_kind']='structure'
         self.assertEqual(bp.repair_targets(artifact(value,ctx),report),['s01','s02','s03'])
 
     def test_unlocalized_evidence_failure_is_not_lost_beside_localized_coverage(self):
@@ -214,7 +216,8 @@ class ReaderProgressionTests(unittest.TestCase):
         self.assertNotIn('s04',bp.repair_targets(artifact(value,ctx),report))
         report['checks'].append({'key':'evidence_support','status':'fail',
                                 'reason':'別の節にも原文条件の復元が必要'})
-        self.assertEqual(bp.repair_targets(artifact(value,ctx),report),['s01','s02','s03','s04'])
+        with self.assertRaisesRegex(cq.ContentQualityError,'章を特定できない'):
+            bp.repair_targets(artifact(value,ctx),report)
 
     def test_actual_local_repair_keeps_progression_and_requires_new_review(self):
         plan,_,matrix,ctx,value=chain();a=artifact(value,ctx);edited=copy.deepcopy(value['sections'][1])

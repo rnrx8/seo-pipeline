@@ -100,6 +100,14 @@ outline_blocks の既存IDだけを使い、変更のないIDは返さない。�
 
 
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
+    artifact=get_artifact(job_id,'outline')
+    if (artifact.get('meta') or {}).get('blueprint_version'):
+        from .draft_readiness import run as ready
+        return ready(job_id,keyword,load=get_artifact,job=get_job(job_id),save=upsert_artifact)
+    return _run_legacy(job_id,keyword,api_key=api_key)
+
+
+def _run_legacy(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from . import step_outline, step_structure_guard
     from .research_requirements import require_matrix
     from .outline_policy import require_current_outline

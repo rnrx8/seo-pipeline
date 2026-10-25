@@ -44,16 +44,22 @@ class OutlineQARecoveryTests(unittest.TestCase):
         wire,original=bt.prepare({'model':'claude-opus-5-5','system':'policy','output_config':bp.repair_config(allow_titles=True)})
         self.assertEqual(original,bp.repair_schema(allow_titles=True));self.assertNotIn('format',wire['output_config'])
 
-    def test_resume_returns_to_unfinished_outline_qa_without_research_or_outline_regeneration(self):
+    def test_resume_requires_current_draft_receipt_not_old_model_qa(self):
+        from pipeline.draft_readiness import VERSION
         keys=['research_completeness','outline','research_validation','article','content_audit']
-        saved={'search_intent':{'meta':{'reader_needs_version':'v1'}},'research_matrix':{'content_text':'{"valid":true}'},'outline':{'meta':{'blueprint_version':'v1'}},'research_validation':{'content_text':'{"valid":false,"error":"bad citation"}'}}
+        saved={'search_intent':{'meta':{'reader_needs_version':'v1'}},'research_matrix':{'content_text':'{"valid":true}'},'outline':{'meta':{'blueprint_version':'v1'}},'research_validation':{'content_text':'{"valid":true}'}}
         load=lambda j,k:copy.deepcopy(saved.get(k))
-        with patch('pipeline.research_requirements._require_matrix_strict',return_value={}):
+        with patch('pipeline.research_requirements._require_matrix_strict',return_value={}),patch('pipeline.db.get_job',return_value={'main_keyword':'kw'}):
             self.assertEqual(research_resume_stage('j','article',keys,load),'research_validation')
-            saved['research_validation']['content_text']='{"valid":true}'
-            with patch.object(bp,'require_review',return_value=None):self.assertEqual(research_resume_stage('j','article',keys,load),'article')
-            with patch.object(bp,'require_review',side_effect=ContentQualityError('stale')):self.assertEqual(research_resume_stage('j','article',keys,load),'research_validation')
-            with patch.object(bp,'require_review',side_effect=RuntimeError('transport')):
+            report={'version':VERSION,'ready_for_draft':True,'publication_approved':False,'input_sha256':'current'}
+            saved['draft_readiness']={'content_text':json.dumps(report)}
+            with patch('pipeline.draft_readiness.evaluate',return_value=report):
+                self.assertEqual(research_resume_stage('j','article',keys,load),'article')
+            with patch('pipeline.draft_readiness.evaluate',return_value={**report,'input_sha256':'changed'}):
+                self.assertEqual(research_resume_stage('j','article',keys,load),'research_validation')
+            with patch('pipeline.draft_readiness.evaluate',side_effect=ContentQualityError('stale')):
+                self.assertEqual(research_resume_stage('j','article',keys,load),'research_validation')
+            with patch('pipeline.draft_readiness.evaluate',side_effect=RuntimeError('transport')):
                 with self.assertRaises(RuntimeError):research_resume_stage('j','article',keys,load)
 
     def test_same_quote_from_another_chapter_does_not_establish_support(self):

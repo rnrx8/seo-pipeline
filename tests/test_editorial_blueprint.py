@@ -288,9 +288,9 @@ class BlueprintTests(unittest.TestCase):
 
     def test_placement_empty_is_preserved_through_actual_service_map_and_cta_inject(self):
         from pipeline import step_service_map,step_cta_inject
-        plan,pages,matrix,ctx,v=fixture();a=artifact(v,ctx);rctx=bp.review_context(a)
-        readiness={**verdict(rctx),'blueprint_review_context':rctx}
-        with patch.object(step_service_map,'get_artifact',side_effect=lambda j,k:a if k=='outline' else {'content_text':json.dumps(readiness)}),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch.object(step_service_map,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(step_service_map,'create_with_retry') as send:
+        plan,pages,matrix,ctx,v=fixture();a=artifact(v,ctx)
+        inputs={'outline':a,'content_contract':{'content_text':'{"required_sections":[]}'},'fact_sheet':{'content_text':req.accepted_facts(matrix,plan)},'fresh_sources':{'content_text':json.dumps(pages)}}
+        with patch.object(step_service_map,'get_job',return_value={}),patch.object(step_service_map,'get_artifact',side_effect=lambda j,k:inputs[k]),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch.object(step_service_map,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(step_service_map,'create_with_retry') as send:
             sm=step_service_map.run('job','条件')
         send.assert_not_called();self.assertEqual(json.loads(sm['content_text'])['cta_after_h2'],[])
         article={'content_text':'## 比較\n選び方\n## まとめ\n要点','meta':{}}
@@ -324,9 +324,10 @@ class BlueprintTests(unittest.TestCase):
             stack.enter_context(patch.object(guard,'upsert_artifact',side_effect=save))
             stack.enter_context(patch.object(guard,'intent_review_requirements',return_value=copy.deepcopy(base_requirements)))
             stack.enter_context(patch.object(guard.anthropic,'Anthropic'))
-            audit_send=stack.enter_context(patch.object(cq,'create_with_retry',return_value=response({**verdict(rctx),'checks':checks})))
+            audit_send=stack.enter_context(patch.object(cq,'create_with_retry',side_effect=AssertionError('No model QA before writing')))
             result=guard.run('job','条件')
-            self.assertTrue(json.loads(result['content_text'])['valid']);self.assertEqual(audit_send.call_count,1)
+            receipt=json.loads(result['content_text'])
+            self.assertTrue(receipt['ready_for_draft']);self.assertFalse(receipt['publication_approved']);audit_send.assert_not_called()
             stack.enter_context(patch.object(step_article,'get_artifact',side_effect=lambda j,k:artifacts[k]))
             stack.enter_context(patch.object(step_article,'get_job',return_value=job))
             stack.enter_context(patch.object(step_article,'intent_review_requirements',return_value=copy.deepcopy(base_requirements)))
@@ -334,21 +335,22 @@ class BlueprintTests(unittest.TestCase):
             writer=stack.enter_context(patch.object(step_article,'_call',side_effect=Captured()))
             stack.enter_context(patch.object(step_article,'_parse_volume_design',side_effect=AssertionError('Canonical blueprint budgets must not be reparsed from Markdown')))
             with self.assertRaises(Captured):step_article.run('job','条件')
-            # Reader mapping can pass while a separate factual QA check fails.
-            # Warn-and-continue must not start another paid writer for new designs.
-            saved_readiness=copy.deepcopy(artifacts['research_validation'])
-            failed=json.loads(saved_readiness['content_text']);failed['valid']=False
-            next(c for c in failed['checks'] if c['key']=='evidence_support').update(status='fail',reason='unsupported ranking')
-            artifacts['research_validation']={**saved_readiness,'content_text':json.dumps(failed)}
-            with patch('pipeline.quality_warnings.enabled',return_value=True):
+            # An invalid CURRENT research matrix must still block even in a
+            # warn-and-continue context. Old editorial diagnostics cannot grant
+            # publication approval, or trigger another prebody model QA.
+            with patch('pipeline.research_requirements.require_matrix',side_effect=cq.ContentQualityError('unverified current facts')),patch('pipeline.quality_warnings.enabled',return_value=True):
                 with self.assertRaises(cq.ContentQualityError):step_article.run('job','条件')
             self.assertEqual(writer.call_count,1)
-            artifacts['research_validation']=saved_readiness
             sent=json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)
             self.assertIn('この章で解消する疑問',sent);self.assertIn('q1.c02',sent);self.assertIn('プレミアム',sent)
-            # A later change to the canonical design cannot reuse that readiness.
+            # A current, coherent design change receives a different draft
+            # binding. A stale Markdown/metadata pair remains rejected.
+            from pipeline.draft_readiness import evaluate
             changed=copy.deepcopy(v);changed['sections'][0]['reader_progression']['after']['decision']='変更した到達点'
             artifacts['outline']=artifact(changed,ctx)
+            updated=evaluate('job','条件',load=lambda j,k:artifacts[k],job=job)
+            self.assertNotEqual(receipt['input_sha256'],updated['input_sha256'])
+            artifacts['outline']['content_text']+='改変した本文'
             with self.assertRaises(cq.ContentQualityError):step_article.run('job','条件')
             self.assertEqual(writer.call_count,1)
 

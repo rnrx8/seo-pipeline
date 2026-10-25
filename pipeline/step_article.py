@@ -607,20 +607,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .research_requirements import require_matrix
     matrix = require_matrix(job_id)
     from .quality_context import compact_enabled
-    readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
-    readiness_requirements=intent_review_requirements(job, keyword)
-    from .editorial_blueprint import review_context,require_review
-    design=review_context(outline)
-    if design:readiness_requirements['editorial_design']=design
-    require_review(readiness,outline)
-    audit_gate=require_audit
-    if design:
-        # New designs must finish all readiness checks, including source claims.
-        # A general warn-and-continue mode must not bypass an actual failed QA.
-        from .content_quality import _require_audit_strict
-        audit_gate=_require_audit_strict
-    audit_gate(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
-                                  contract, readiness_requirements, sources), stage="research")
+    if (outline.get('meta') or {}).get('blueprint_version'):
+        from .draft_readiness import evaluate
+        evaluate(job_id,keyword,outline=outline,load=get_artifact,job=job)
+    else:
+        readiness = json.loads(get_artifact(job_id, 'research_validation')['content_text'])
+        readiness_requirements=intent_review_requirements(job, keyword)
+        require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
+                                      contract, readiness_requirements, sources), stage="research")
     try:
         user_id = job.get("tenant_id")
         category = job.get("category")

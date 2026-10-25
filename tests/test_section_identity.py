@@ -46,8 +46,9 @@ class SectionPipelineIntegrationTests(unittest.TestCase):
         from unittest.mock import patch
         evidence=patch('pipeline.generation_context.generation_evidence',side_effect=lambda job,facts,sources,**kw:facts)
         evidence.start();self.addCleanup(evidence.stop)
-        patcher=patch('pipeline.research_requirements.require_matrix',return_value={})
-        patcher.start();self.addCleanup(patcher.stop)
+        for name in ('require_matrix','_require_matrix_strict'):
+            patcher=patch('pipeline.research_requirements.'+name,return_value={})
+            patcher.start();self.addCleanup(patcher.stop)
 
     def test_renamed_section_survives_repair_and_final_gate(self):
         import json

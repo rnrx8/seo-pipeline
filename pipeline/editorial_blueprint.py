@@ -366,7 +366,7 @@ def apply_review(report, value, ctx, *, text=None):
     return report
 
 
-def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=(), allow_titles=False):
+def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, omission_targets=(), allow_titles=False, allow_budget=False):
     candidate=copy.deepcopy(value);by_id={s['id']:s for s in candidate['sections']};seen=set()
     expected=({'edits','delete_ids','section_order'}|({'lead_direction','reader_focus'} if allow_lead else set())
               |({'omission_edits'} if omission_targets else set())|({'titles'} if allow_titles else set()))
@@ -393,7 +393,10 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, 
     for edit in response['edits']:
         sid=edit['id'];s=edit['section']
         if sid in seen or sid!=s['id'] or (sid not in targets and (not structural or sid in by_id)):fail('対象外・重複の節を修正できません。')
-        if sid in by_id and not structural and any(s[k]!=by_id[sid][k] for k in ('title','parent_id','level')):fail('構造変更が許可されていません。')
+        if sid in by_id and not structural:
+            protected=('title','question','parent_id','level','need_ids','decision_ids','research_ids')
+            if any(s[k]!=by_id[sid][k] for k in protected):fail('回答範囲・構造・根拠割当ての変更が許可されていません。')
+            if not allow_budget and s['budget']!=by_id[sid]['budget']:fail('分量設計の変更が許可されていません。')
         if sid not in by_id:
             target_topics={q for section in value['sections'] if section['id'] in targets for q in section['research_ids']}
             if not set(s['research_ids']) & target_topics:fail('局所修正と関係のない新しい節を追加できません。')
@@ -474,11 +477,15 @@ def omission_repair_targets(artifact, report):
     from .content_edits import content_blocks
     value=require_projection(artifact);omissions=value['omissions']
     failed=[c for c in report['checks'] if c['status']=='fail']
-    if any(c['key']!='coverage' and not c.get('affected_blocks') for c in failed):
-        return [o['research_id'] for o in omissions]
     blocks={b['id']:b['text'] for b in content_blocks(artifact['content_text'])}
     shown='\n'.join(blocks.get(loc['id'],'') for c in failed for loc in c.get('affected_blocks',[]))
     return [o['research_id'] for o in omissions if '- '+o['research_id']+'：'+o['reason'] in shown]
+
+
+def structural_edit_allowed(report):
+    """Coverage is not permission to change hierarchy or the article scope."""
+    return any(i.get('key')!='outline_volume' for i in report.get('structural_issues',[])) or any(
+        issue.get('repair_kind')=='structure' for issue in report.get('blueprint_issues',[]))
 
 
 def repair_targets(artifact, report):
@@ -487,6 +494,9 @@ def repair_targets(artifact, report):
     from .content_edits import content_blocks
     value=require_projection(artifact);text=artifact['content_text'];targets=set()
     spans=outline_sections(text)
+    # Trailing omission notes and allocation tables are not the last chapter.
+    metadata_start=re.search(r'^### (?:編集メモ|セクション別ボリューム設計)\s*$',text,re.M)
+    section_end=metadata_start.start() if metadata_start else len(text)
     blocks=content_blocks(text);ranges={};cursor=0
     for block in blocks:
         start=text.index(block['text'],cursor);cursor=start+len(block['text'])
@@ -496,18 +506,24 @@ def repair_targets(artifact, report):
         for loc in check.get('affected_blocks',[]):
             start,end=ranges.get(loc['id'],(-1,-1))
             for span,s in zip(spans,value['sections']):
-                if start<span['end'] and end>span['start']:targets.add(s['id'])
-    for issue in report.get('blueprint_issues',[]):targets.update(issue['section_ids'])
+                if start<min(span['end'],section_end) and end>span['start']:targets.add(s['id'])
+    structural=structural_edit_allowed(report)
+    # Decision-level diagnostics can mention many assigned sections. When the
+    # reviewer supplied exact faulty blocks, those are the writable locations.
+    exact_targets=bool(targets)
+    for issue in report.get('blueprint_issues',[]):
+        if structural or not exact_targets:targets.update(issue['section_ids'])
+    if any(i.get('key')=='outline_volume' for i in report.get('structural_issues',[])):
+        targets.update(s['id'] for s in value['sections'] if s['level']==2)
     for issue in report.get('structural_issues',[]):
         title=issue.get('title') or issue.get('h2_title')
         targets.update(s['id'] for s in value['sections'] if s['title']==title)
-    # Unlocalized legacy audit checks explicitly scope to the current design,
-    # not an unrelated prose block; unrelated sections remain read-only by policy.
-    unlocalized = any(c['status']=='fail' and c['key']!='coverage' and not c.get('affected_blocks')
-                      for c in report['checks'])
-    if unlocalized or (not targets and not lead_repair_allowed(artifact,report) and not title_repair_allowed(artifact,report)):
-        targets.update(s['id'] for s in value['sections'])
-    structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
+    if any(c['status']=='fail' and c['key']!='coverage' and not c.get('affected_blocks')
+           for c in report['checks']):
+        fail('章を特定できない指摘が残っています。全章への修正許可には変換しません。')
+    if not targets and not (lead_repair_allowed(artifact,report) or title_repair_allowed(artifact,report)
+                           or omission_repair_targets(artifact,report)):
+        fail('修正対象の章が特定されていません。全章を修正可能にはしません。')
     if structural:
         # Changing a chapter's question can require reparenting its children.
         # Adjacent unrelated chapters are not made writable by this expansion.
@@ -516,10 +532,11 @@ def repair_targets(artifact, report):
     # A changed/deleted destination can require a corresponding change to the
     # incoming question; expose the directly connected sections, not the graph.
     related=set()
-    for section in value['sections']:
-        destinations={q['target_section_id'] for q in (section['reader_progression'] or {}).get('next_questions',[]) if q['target_section_id']}
-        if section['id'] in targets:related.update(destinations)
-        if destinations & targets:related.add(section['id'])
+    if structural:
+        for section in value['sections']:
+            destinations={q['target_section_id'] for q in (section['reader_progression'] or {}).get('next_questions',[]) if q['target_section_id']}
+            if section['id'] in targets:related.update(destinations)
+            if destinations & targets:related.add(section['id'])
     return sorted(targets | related)
 
 
@@ -536,7 +553,8 @@ def repair(job_id, keyword, report, artifact, client, *, repair_progress=None):
     allow_lead=lead_repair_allowed(artifact,report)
     allow_titles=title_repair_allowed(artifact,report)
     omission_targets=omission_repair_targets(artifact,report)
-    structural=bool(report.get('structural_issues')) or any(c['key']=='coverage' and c['status']=='fail' and not c.get('requires_source_check') for c in report['checks'])
+    structural=structural_edit_allowed(report)
+    allow_budget=any(i.get('key')=='outline_volume' for i in report.get('structural_issues',[]))
     from .evidence_policy import REVIEW_RESOLUTION_POLICY
     from .reader_presentation import READER_PRESENTATION_POLICY
     from .generation_context import POLICY as EVIDENCE_POLICY
@@ -562,7 +580,7 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
         if getattr(msg,'stop_reason',None)!='end_turn':fail('編集設計の局所修正が途中で中断しました。未適用です。')
         response=json.loads(message_text(msg))
     validate_shape(response,output['format']['schema'])
-    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets,allow_titles=allow_titles)
+    candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets,allow_titles=allow_titles,allow_budget=allow_budget)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
     from .outline_repair_progress import completed
     progress_meta=completed(repair_progress,text)

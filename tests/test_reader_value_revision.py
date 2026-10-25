@@ -159,7 +159,8 @@ class ReaderValueRevisionTests(unittest.TestCase):
         value['sections']=[parent,child,grandchild,unrelated];saved=artifact(value,ctx)
         block=next(b for b in content_blocks(saved['content_text']) if 'H2：サービスの選び方' in b['text'])
         report={'checks':[{'key':'coverage','status':'fail','requires_source_check':False,
-                          'affected_blocks':[{'id':block['id'],'reason':'基準と商品推薦を分ける'}]}]}
+                          'affected_blocks':[{'id':block['id'],'reason':'基準と商品推薦を分ける'}]}],
+                'structural_issues':[{'key':'editorial_heading_scope','reason':'基準と商品推薦を別の親章にする'}]}
         targets=bp.repair_targets(saved,report)
         self.assertEqual(targets,['s01','s02','s03']);self.assertFalse(bp.lead_repair_allowed(saved,report))
         recommendation=copy.deepcopy(parent);recommendation.update(id='s05',title='条件に合うおすすめサービス',question='どの商品を勧めるか')

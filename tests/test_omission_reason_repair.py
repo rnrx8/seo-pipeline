@@ -19,7 +19,9 @@ class OmissionReasonRepairTests(unittest.TestCase):
         plan,matrix,ctx,value,a=self.setup_case()
         correction={'edits':[],'delete_ids':[],'section_order':[],
                     'omission_edits':[{'research_id':'q1','reason':'細目は原文にあるが今回の主回答では採用しない'}]}
-        report={'checks':[{'key':'evidence_support','status':'fail','reason':'省略理由の未確認という説明が原文と矛盾'}]}
+        location=next(b['id'] for b in content_blocks(a['content_text']) if b['text'].startswith('- q1：'))
+        report={'checks':[{'key':'evidence_support','status':'fail','reason':'省略理由の未確認という説明が原文と矛盾',
+                          'affected_blocks':[{'id':location}]}]}
         with ExitStack() as stack:
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
@@ -53,6 +55,7 @@ class OmissionReasonRepairTests(unittest.TestCase):
         location=next(b['id'] for b in blocks if b['text'].startswith('- q1：'))
         report={'checks':[{'key':'evidence_support','status':'fail','reason':'記録修正','affected_blocks':[{'id':location}]}]}
         self.assertEqual(bp.omission_repair_targets(a,report),['q1'])
+        self.assertEqual(bp.repair_targets(a,report),[])
         report['checks'][0]['affected_blocks']=[{'id':blocks[0]['id']}]
         self.assertEqual(bp.omission_repair_targets(a,report),[])
         report['checks'][0].update(status='pass',affected_blocks=[])

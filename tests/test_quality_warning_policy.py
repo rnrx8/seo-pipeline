@@ -22,11 +22,13 @@ class WarningPolicyTest(unittest.TestCase):
             warning.assert_not_called()
             self.assertFalse(enabled())
 
-    def test_unavailable_verification_records_unperformed_check(self):
+    def test_unavailable_verification_preserves_original_cause_and_stops(self):
         def fail(*args, **kwargs): raise ContentQualityError('OpenAI APIの利用残高がありません')
         with patch('pipeline.quality_warnings.warn') as warning:
-            scoped(fail, 'research_completeness')('job')
-            self.assertIn('確認未完了', warning.call_args.args[0])
+            with self.assertRaisesRegex(ContentQualityError,'利用残高'):
+                scoped(fail, 'research_completeness')('job')
+            warning.assert_not_called()
+        self.assertFalse(enabled())
 
     def test_pending_research_without_items_does_not_crash_or_invent_answers(self):
         from pipeline.generation_context import decision_bundle

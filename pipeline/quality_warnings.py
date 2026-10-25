@@ -9,7 +9,7 @@ from contextlib import contextmanager
 _CONTEXT = ContextVar('quality_warning_context', default=None)
 WARNING_ACCOUNT = 'nishi.aworks@gmail.com'
 SOFT_STAGES = {'research_completeness', 'structure_guard', 'research_validation',
-               'review', 'fact_review', 'content_audit', 'final_structure_validation'}
+               'review', 'fact_review', 'content_audit'}
 
 def enabled():
     return _CONTEXT.get() is not None
@@ -55,16 +55,18 @@ def scoped(fn, stage):
                 result = fn(job_id, *args, **kwargs)
             except ContentQualityError as exc:
                 from .editorial_recovery import EditorialRecoveryError, UpstreamRepairRequired
-                if isinstance(exc, (EditorialRecoveryError, UpstreamRepairRequired)):
+                from .draft_readiness import DraftReadinessError
+                if isinstance(exc, (EditorialRecoveryError, UpstreamRepairRequired, DraftReadinessError)):
                     raise
-                # These stages only verify existing work. Their unavailable API
-                # is an unperformed check, not a successful audit. Generation
-                # stages and non-quality exceptions remain hard failures.
+                # Editorial diagnostics may continue to actual article QA.
+                # An unavailable provider must preserve its cause/current
+                # stage, rather than being masked by the next prerequisite.
                 if stage not in SOFT_STAGES:
                     raise
                 provider_unavailable = bool(re.search(
                     r'残高|利用枠|insufficient_quota|billing|credit balance|API.?key|authentication|unauthorized|timeout|timed out|connection|429|502|503', str(exc), re.I))
-                warn(('品質確認を実行できません。確認未完了のまま継続します: ' if provider_unavailable else '') + str(exc))
+                if provider_unavailable:raise
+                warn(str(exc))
                 result = None
             if stage == 'structure_guard':
                 from .db import get_optional_artifact
