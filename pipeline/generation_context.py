@@ -132,6 +132,8 @@ def bundle_data(plan, matrix, *, quotes, planning=False):
             'decisions':rows,'sources':sources,
             'reader_design':publication_design(plan.get('reader_design',{})),
             'reader_decisions':copy.deepcopy(plan.get('reader_decisions',[]))}
+    from .article_citations import build
+    bundle['citation_registry'] = build(sources)
     if planning:
         bundle['editorial_planning']=outline_planning_context(plan)
     return bundle

@@ -162,6 +162,94 @@ def assemble(packet, replacements, outline):
     return candidate, binding
 
 
+def scoped_retry(request, packet, candidate, binding, outline, issues):
+    """A mechanical defect narrows the next request; valid sections stay fixed."""
+    from .content_edits import content_blocks
+    _, rows = sections({'content_text':candidate, 'meta':{'section_map':binding}}, outline)
+    owners = {}; cursor = 0
+    for block in content_blocks(candidate):
+        start = candidate.index(block['text'], cursor)
+        cursor = start + len(block['text'])
+        start += len(block['text']) - len(block['text'].lstrip())
+        owners[block['id']] = next((sid for sid, r in rows.items() if r['start'] <= start < r['end']), None)
+    targets = set()
+    for issue in issues:
+        located = {owners.get(row['id']) for row in issue.get('affected_blocks', [])}
+        located.discard(None)
+        if not located:
+            located = {sid for sid, row in rows.items() if row['title'] == issue.get('heading')}
+        if not located or not located <= set(packet['target_section_ids']):
+            fail('検査指摘を変更可能な節へ特定できません。全対象の再送はしません。')
+        targets.update(located)
+    ids = [s['id'] for s in packet['sections'] if s['id'] in targets]
+    source = json.loads(request['messages'][0]['content'])
+    payload = {'source_sections':[{'id':sid,'text':rows[sid]['text']} for sid in ids],
+        'target_section_ids':ids, 'target_sections':[s for s in packet['sections'] if s['id'] in targets],
+        'structural_issues':issues, 'content_contract':source['content_contract']}
+    if source.get('citation_registry'):
+        payload['citation_registry'] = source['citation_registry']
+    if any(issue['key'] != 'continuous_prose' for issue in issues):
+        payload['confirmed_facts'] = source['confirmed_facts']
+    return {**request, 'max_tokens':min(request['max_tokens'],6000), 'output_budget_includes_thinking':False,
+        'system':request['system']+'\n今回は機械検査に残った対象節だけを修正する。既存原稿の事実・数値・対象条件と必要な感情理解は保持し、新情報を追加しない。target_section_ids以外は返さない。',
+        'messages':[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+        'output_config':{'format':{'type':'json_schema','schema':{'type':'object','properties':{
+            'sections':{'type':'object','properties':{sid:{'type':'string'} for sid in ids},
+                        'required':ids,'additionalProperties':False}},'required':['sections'],'additionalProperties':False}}}}
+
+
+def candidate_signature(packet, outline, payload, system, model):
+    from .content_quality import digest
+    return digest(json.dumps([packet,outline['content_text'],payload,system,model],ensure_ascii=False,sort_keys=True))
+
+
+def cached_candidate(job_id, signature, outline, contract, setting):
+    """A completed body survives a lead/provider failure; never inherits QA."""
+    try:
+        saved = get_artifact(job_id, 'outline_body_repair_candidate')
+    except (ValueError,KeyError):
+        return None
+    meta = saved.get('meta') or {}
+    if meta.get('input_sha256') != signature:
+        return None
+    from .content_quality import digest
+    from .article_quality import validate_delivery
+    from .readability import readability_issues
+    from .step_structure_guard import validate_structure
+    text = saved['content_text'];binding = meta.get('section_map')
+    if meta.get('text_sha256') != digest(text):
+        fail('保存した修正候補の本文が変わっています。再生成前に保存状態を確認してください。')
+    issues = validate_delivery(text,outline['content_text'],setting,contract,binding)
+    issues += readability_issues(text) + validate_structure(text,contract,outline=False)
+    if meta.get('citation_registry'):
+        from .article_citations import integrity_issues
+        issues += integrity_issues(text,meta['citation_registry'])
+    if issues:
+        fail('保存候補の検査が未合格です。全文を再送しません。'+json.dumps(issues,ensure_ascii=False))
+    return text,binding
+
+
+def preserved_sections(packet,candidate,binding,outline,citation_registry=None):
+    """Record source rebinding separately; it never permits prose changes."""
+    from .content_quality import digest
+    _,current = sections({'content_text':candidate,'meta':{'section_map':binding}},outline)
+    kept = {};rebound = []
+    def prose(value):
+        from .article_citations import DEFINITION
+        value='\n'.join(line for line in value.splitlines() if not DEFINITION.fullmatch(line.strip()))
+        return re.sub(r'(?:[ \t]*※\d+)+','',value).strip()
+    for sid,row in packet['source_sections'].items():
+        if sid in packet['target_section_ids'] or sid in packet['removed_section_ids']:continue
+        old=row['text'].rstrip('\n');new=current[sid]['text'].rstrip('\n')
+        if old == new:
+            kept[sid]=digest(old)
+        elif citation_registry is not None and prose(old) == prose(new):
+            rebound.append(sid)
+        else:
+            fail('変更対象外の本文が変わっています: '+sid)
+    return kept,rebound
+
+
 def run(job_id, keyword, api_key=None):
     from . import step_article
     before = get_artifact(job_id, 'outline_before_editorial_recovery')
@@ -205,6 +293,25 @@ def run(job_id, keyword, api_key=None):
                'removed_section_ids': packet['removed_section_ids'],
                'editorial_findings': report.get('editorial_findings', []),
                'confirmed_facts': generation_evidence(job_id, '', ''), 'content_contract': contract}
+    citation_registry = None
+    if job.get('citation_style') == 'inline_footnote':
+        from .article_citations import from_context, for_article, POLICY as CITATION_POLICY
+        registry_hint = original.get('meta',{}).get('citation_registry')
+        if registry_hint is None:
+            try:
+                staged = get_artifact(job_id,'outline_body_repair_candidate')
+            except (ValueError,KeyError):
+                staged = None
+            staged_meta = (staged or {}).get('meta') or {}
+            if (staged_meta.get('source_sha256') == digest(original['content_text'])
+                    and staged_meta.get('outline_sha256') == digest(outline['content_text'])
+                    and staged_meta.get('facts_sha256') == digest(payload['confirmed_facts'])
+                    and staged_meta.get('citation_registry')):
+                # Explicit legacy migration: verify every staged URL against
+                # current accepted sources before adopting its number identity.
+                registry_hint = for_article(staged,payload['confirmed_facts'])
+        citation_registry = from_context(payload['confirmed_facts'],registry_hint)
+        payload['citation_registry'] = citation_registry
     schema = {'type': 'object', 'properties': {'sections': {'type': 'object',
               'properties': {sid: {'type': 'string'} for sid in packet['target_section_ids']},
               'required': packet['target_section_ids'], 'additionalProperties': False}},
@@ -221,9 +328,17 @@ def run(job_id, keyword, api_key=None):
 JSONのみを返す。''',
         messages=[{'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}],
         output_config={'format': {'type': 'json_schema', 'schema': schema}})
+    if citation_registry is not None:
+        request['system'] += '\n'+CITATION_POLICY
+    signature = candidate_signature(packet,outline,payload,request['system'],model)
+    restored = cached_candidate(job_id,signature,outline,contract,job.get('word_count_setting'))
+    if citation_registry is not None and restored is None and not original.get('meta',{}).get('citation_registry'):
+        from .article_citations import integrity_issues
+        if integrity_issues(source['content_text']):
+            fail('旧原稿の出典番号に未対応があります。保存済み資料で対応を整えた候補が必要です。有料の全文修正は再送しません。')
     import anthropic
     client = None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key, max_retries=0)
-    if hybrid_writing_enabled():
+    if hybrid_writing_enabled() and restored is None:
         from .step_content_audit import repair_output_limit
         sizing = {'target_block_ids': packet['target_section_ids'], 'article_blocks': [
             {'id': sid, 'text': packet['source_sections'].get(sid, {}).get('body', '')}
@@ -232,13 +347,25 @@ JSONのみを返す。''',
             client.with_options(max_retries=0).messages.count_tokens(model=model,
                 messages=[{'role': 'user', 'content': sample}], timeout=30).input_tokens)
         request['output_budget_includes_thinking'] = True
-    for attempt in range(2):
+    replacements = {}
+    for attempt in (() if restored else range(2)):
         if packet['target_section_ids']:
             value, _ = checked_request(job_id, f'tiered_content_repair_outline_sections_{attempt}', request, client=client)
         else:
             value = {'sections': {}}  # Removing only a redundant section needs no model call.
+        expected = set(request['output_config']['format']['schema']['properties']['sections']['properties'])
+        if not isinstance(value.get('sections'),dict) or set(value['sections']) != expected:
+            fail('修正応答の節IDが要求範囲と一致しません。原稿は変更しません。')
+        replacements.update(value['sections'])
+        if citation_registry is not None:
+            from .article_citations import tokens
+            replacements = {sid:tokens(body,citation_registry) for sid,body in replacements.items()}
+        candidate, binding = assemble(packet, replacements, outline['content_text'])
+        if citation_registry is not None:
+            from .article_citations import render
+            candidate = render(candidate,citation_registry)
+        issues = []
         try:
-            candidate, binding = assemble(packet, value['sections'], outline['content_text'])
             issues = validate_delivery(candidate, outline['content_text'], job.get('word_count_setting'), contract, binding)
             issues += readability_issues(candidate) + validate_structure(candidate, contract, outline=False)
             if cta_block and cta_block in candidate:
@@ -247,21 +374,31 @@ JSONのみを返す。''',
                 fail(json.dumps(issues, ensure_ascii=False))
             break
         except (ContentQualityError, KeyError) as exc:
-            if attempt:
+            if attempt or not issues:
                 raise
-            request = {**request, 'messages': request['messages'] + [
-                {'role': 'assistant', 'content': json.dumps(value, ensure_ascii=False)},
-                {'role': 'user', 'content': '未適用です。同じ元原稿へ全対象を再提出してください。' + str(exc)}]}
+            request = scoped_retry(request, packet, candidate, binding, outline, issues)
+    if restored:
+        candidate,binding = restored
+    else:
+        upsert_artifact(job_id=job_id,step='outline_body_repair_candidate',content_type='text/markdown',
+            content_text=candidate,meta={'input_sha256':signature,'text_sha256':digest(candidate),
+                'section_map':binding,'citation_registry':citation_registry,'audited':False,
+                'source_sha256':digest(original['content_text']),'outline_sha256':digest(outline['content_text']),
+                'facts_sha256':digest(payload['confirmed_facts'])})
+    preserved,rebound = preserved_sections(packet,candidate,binding,outline,citation_registry)
     candidate, lead_repair = finish_failed_lead(client, candidate, outline, keyword, job, report)
-    preserved = {sid: digest(row['text'].rstrip('\n')) for sid, row in packet['source_sections'].items()
-                 if sid not in packet['target_section_ids'] and sid not in packet['removed_section_ids']}
     meta = {**original.get('meta', {}), 'section_map': binding, 'content_audited': False,
             'content_audit_snapshot': None, 'editorial_recovery_pending': True,
             'outline_body_repair': {'version': VERSION, 'source_sha256': digest(original['content_text']),
                 'lead_sha256': digest(packet['lead']), 'target_section_ids': packet['target_section_ids'],
                 'preserved_section_sha256': preserved, 'removed_section_ids': packet['removed_section_ids'],
+                'citation_rebound_section_ids':rebound,
                 'lead_preserved': candidate.startswith(packet['lead']), 'lead_repair': lead_repair,
                 'cta_reinserted_by_configured_step': bool(cta_block)}}
+    if citation_registry is not None:
+        from .article_citations import render
+        candidate = render(candidate,citation_registry)
+        meta['citation_registry'] = citation_registry
     from .article_design import correspondence, design_context
     meta['reader_correspondence'] = correspondence(candidate, outline['content_text'], design_context(outline), binding)
     # CTA positions are re-resolved against the new blueprint in the next step.

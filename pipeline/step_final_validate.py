@@ -21,6 +21,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     violations += cta_placement_issues(article['content_text'], (article.get('meta') or {}).get('cta_placement'), (article.get('meta') or {}).get('section_map'))
     outline = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
+    if job.get('citation_style') == 'inline_footnote':
+        from .article_citations import integrity_issues
+        violations += integrity_issues(article['content_text'],(article.get('meta') or {}).get('citation_registry'))
     recovery_artifact = get_optional_artifact(job_id, 'editorial_recovery')
     recovery = None
     if recovery_artifact:

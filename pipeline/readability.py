@@ -20,6 +20,21 @@ READABILITY_POLICY = '''H2直下・H3・H4を含む本文では、通常の文�
 本文生成では構成にある見出しを使い、H4も新設しない。H2/H3や既存H4の削除・移動は禁止。局所修正工程で明示的に許可された新しいH4だけは、既存H3内の話題整理に限る。'''
 
 
+def reference_entry(line):
+    """Standalone URL reference definitions are structured data, not prose.
+
+    A prose sentence mentioning a URL or following a reference label still
+    counts. This only recognizes the URL-only definitions emitted by citation
+    styles (including Markdown definitions), with an optional numeric date.
+    """
+    match = re.fullmatch(r'(?:※\d+|\[\^?[^\]\s]+\])[:：]\s*(.+)', line.strip())
+    if not match: return False
+    parts = match[1].split()
+    if len(parts) > 1 and re.fullmatch(r'[（(](?:確認日[:：]?)?\d{4}[-/]\d{1,2}[-/]\d{1,2}[）)]', parts[-1]):
+        parts.pop()
+    return bool(parts) and all(re.fullmatch(r'https?://[^\s<>]+', part) for part in parts)
+
+
 def readability_issues(text):
     issues, run, ids = [], [], []
     heading, level, fenced, quoted = '', 0, False, False
@@ -47,6 +62,8 @@ def readability_issues(text):
             if match:
                 flush(); level, heading = len(match[1]), match[2]; continue
             if not stripped: continue
+            if reference_entry(stripped):
+                flush(); continue
             next_line = lines[index + 1].strip() if index + 1 < len(lines) else ''
             table_header = '|' in stripped and bool(re.match(r'^\|?\s*:?-{3,}:?\s*\|(?:\s*:?-{3,}:?\s*\|?)+$', next_line))
             if table_header or (in_table and '|' in stripped):
@@ -80,6 +97,7 @@ def long_sentence_candidates(text, limit=SENTENCE_REVIEW_LIMIT):
                 continue
             if fenced or re.match(r'^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|!\[|\|)', stripped):
                 continue
+            if reference_entry(stripped): continue
             # A Markdown table without leading pipes is still a table.
             if re.search(r'(?m)^\s*\|?\s*:?-{3,}:?\s*\|', block['text']):
                 continue
