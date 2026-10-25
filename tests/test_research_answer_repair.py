@@ -64,7 +64,7 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
             plan,pages,value=self.fixture()
             if variant=='source':value['coverage_issues'][0]['repair_kind']='source'
             elif variant=='unverified':value['items'][0]['claims'][0]['evidence_indices']=[]
-            else:value['answer_repair_version']=repair.VERSION
+            else:value.update(answer_repair_version=repair.VERSION,answer_repair_rounds=repair.MAX_ROUNDS)
             with self.subTest(variant=variant),patch.object(tr,'checked_request') as send:
                 self.assertFalse(repair.eligible(value,plan,pages))
                 with self.assertRaises(req.ContentQualityError):repair.run('j',value,plan,pages,{})
@@ -95,3 +95,32 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
             self.assertEqual(json.loads(saved['content_text'])['attempt'],3)
             self.assertEqual(store['research_matrix_before_answer_repair']['content_text'],json.dumps(value))
             self.assertTrue(req._require_matrix_strict('j')['valid'])
+
+    def test_evolving_findings_repair_only_remaining_rounds_and_stop_on_pass(self):
+        plan,pages,value=self.fixture()
+        value.update(answer_repair_version='verified-answer-repair-v1')
+        calls=[]
+        def once(job,current,*args):
+            calls.append(copy.deepcopy(current))
+            result=copy.deepcopy(current)
+            result['answer_repair_rounds']=len(calls)+1
+            result['items'][0]['answer']='changed answer '+str(len(calls))
+            if len(calls)==1:
+                result['coverage_issues']=[{'id':'q1','repair_kind':'editorial','reason':'a newly found inconsistent row'}]
+            else:result.update(coverage_sufficient=True,coverage_issues=[])
+            return result,NS(input_tokens=1,output_tokens=1)
+        with patch.object(repair,'_run_once',side_effect=once):result,usage=repair.run('j',value,plan,pages,{})
+        self.assertEqual(len(calls),2)
+        self.assertTrue(result['coverage_sufficient'])
+        self.assertEqual(result['answer_repair_rounds'],3)
+        self.assertEqual(usage.input_tokens,2)
+        self.assertFalse(repair.eligible(result,plan,pages))
+
+    def test_unchanged_answer_and_repeated_findings_cannot_authorize_replay(self):
+        plan,pages,value=self.fixture()
+        unchanged=copy.deepcopy(value);unchanged['answer_repair_rounds']=1
+        with patch.object(repair,'_run_once',return_value=(unchanged,NS(input_tokens=1,output_tokens=1))) as ask:
+            result,_=repair.run('j',value,plan,pages,{})
+        ask.assert_called_once()
+        self.assertIn('unchanged',result['answer_repair_stopped_reason'])
+        self.assertFalse(repair.eligible(result,plan,pages))
