@@ -16,6 +16,22 @@ VERSION = 'outline-body-repair-v1'
 HEADINGS = re.compile(r'^(#{2,4})[ \t]+(.+)$', re.M)
 
 
+def finish_failed_lead(client, candidate, outline, keyword, job, report):
+    """Preserve accepted/unflagged leads; fix an already failed lead before QA."""
+    findings = [f for f in report.get('editorial_findings', [])
+                if f.get('severity') == 'blocking' and f.get('origin') == 'individual_lead_review']
+    if not findings: return candidate, None
+    from . import step_article
+    from .db import get_learned_style_rules
+    rules = get_learned_style_rules(job['tenant_id']) if job.get('tenant_id') else []
+    feedback = '\n'.join(f['problem']+' / '+f['required_change'] for f in findings)
+    revised, _, _, meta = step_article._finish_reader_lead(
+        client, candidate, outline, keyword, job, rules, review_feedback=feedback)
+    if revised[HEADINGS.search(revised).start():] != candidate[HEADINGS.search(candidate).start():]:
+        fail('リード修正で対象外の本文が変更されています。')
+    return revised, meta
+
+
 def fail(reason):
     raise ContentQualityError('構成変更後の範囲修正: ' + reason)
 
@@ -236,6 +252,7 @@ JSONのみを返す。''',
             request = {**request, 'messages': request['messages'] + [
                 {'role': 'assistant', 'content': json.dumps(value, ensure_ascii=False)},
                 {'role': 'user', 'content': '未適用です。同じ元原稿へ全対象を再提出してください。' + str(exc)}]}
+    candidate, lead_repair = finish_failed_lead(client, candidate, outline, keyword, job, report)
     preserved = {sid: digest(row['text'].rstrip('\n')) for sid, row in packet['source_sections'].items()
                  if sid not in packet['target_section_ids'] and sid not in packet['removed_section_ids']}
     meta = {**original.get('meta', {}), 'section_map': binding, 'content_audited': False,
@@ -243,7 +260,8 @@ JSONのみを返す。''',
             'outline_body_repair': {'version': VERSION, 'source_sha256': digest(original['content_text']),
                 'lead_sha256': digest(packet['lead']), 'target_section_ids': packet['target_section_ids'],
                 'preserved_section_sha256': preserved, 'removed_section_ids': packet['removed_section_ids'],
-                'lead_preserved': True, 'cta_reinserted_by_configured_step': bool(cta_block)}}
+                'lead_preserved': candidate.startswith(packet['lead']), 'lead_repair': lead_repair,
+                'cta_reinserted_by_configured_step': bool(cta_block)}}
     from .article_design import correspondence, design_context
     meta['reader_correspondence'] = correspondence(candidate, outline['content_text'], design_context(outline), binding)
     # CTA positions are re-resolved against the new blueprint in the next step.

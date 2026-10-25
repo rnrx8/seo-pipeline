@@ -507,7 +507,7 @@ def _build_extra_instructions(job: dict) -> str:
     return "\n".join(lines)
 
 
-def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
+def _finish_reader_lead(client, text, outline, keyword, job, learned_rules, review_feedback=None):
     """Write the final lead, with at most one length correction; never a QA pass."""
     from .editorial_blueprint import require_projection, validate_shape, fingerprint
     from .lead_authoring import VERSION, editing_payload, writer_request, replace_lead, lead_span, lead_char_limit, WRITE_SCHEMA
@@ -517,6 +517,8 @@ def _finish_reader_lead(client, text, outline, keyword, job, learned_rules):
     requirements = {k:job[k] for k in ('article_purpose','target_audience','custom_prompt','tone_style','citation_style') if job.get(k)}
     requirements['learned_style_rules'] = [r['rule_text'] for r in learned_rules if r.get('rule_text')]
     payload = editing_payload(text, value, outline['meta']['blueprint_context'], keyword, requirements)
+    if review_feedback:
+        payload['scope_feedback'] = review_feedback
     limit = lead_char_limit(requirements)
     payload['lead_max_chars'] = limit
     attempts = []
