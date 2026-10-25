@@ -74,6 +74,9 @@ class HeadingScopeTests(unittest.TestCase):
         def send(job, step, request):
             role = step.removeprefix('tiered_article_'); requests.append((role, request))
             payload = json.loads(request['messages'][0]['content'])
+            if role.startswith('reader_'):
+                rows=article_journeys(design,article['content_text'],outline['content_text'])
+                return {'reader_journeys':{c['id']:rows[c['id']] for c in payload['cases']}},SimpleNamespace(input_tokens=1,output_tokens=1)
             result = {'checks': [{'key': k, 'status': 'pass', 'reason': '合成応答', 'affected_blocks': []} for k in fq.ROLES[role]]}
             if role != 'evidence':result['editorial_findings'] = []
             if role == 'coverage':
@@ -93,7 +96,7 @@ class HeadingScopeTests(unittest.TestCase):
              patch('pipeline.tiered_research.checked_request', side_effect=send):
             report = fq.audit_article(None, text=article['content_text'], facts='', outline=outline['content_text'],
                 contract={}, requirements={'article_design': design}, sources='')
-        self.assertEqual(len(requests), 5)
+        self.assertEqual(len(requests), 6)
         self.assertFalse(report['valid'])
         self.assertEqual(report['phases']['organization']['editorial_findings'][0]['stage_to_fix'], 'outline')
         self.assertIn('heading_scope_reviews', report['phases']['organization'])

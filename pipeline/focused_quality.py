@@ -116,11 +116,11 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled())
         design=payload['requirements'].get('article_design') if role=='coverage' else None
         if design:
-            from .article_design import correspondence,review_config,REVIEW_POLICY
+            from .article_design import correspondence,review_config,COVERAGE_REVIEW_POLICY
             from .reader_decisions import REVIEW_POLICY as DECISION_REVIEW_POLICY
             payload['reader_correspondence']=correspondence(text,outline,design)
-            system+='\n'+DECISION_REVIEW_POLICY+'\n'+REVIEW_POLICY
-            output_config=review_config(output_config,design)
+            system+='\n'+DECISION_REVIEW_POLICY+'\n'+COVERAGE_REVIEW_POLICY
+            output_config=review_config(output_config,design,include_progression=False)
         if detailed and role != 'evidence':
             system += '\n' + findings.POLICY
             output_config = findings.output_config(output_config, keys)
@@ -179,6 +179,13 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if design:
             from .article_design import checked_result
             decision_response=json.loads(raw)
+            from .reader_qa import audit as audit_readers
+            reader_rows, reader_trace, reader_usage = audit_readers(client, text=text,
+                outline=outline, design=design, snapshot=fingerprint, model=model, budget=budget)
+            decision_response['reader_progression_reviews'] = reader_rows
+            from types import SimpleNamespace
+            usage = SimpleNamespace(input_tokens=usage.input_tokens+reader_usage.input_tokens,
+                                    output_tokens=usage.output_tokens+reader_usage.output_tokens)
             checks=checked_result(checks,decision_response,design,text,outline=outline)
             if editorial is not None:
                 editorial += findings.decision_findings(decision_response, design)
@@ -199,6 +206,7 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
+            phase['reader_review_trace']=reader_trace
             phase['decision_reviews']=decision_response['decision_reviews']
             if 'reader_progression_reviews' in decision_response:
                 phase['reader_progression_reviews']=decision_response['reader_progression_reviews']

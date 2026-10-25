@@ -133,7 +133,7 @@ class ArticleProgressionTests(unittest.TestCase):
         self.assertEqual(set(rows),{s['id'] for s in design['sections']})
         self.assertIn('not_needed',rows['s10']['properties']['journey']['properties']['attunement']['properties']['status']['enum'])
 
-    def test_local_chapter_failure_overrides_global_pass_in_same_existing_call(self):
+    def test_local_chapter_failure_overrides_global_pass_inside_coverage_role(self):
         original = stage5.decision_result
 
         def reply(design, text, missing=None):
@@ -141,14 +141,13 @@ class ArticleProgressionTests(unittest.TestCase):
             mapped = ad.correspondence(text, '\n\n'.join(
                 '#'*(s['level']+1)+' H'+str(s['level'])+'：'+s['title'] for s in design['sections']), design)
             target = mapped['sections'][0]['review_block_ids'][-1]
-            result['reader_progression_reviews']['s01'].update(status='fail',
-                reason='一覧はあるが、この章で選べるための説明がない',
-                affected_blocks=[{'id': target, 'reason': 'どの用途なら何を選ぶかを説明する'}])
+            result['reader_progression_reviews']['s01']['journey']['guidance'].update(status='fail',
+                reason='一覧はあるが、この章で選べるための説明がない', evidence=[])
             return result
 
         with patch.object(stage5, 'decision_result', side_effect=reply):
             report, requests, _ = stage5.Stage5AuthoringTests().audit_fixture('tiered', 'legacy')
-        self.assertEqual(len(requests), len(fq.ROLES))
+        self.assertEqual(len(requests), len(fq.ROLES)+1)
         self.assertFalse(report['valid'])
         phase = report['phases']['coverage']
         self.assertTrue(all(r['status'] == 'pass' for r in phase['decision_reviews'].values()))

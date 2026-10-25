@@ -30,6 +30,9 @@ class ReaderReviewBindingTests(unittest.TestCase):
         requests=[]
         def send(job,step,request):
             role=step.removeprefix('tiered_article_');payload=json.loads(request['messages'][0]['content']);requests.append(payload)
+            if role.startswith('reader_'):
+                rows=article_journeys(requirements['article_design'],text,outline['content_text'])
+                return {'reader_journeys':{c['id']:rows[c['id']] for c in payload['cases']}},SimpleNamespace(input_tokens=1,output_tokens=1)
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[]} for k in fq.ROLES[role]]}
             if role!='evidence':result['editorial_findings']=[]
             if role=='coverage':
@@ -45,7 +48,7 @@ class ReaderReviewBindingTests(unittest.TestCase):
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'legacy'}),patch('pipeline.tiered_research.checked_request',side_effect=send):
             report=fq.audit_article(None,**context)
             cq._require_audit_strict(report,cq.snapshot(**context),stage='article',context=context)
-        self.assertEqual(len(requests),5);self.assertTrue(report['valid'])
+        self.assertEqual(len(requests),6);self.assertTrue(report['valid'])
         self.assertNotIn('section_binding',design)
         from pipeline import step_content_audit
         with patch.object(step_content_audit,'astra_review_enabled',return_value=False),patch.object(step_content_audit,'upsert_artifact') as saved:

@@ -85,6 +85,9 @@ def structured_review_output_limit(request):
  questions=props.get('items',{}).get('properties',{})
  if questions and request['model']=='gpt-6.1-sol':
   original=max(original,min(32000,2000+900*len(questions)))
+ journeys=props.get('reader_journeys',{}).get('properties',{})
+ if journeys:
+  return max(original,min(32000,2000+2200*len(journeys)))
  rows=props.get('blueprint_reviews',{}).get('properties',{})
  if not rows and not props.get('reader_progression_reviews'):return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())

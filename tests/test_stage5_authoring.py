@@ -163,7 +163,12 @@ class Stage5AuthoringTests(unittest.TestCase):
     def audit_fixture(self,provider,routing,missing=None):
         _,pages,_,ctx,value=chain();a=artifact(value,ctx);text=body(value);design=ad.design_context(a);requests=[]
         def send(job,step,request):
-            requests.append(request);role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_');keys=fq.ROLES[role]
+            requests.append(request)
+            if step.startswith('tiered_article_reader_'):
+                ids=request['output_config']['format']['schema']['properties']['reader_journeys']['properties']
+                rows=decision_result(design,text,missing)['reader_progression_reviews']
+                return {'reader_journeys':{sid:rows[sid]['journey'] for sid in ids}},NS(input_tokens=1,output_tokens=1)
+            role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_');keys=fq.ROLES[role]
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[],**({'requires_source_check':False,'research_ids':[],'source_urls':[]} if role in ('evidence','coverage') and routing=='focused' else {})} for k in keys]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,missing))
@@ -177,7 +182,7 @@ class Stage5AuthoringTests(unittest.TestCase):
 
     def test_existing_coverage_call_checks_actual_answers_without_new_role(self):
         report,requests,_=self.audit_fixture('tiered','legacy',1)
-        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
         self.assertEqual(report['phases']['coverage']['decision_reviews']['i01']['missing_requirements'],[1])
         coverage=[r for r in requests if 'decision_reviews' in r['output_config']['format']['schema']['properties']]
         self.assertEqual(len(coverage),1)
@@ -222,11 +227,11 @@ class Stage5AuthoringTests(unittest.TestCase):
 
     def test_focused_routing_uses_same_five_roles_and_retains_reader_verdicts(self):
         report,requests,_=self.audit_fixture('tiered','focused',1)
-        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
         self.assertEqual(report['phases']['coverage']['decision_reviews']['i01']['missing_requirements'],[1])
         for request in requests:
             data=json.loads(request['messages'][0]['content'])
-            if 'decision_reviews' not in request['output_config']['format']['schema']['properties']:
+            if 'requirements' in data and 'decision_reviews' not in request['output_config']['format']['schema']['properties']:
                 self.assertNotIn('article_design',data['requirements'])
 
     def test_complete_writer_saves_draft_and_exact_reader_mapping_with_cta_contract(self):
@@ -290,12 +295,16 @@ class Stage5AuthoringTests(unittest.TestCase):
         _,pages,_,ctx,value=chain();a=artifact(value,ctx);text=body(value);design=ad.design_context(a);requests=[]
         roles=iter(fq.ROLES)
         def send(*args,**request):
-            role=next(roles);requests.append(request)
+            requests.append(request)
+            if 'reader_journeys' in request['output_config']['format']['schema']['properties']:
+                result={'reader_journeys':{sid:row['journey'] for sid,row in decision_result(design,text)['reader_progression_reviews'].items()}}
+                return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
+            role=next(roles)
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[]} for k in fq.ROLES[role]]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,1))
             return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(with_heading_reviews(result, request),ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'}),patch.object(cq,'create_with_retry',side_effect=send):
             report=fq.audit_article(None,text=text,facts='',outline=a['content_text'],contract={'required_sections':[]},requirements={'article_design':design},sources=cq.source_evidence({'content_text':json.dumps(pages)}))
-        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
         self.assertIn('decision_reviews',report['phases']['coverage'])

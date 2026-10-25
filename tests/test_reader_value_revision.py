@@ -62,7 +62,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
             return value
         with patch.object(stage5,'decision_result',side_effect=reply):
             report,requests,_=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertFalse(report['valid']);self.assertEqual(len(requests),5)
+        self.assertFalse(report['valid']);self.assertEqual(len(requests),6)
         phase=report['phases']['coverage']
         self.assertTrue(all(row['status']=='pass' for row in phase['decision_reviews'].values()))
         self.assertEqual(phase['checks'][0]['status'],'fail')
@@ -87,7 +87,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
             return value
         with patch.object(stage5,'decision_result',side_effect=reply):
             report,requests,_=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertFalse(report['valid']);self.assertEqual(len(requests),5)
+        self.assertFalse(report['valid']);self.assertEqual(len(requests),6)
         phase=report['phases']['coverage']
         self.assertTrue(all(row['status']=='pass' for row in phase['decision_reviews'].values()))
         self.assertEqual(phase['lead_review']['subject_and_reader']['status'],'pass')
@@ -191,7 +191,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
 
     def test_existing_five_role_review_receives_lead_and_common_value_rubric(self):
         report,requests,context=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertTrue(report['valid']);self.assertEqual(len(requests),5)
+        self.assertTrue(report['valid']);self.assertEqual(len(requests),6)
         coverage=next(r for r in requests if 'decision_reviews' in r['output_config']['format']['schema']['properties'])
         self.assertIn(ap.EDITORIAL_VALUE_REVIEW,coverage['system'])
         design=json.loads(coverage['messages'][0]['content'])['requirements']['article_design']

@@ -95,6 +95,7 @@ class EditorialRoutingTests(unittest.TestCase):
     def test_organization_receives_section_scope_without_research_or_reader_analysis(self):
         import test_stage5_authoring as stage5
         report, requests, context = stage5.Stage5AuthoringTests().audit_fixture('tiered', 'legacy')
+        requests = [r for r in requests if 'reader_journeys' not in r['output_config']['format']['schema']['properties']]
         expected = context['requirements']['article_design']['sections']
         fields = ('id', 'parent_id', 'level', 'title', 'question', 'conclusion', 'answer_elements')
         self.assertEqual(len(requests), 5)

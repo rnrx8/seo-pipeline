@@ -13,7 +13,7 @@ from .content_edits import content_blocks
 from .evidence_policy import EVIDENCE_POLICY, REVIEW_RESOLUTION_POLICY
 from .reader_presentation import READER_PRESENTATION_POLICY, RECOMMENDATION_REVIEW
 
-POLICY_VERSION = 'content-quality-v25-experience-beyond-action'
+POLICY_VERSION = 'content-quality-v26-contextual-reader-checks'
 CHECKS = ('coverage', 'evidence_support', 'comparison_conditions', 'conclusion_consistency',
           'metric_scope', 'unfinished_content', 'unsupported_guarantees', 'prose_quality', 'redundancy')
 
@@ -68,7 +68,8 @@ def snapshot(text: str, facts: str, outline: str, contract: dict, requirements: 
     from .editorial_blueprint import VERSION as BLUEPRINT_VERSION, REVIEW_POLICY as BLUEPRINT_REVIEW_POLICY
     from .article_design import VERSION as ARTICLE_DESIGN_VERSION, REVIEW_POLICY as ARTICLE_DESIGN_REVIEW
     from .editorial_findings import VERSION as FINDINGS_VERSION, POLICY as FINDINGS_POLICY
-    value = json.dumps([FINDINGS_VERSION, FINDINGS_POLICY, ARTICLE_DESIGN_VERSION, ARTICLE_DESIGN_REVIEW, BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
+    from .reader_qa import VERSION as READER_QA_VERSION, CONTEXT_POLICY as READER_QA_CONTEXT, BATCH_SIZE
+    value = json.dumps([READER_QA_VERSION, READER_QA_CONTEXT, BATCH_SIZE, FINDINGS_VERSION, FINDINGS_POLICY, ARTICLE_DESIGN_VERSION, ARTICLE_DESIGN_REVIEW, BLUEPRINT_VERSION, BLUEPRINT_REVIEW_POLICY, SCOPE_POLICY, ROUTING_POLICY, OUTLINE_DESIGN_POLICY, compact_enabled(), CONTEXT_POLICY, EVIDENCE_ROUTING_POLICY, ROLE_INSTRUCTIONS, READABILITY_POLICY, POLICY_VERSION, AUDIT_SYSTEM, RECOMMENDATION_REVIEW, EDITORIAL_SYSTEM, get_step_config('content_audit'), text, facts, outline, contract, requirements, sources],
                        ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -559,6 +560,11 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
             if checked_scopes(phases['organization'], scopes, context['text']):
                 raise ContentQualityError('親見出しと子節の回答範囲の確認が未合格です。')
             phase=phases['coverage']
+            from .reader_qa import require_trace
+            if design.get('sections'):
+                trace_text = (report.get('local_completion') or {}).get('base_text', context['text'])
+                trace_snapshot = snapshot(**{**context, 'text': trace_text})
+                require_trace(phase, text=trace_text, outline=context['outline'], design=design, snapshot=trace_snapshot)
             verified=checked_result(phase.get('checks',[]),phase,design,context['text'],outline=context['outline'])
             from . import editorial_findings as findings
             for role in ROLES:
