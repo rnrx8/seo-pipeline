@@ -479,34 +479,44 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         prompt = USER_TEMPLATE.format(keyword=keyword,intent_text=intent['content_text'],
             fact_text=fact['content_text'],serp_text=authoring_serp(serp['content_text'],structured_intent=False),
             word_count_instruction=word_count_instruction) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
-    message = create_with_retry(
-        client,
+    request = dict(
         **({'output_config':blueprint.OUTPUT_CONFIG} if structured_intent else {}),
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
+        model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
+        messages=[{'role':'user','content':prompt}],
     )
-    total_input = message.usage.input_tokens
-    total_output = message.usage.output_tokens
-    if getattr(message, "stop_reason", None) == "max_tokens":
-        # Preserve diagnostics before stopping; never silently buy a full rewrite.
-        upsert_artifact(job_id=job_id,step='outline_incomplete',content_type='text/markdown',
-            content_text=message_text(message),meta={'model':MODEL,'stop_reason':'max_tokens',
-                'input_tokens':total_input,'output_tokens':total_output,'complete':False})
-        raise ContentQualityError('構成案が出力上限で中断されました。未完成の出力を保存し、上限を倍増した全体再生成は自動実行しません。')
-    if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():
-        raise ContentQualityError('構成生成が正常終了していません。')
-    outline_text = message_text(message)
+    unfinished = None
+    if structured_intent:
+        from .outline_completion import saved, complete, fingerprint
+        unfinished = saved(job_id, request)
+    if unfinished:
+        value,usage = complete(job_id,unfinished,request,blueprint_context,client)
+        total_input = unfinished['meta']['input_tokens'] + usage.input_tokens
+        total_output = unfinished['meta']['output_tokens'] + usage.output_tokens
+        outline_text = json.dumps(value,ensure_ascii=False)
+        blueprint_meta['suffix_completed'] = True
+    else:
+        message = create_with_retry(client, **request)
+        total_input = message.usage.input_tokens
+        total_output = message.usage.output_tokens
+        if getattr(message, 'stop_reason', None) == 'max_tokens':
+            unfinished = upsert_artifact(job_id=job_id,step='outline_incomplete',content_type='text/markdown',
+                content_text=message_text(message),meta={'model':MODEL,'stop_reason':'max_tokens',
+                    'input_tokens':total_input,'output_tokens':total_output,'complete':False,
+                    **({'request_sha256':fingerprint(request)} if structured_intent else {})})
+            if not structured_intent:
+                raise ContentQualityError('構成案が出力上限で中断されました。未完成の出力を保存し、上限を倍増した全体再生成は自動実行しません。')
+            value,usage = complete(job_id,unfinished,request,blueprint_context,client)
+            total_input += usage.input_tokens; total_output += usage.output_tokens
+            outline_text = json.dumps(value,ensure_ascii=False)
+            blueprint_meta['suffix_completed'] = True
+        else:
+            if getattr(message,'stop_reason','end_turn') != 'end_turn' or not message_text(message).strip():
+                raise ContentQualityError('構成生成が正常終了していません。')
+            outline_text = message_text(message)
     if structured_intent:
         try:
             blueprint_value = blueprint.validate(blueprint.canonicalize_research_refs(json.loads(outline_text), blueprint_context), blueprint_context)
-            blueprint_meta = blueprint.metadata(blueprint_value, blueprint_context)
+            blueprint_meta = {**blueprint_meta, **blueprint.metadata(blueprint_value, blueprint_context)}
             outline_text = blueprint.render(blueprint_value, blueprint_context)
         except (ValueError, TypeError, KeyError) as exc:
             upsert_artifact(job_id=job_id, step='outline_design_incomplete', content_type='application/json',

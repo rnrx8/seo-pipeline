@@ -226,6 +226,7 @@ class BlueprintTests(unittest.TestCase):
             stack.enter_context(patch.object(step_outline,'get_artifact',side_effect=lambda j,k:artifacts[k]))
             stack.enter_context(patch.object(step_outline,'get_job',return_value={}))
             stack.enter_context(patch.object(step_outline.anthropic,'Anthropic'))
+            stack.enter_context(patch('pipeline.outline_completion.get_optional_artifact',return_value=None))
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))

@@ -37,6 +37,7 @@ def total_remaining(value):
 
 
 def review_operation(step):
+ if step=='outline_suffix_completion':return 'outline','suffix_completion',1
  if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
  if step=='tiered_prose_finish_review':return 'article','prose_finish_review',1
  if step=='tiered_audit_research':return 'outline','audit',2
