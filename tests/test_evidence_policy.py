@@ -370,60 +370,17 @@ class EvidencePolicyTests(unittest.TestCase):
         plan['reader_decisions']=[dict(id='i01',question='料金はいくらか',role='primary',scope='必要料金',
             depends_on=[],research_ids=['q1'],answer_requirements=['料金と期間を示す'])]
         response=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(plan))],usage=SimpleNamespace(input_tokens=1,output_tokens=1))
-        changes={'updates':[], 'additions':[], 'removals':[],
-                 'candidate_services':plan.get('candidate_services',[]),'scope_reason':'主要回答を維持',
-                 'reader_decisions':plan['reader_decisions']}
-        repaired=SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(changes))],usage=response.usage)
         saved={}
         def save(**kw):saved[kw['step']]=kw;return kw
         with patch('pipeline.production_brief.load',return_value=None),patch('pipeline.reader_needs.load',return_value=None),patch.object(r,'get_optional_artifact',return_value=None),patch.object(r,'get_job',return_value={}),patch.object(r,'get_artifact',return_value={'content_text':'検索意図'}), \
-             patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',side_effect=[response,response,repaired]) as generate, \
+             patch.object(r.anthropic,'Anthropic'),patch.object(r,'create_with_retry',return_value=response) as generate, \
              patch.object(r,'upsert_artifact',side_effect=save), \
              patch('pipeline.research_plan_review.review',return_value=({'valid':False,'issues':[{'id':'q1','reason':'補助条件を必須へ抱き合わせている'}]},response.usage)):
             with self.assertRaises(ValueError):r.plan('j','おすすめ')
-        self.assertEqual(generate.call_count,3)
-        self.assertIn('issues',json.loads(generate.call_args.kwargs['messages'][0]['content']))
+        self.assertEqual(generate.call_count,2)
+        self.assertIn('planning_issues',json.loads(generate.call_args.kwargs['messages'][0]['content']))
         self.assertFalse(json.loads(saved['research_plan']['content_text'])['valid'])
         self.assertFalse(json.loads(saved['research_matrix']['content_text'])['valid'])
-
-    def test_failed_initial_plan_uses_local_repair_and_independent_acceptance(self):
-        from pipeline import research_requirements as r
-        for accepted in (True, False):
-            with self.subTest(accepted=accepted):
-                plan,_,_=fixture()
-                plan['items'].append({**plan['items'][0], 'id':'q2', 'question':'他の主要回答'})
-                plan['reader_decisions']=[dict(id='i01',question='料金と他の主要回答を知る',role='primary',
-                    scope='利用判断',depends_on=[],research_ids=['q1','q2'],answer_requirements=['料金と他の主要回答'])]
-                changes={'updates':[{**plan['items'][0], 'question':'必要な料金と期間'}],
-                         'additions':[], 'removals':[], 'candidate_services':[], 'scope_reason':'主要回答を維持',
-                         'reader_decisions':copy.deepcopy(plan['reader_decisions'])}
-                def response(value):
-                    return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(text=json.dumps(value))],
-                                           usage=SimpleNamespace(input_tokens=1,output_tokens=1))
-                records={}
-                def save(**kw):records[kw['step']]=copy.deepcopy(kw);return kw
-                failed={'valid':False,'issues':[{'id':'q1','reason':'補助条件を整理'}]}
-                def review(job,value,context,attempt,*args):
-                    if attempt=='planning_repaired':
-                        self.assertFalse(json.loads(records['research_plan']['content_text'])['valid'])
-                        self.assertEqual(value['items'][1],plan['items'][1])
-                        self.assertEqual(value['items'][0]['question'],'必要な料金と期間')
-                        return ({'valid':accepted,'issues':[] if accepted else failed['issues']},response({}).usage)
-                    return copy.deepcopy(failed),response({}).usage
-                with patch.object(r,'_plan_context',return_value={}), \
-                     patch.object(r,'upsert_artifact',side_effect=save), \
-                     patch.object(r.anthropic,'Anthropic'), \
-                     patch.object(r,'create_with_retry',side_effect=[response(plan),response(plan),response(changes)]) as generate, \
-                     patch('pipeline.research_plan_review.review',side_effect=review) as check:
-                    if accepted:result=r.plan('j','おすすめ')
-                    else:
-                        with self.assertRaises(r.ContentQualityError):r.plan('j','おすすめ')
-                self.assertEqual(generate.call_count,3)
-                self.assertEqual(check.call_count,3)
-                if accepted:
-                    self.assertTrue(result['meta']['planning_review_passed'])
-                    self.assertTrue(result['meta']['planning_local_repaired'])
-                else:self.assertFalse(json.loads(records['research_plan']['content_text'])['valid'])
 
     def test_plan_is_published_only_after_independent_review_passes(self):
         from pipeline import research_requirements as r

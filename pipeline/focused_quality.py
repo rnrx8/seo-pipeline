@@ -17,16 +17,10 @@ ROLES = {
 ROLE_INSTRUCTIONS = {
     'evidence': '原文との事実照合専任。具体的主張・比較条件・数値の対象/期間を原文と照合する。保証表現かどうかの文脈判断は整合性担当へ渡す。本文の表だけで根拠確認を済ませない。',
     'coverage': '重要論点と記事目的の達成専任。requirements、content_contract、調査計画と本文を照合し、各重要な疑問への実質的な回答を確認する。共通提示基準「検索語・結論・推奨理由」の検索語・推薦理由・検索意図への接続を担当し、構成自体の漏れも確認する。未調査を非公表として通さない。',
-    'language': '文章の自然さ専任。全段落を前後の文脈と読んで主述・指示語・不自然な語の組合せ・文の途切れ・文体/表記を検査。共通提示基準「読者と同じ目線の自然な解説」も担当する。感情の章だけでなく手順・比較・注意点にも、読者が実際にすることや自分にとっての意味が普段の言葉で伝わるかを確認する。抽象的な行為名や書き手側の評価だけで伝わりにくい場合は、その箇所と失われた意味を具体的に指摘する。専門用語の存在だけで不合格にせず、正確で自然に伝わる文まで口語へ直さない。判定のreasonには実際の短い記述と、読者への説明として伝わる理由または足りない意味を示す。lead_block_idsはリードの所在であり、欠陥の候補ではない。その範囲を一続きに読み、誰が何を誰にするか、誰の状態を誰が知るかが実際の文から定まるか確認する。H1・後続本文・資料から意図を補って読めたことにしない。自然に一意に読める主語省略は許容し、人物の対応が変わる複数の読みが成立する場合は該当語句と各読みを示す。記事全体の重複や表示形式は他工程の担当。明示された共通文体を確認したうえで、同じ意味が自然に伝わる言い方の好みや感情の原文例を欠陥と扱わない。',
-    'consistency': '記事全体の整合性専任。対策・手順の提案と結果の保証を本文の文脈で区別し、共通のunsupported_guarantees基準に従って表現の強さを判断する。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。使いたい機能の利用条件と、契約・設定・手順を勧める時点も照合し、先に必要な機能がある読者へ一律の後回しを勧めていないか確認する。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
-    'organization': '情報整理と読みやすさ専任。共通提示基準「章の設計と引継ぎ」に従い、見出しの回答範囲・独立章の必要性・複数論点の分け方も評価する。section_plan（旧形式ではoutline）の問い・予定回答と実際の本文を照合し、設計にある説明を本文が書き切れていない場合はarticle、回答範囲・順序・階層そのものの修正が必要な場合はoutlineへ指摘する。文字数不足だけで構成の不備と決めず、既存の設計範囲で必要な説明を補えるか確認する。構成に存在することを適切さの根拠にせず、構成変更が必要なら本文の言い換えと区別して指摘する。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
+    'language': '文章の自然さ専任。全段落を前後の文脈と読んで主述・指示語・不自然な語の組合せ・文の途切れ・文体/表記を検査。記事全体の重複や表示形式は他工程の担当。好みの言い換えや感情の原文例を欠陥と扱わない。',
+    'consistency': '記事全体の整合性専任。対策・手順の提案と結果の保証を本文の文脈で区別し、共通のunsupported_guarantees基準に従って表現の強さを判断する。冒頭・各章・比較表・結論の条件と説明の矛盾、未解決の参照、複数文の重複を全文で検査。共通提示基準「検索語・結論・推奨理由」に定める章間の役割分担と反復を担当する。局所の言い回しと表/リスト形式は他工程の担当。必要条件の再掲や短い要約は重複欠陥ではない。',
+    'organization': '情報整理と読みやすさ専任。共通提示基準「章の設計と引継ぎ」に従い、見出しの回答範囲・独立章の必要性・複数論点の分け方も評価する。構成に存在することを適切さの根拠にせず、構成変更が必要なら本文の言い換えと区別して指摘する。個別の商品・サービス紹介パートにそれぞれ主要情報の表があるか確認（全体比較表や箇条書きだけでは代替不可、単なる言及・FAQは対象外）。citation_styleに反する出典表示や、内部の調査判断を説明する不要な注釈を確認。表後の定型注意点リストは、必要条件を該当セル・説明に統合して重複を減らす。利用判断に必要な例外や設定された出典表示は残す。比較・並列・手順に適した形式、長文を詰め込んだ表/リスト、共通提示基準「検索語・結論・推奨理由」に定める見出し直下の情報順序、表/リストの導入、共感表現の位置を確認。誤字や全体の結論矛盾は他工程の担当。画面の実表示を確認したと主張しない。' + READABILITY_POLICY,
 }
-
-
-from .heading_scope import POLICY as HEADING_SCOPE_POLICY
-ROLE_INSTRUCTIONS['organization'] += '\n' + HEADING_SCOPE_POLICY
-from .heading_answers import POLICY as HEADING_ANSWER_POLICY
-ROLE_INSTRUCTIONS['organization'] += '\n' + HEADING_ANSWER_POLICY
 
 
 def parse_focus(raw, keys, text):
@@ -74,27 +68,8 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
             payload['requirements']['editorial_rules'] = editorial_rules_for_role(payload['requirements']['editorial_rules'], role)
         if role == 'language':
             payload['long_sentence_candidates'] = long_sentence_candidates(text)
-            from .lead_review import article_block_ids
-            payload['lead_block_ids'] = article_block_ids(text)
-        heading_groups = []
-        heading_entries = []
-        if role == 'organization':
-            from .heading_answers import entries
-            heading_entries = entries(text)
-            payload['heading_answer_entries'] = heading_entries
-            sections = requirements.get('article_design', {}).get('sections', [])
-            if sections:
-                fields = ('id', 'parent_id', 'level', 'title', 'question', 'conclusion', 'answer_elements')
-                payload['section_plan'] = [{k: s[k] for k in fields} for s in sections]
-                from .heading_scope import groups
-                heading_groups = groups(text, outline, requirements['article_design'])
-                if heading_groups:
-                    payload['heading_scope_groups'] = heading_groups
-            else:
-                payload['outline'] = outline
         if role in ('evidence','coverage'):
-            from .content_contract import editorial_contract
-            payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=editorial_contract(contract))
+            payload.update(confirmed_facts=review_facts(facts,requirements), outline=outline, content_contract=contract)
         if role == 'evidence': payload['source_documents'] = sources
         system = (AUDIT_SYSTEM if role in ('evidence','coverage') else EDITORIAL_SYSTEM)
         if role == 'language':
@@ -116,25 +91,17 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         output_config=audit_output_config(keys, locations=True,source_routing=role=='coverage' and compact_enabled())
         design=payload['requirements'].get('article_design') if role=='coverage' else None
         if design:
-            from .article_design import correspondence,review_config,COVERAGE_REVIEW_POLICY
+            from .article_design import correspondence,review_config,REVIEW_POLICY
             from .reader_decisions import REVIEW_POLICY as DECISION_REVIEW_POLICY
             payload['reader_correspondence']=correspondence(text,outline,design)
-            system+='\n'+DECISION_REVIEW_POLICY+'\n'+COVERAGE_REVIEW_POLICY
-            output_config=review_config(output_config,design,include_progression=False)
+            system+='\n'+DECISION_REVIEW_POLICY+'\n'+REVIEW_POLICY
+            output_config=review_config(output_config,design)
         if detailed and role != 'evidence':
             system += '\n' + findings.POLICY
             output_config = findings.output_config(output_config, keys)
-        if heading_groups:
-            from .heading_scope import output_config as scope_config
-            output_config = scope_config(output_config, heading_groups)
-        if heading_entries:
-            from .heading_answers import output_config as answer_config
-            output_config = answer_config(output_config, heading_entries)
         request = dict(model=model, max_tokens=budget, system=system,
                        output_config=output_config,
                        messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
-        from .tiered_research import structured_review_output_limit
-        request['max_tokens']=structured_review_output_limit(request)
         from .ai import tiered_review_enabled
         trace=[]
         phase_model=model
@@ -179,45 +146,17 @@ def audit_article(client, *, text, facts, outline, contract, requirements, sourc
         if design:
             from .article_design import checked_result
             decision_response=json.loads(raw)
-            from .reader_qa import audit as audit_readers
-            reader_rows, reader_trace, reader_usage = audit_readers(client, text=text,
-                outline=outline, design=design, snapshot=fingerprint, model=model, budget=budget)
-            decision_response['reader_progression_reviews'] = reader_rows
-            from types import SimpleNamespace
-            usage = SimpleNamespace(input_tokens=usage.input_tokens+reader_usage.input_tokens,
-                                    output_tokens=usage.output_tokens+reader_usage.output_tokens)
-            checks=checked_result(checks,decision_response,design,text,outline=outline)
+            checks=checked_result(checks,decision_response,design,text)
             if editorial is not None:
                 editorial += findings.decision_findings(decision_response, design)
-                from .article_progression import checked as checked_progression,findings as progression_findings
-                editorial += progression_findings(checked_progression(
-                    decision_response,design,payload['reader_correspondence'],text))
-        if heading_groups:
-            from .heading_scope import checked as checked_scopes, merge as merge_scopes
-            scope_findings = checked_scopes(json.loads(raw), heading_groups, text)
-            checks = merge_scopes(checks, scope_findings)
-            editorial += scope_findings
-        if heading_entries:
-            from .heading_answers import checked as checked_answers
-            from .heading_scope import merge as merge_scopes
-            answer_findings = checked_answers(json.loads(raw), text)
-            checks = merge_scopes(checks, answer_findings)
-            editorial = (editorial or []) + answer_findings
         phase = {'role':role,'checks':checks,'snapshot':fingerprint,'model':phase_model if not trace else trace[-1]['model'],
                  'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens}
         if design:
-            phase['reader_review_trace']=reader_trace
             phase['decision_reviews']=decision_response['decision_reviews']
-            if 'reader_progression_reviews' in decision_response:
-                phase['reader_progression_reviews']=decision_response['reader_progression_reviews']
             if 'lead_direction' in design:phase['lead_review']=decision_response['lead_review']
             phase['reader_correspondence']=payload['reader_correspondence']
         if editorial is not None:
             phase.update(editorial_findings=editorial, findings_version=findings.VERSION)
-        if heading_groups:
-            phase['heading_scope_reviews'] = json.loads(raw)['heading_scope_reviews']
-        if heading_entries:
-            phase['heading_answer_reviews'] = json.loads(raw)['heading_answer_reviews']
         if trace:phase['evidence_routing']=trace
         phases[role] = phase
         if checkpoint: checkpoint(role, phase)

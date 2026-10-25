@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import json
 import re
-import copy
 from typing import Any
 
 
-CONTRACT_VERSION = "1.4"
+CONTRACT_VERSION = "1.3"
 
 _COMPARISON_TERMS = ("比較検討", "比較・検討", "比較して", "比較したい", "おすすめ", "ランキング", "選びたい")
 _CV_TERMS = ("cv", "コンバージョン", "自社商品", "自社サービス")
@@ -230,12 +229,12 @@ def build_content_contract(
             service_name=service_name,
             preferred_placement=preferred_placement,
             dedicated_h2_required=False,
-            max_service_introduction_h2s=1,
+            max_service_focused_h2s=1,
             requirements=[
                 "当該商材の推薦内容は共通提示基準「検索語・結論・推奨理由」に従って設計する",
                 "共通提示基準「個別商材の表」に従って表示形式を指定する",
-                "共通提示基準「親見出しの約束と商品紹介の役割」に従い、主回答と商品紹介の回答範囲を分ける",
-                "同じサービスの紹介・推薦を繰り返すH2は重複させない。料金や利用手順など別の問いを担う章の必要性は編集設計・QAで判断する",
+                "比較意図では比較H2内の当該サービスH3を第一候補とする",
+                "独立H2を使う場合も同じサービスを扱うH2を重複させない",
                 "料金・始め方などは検索意図や登録情報に必要な場合のみ扱う",
             ],
         ))
@@ -284,25 +283,7 @@ def build_content_contract(
     }
 
 
-def editorial_contract(contract: dict[str, Any]) -> dict[str, Any]:
-    # Older generated contracts capped all service-named headings. Preserve
-    # their numeric limit as an introduction limit, matching the validator,
-    # without mutating stored artifacts or retaining contradictory prompt text.
-    presented = copy.deepcopy(contract)
-    for section in presented.get('required_sections', []):
-        if section.get('key') not in ('featured_service_coverage', 'featured_service_dedicated', 'featured_service_integrated'):
-            continue
-        if 'max_service_focused_h2s' in section:
-            section.setdefault('max_service_introduction_h2s', section.pop('max_service_focused_h2s'))
-        section['requirements'] = [
-            '同じサービスの紹介・推薦を繰り返すH2は重複させない。料金や利用手順など別の問いを担う章の必要性は編集設計・QAで判断する'
-            if rule == '独立H2を使う場合も同じサービスを扱うH2を重複させない' else rule
-            for rule in section.get('requirements', [])]
-    return presented
-
-
 def contract_prompt(contract: dict[str, Any]) -> str:
-    presented = editorial_contract(contract)
     return (
         "\n【コンテンツ構造契約（機械検証対象）】\n"
         "これはジョブ固有の検索意図から生成した要件です。required_sectionsだけを必須とし、"
@@ -310,7 +291,7 @@ def contract_prompt(contract: dict[str, Any]) -> str:
         "reader_decisionsがある場合は、各判断の必要回答と前後関係を構成レビューで個別に照合します。商品比較の表で方法選びへの回答を代用しないでください。"
         "protected=trueは要件の充足を保護する指定です。独立H2を意味しません。"
         "文字数調整やレビュー後も、同等の情報をH2/H3または関連章内に残してください。\n"
-        f"```json\n{json.dumps(presented, ensure_ascii=False, indent=2)}\n```\n"
+        f"```json\n{json.dumps(contract, ensure_ascii=False, indent=2)}\n```\n"
     )
 
 

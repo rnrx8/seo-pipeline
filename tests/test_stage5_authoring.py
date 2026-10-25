@@ -1,4 +1,3 @@
-from heading_review_fixture import with_heading_reviews
 import copy
 import json
 import os
@@ -14,7 +13,6 @@ from pipeline.section_identity import bind_sections,valid_binding,carry_sections
 from pipeline.quality_context import review_requirements
 from test_reader_progression import chain
 from test_editorial_blueprint import artifact,verdict
-from reader_journey_fixture import article_journeys
 
 
 def body(value):
@@ -34,9 +32,6 @@ def decision_result(design, text, missing=None):
     if 'lead_direction' in design:
         from pipeline.lead_review import KEYS
         result['lead_review']={key:{'status':'pass','reason':'合成したリード確認結果','affected_blocks':[]} for key in KEYS}
-    journeys=article_journeys(design,text)
-    result['reader_progression_reviews']={s['id']:{'status':'pass','reason':'この章の具体的な説明を確認する合成応答','affected_blocks':[],'journey':journeys[s['id']]}
-        for s in design.get('sections',[])}
     return result
 
 
@@ -61,7 +56,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             request=send.call_args.kwargs
             self.assertIn(question,request['messages'][0]['content'])
             self.assertIn(ap.LEAD_POLICY,request['system'])
-            self.assertEqual(request['system'].count(ap.LEAD_POLICY),1)
+            self.assertIn('比較・選択',request['system']);self.assertIn('手順・定義',request['system']);self.assertIn('相談・悩み',request['system'])
 
     def test_company_priority_is_shared_without_asserting_rank(self):
         companies=[{'name':'B','recommend_level':2},{'name':'A','recommend_level':5},{'name':'C','recommend_level':0}]
@@ -163,16 +158,11 @@ class Stage5AuthoringTests(unittest.TestCase):
     def audit_fixture(self,provider,routing,missing=None):
         _,pages,_,ctx,value=chain();a=artifact(value,ctx);text=body(value);design=ad.design_context(a);requests=[]
         def send(job,step,request):
-            requests.append(request)
-            if step.startswith('tiered_article_reader_'):
-                ids=request['output_config']['format']['schema']['properties']['reader_journeys']['properties']
-                rows=decision_result(design,text,missing)['reader_progression_reviews']
-                return {'reader_journeys':{sid:rows[sid]['journey'] for sid in ids}},NS(input_tokens=1,output_tokens=1)
-            role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_');keys=fq.ROLES[role]
+            requests.append(request);role='evidence' if step=='tiered_article_evidence_scope' else step.removeprefix('tiered_article_');keys=fq.ROLES[role]
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[],**({'requires_source_check':False,'research_ids':[],'source_urls':[]} if role in ('evidence','coverage') and routing=='focused' else {})} for k in keys]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,missing))
-            return with_heading_reviews(result, request),NS(input_tokens=1,output_tokens=1)
+            return result,NS(input_tokens=1,output_tokens=1)
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':routing}),patch('pipeline.tiered_research.checked_request',side_effect=send):
             # Legacy evidence routing keeps this test on the five normal roles.
             # Focused's original evidence screen is replaced by its existing
@@ -182,7 +172,7 @@ class Stage5AuthoringTests(unittest.TestCase):
 
     def test_existing_coverage_call_checks_actual_answers_without_new_role(self):
         report,requests,_=self.audit_fixture('tiered','legacy',1)
-        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
         self.assertEqual(report['phases']['coverage']['decision_reviews']['i01']['missing_requirements'],[1])
         coverage=[r for r in requests if 'decision_reviews' in r['output_config']['format']['schema']['properties']]
         self.assertEqual(len(coverage),1)
@@ -227,17 +217,15 @@ class Stage5AuthoringTests(unittest.TestCase):
 
     def test_focused_routing_uses_same_five_roles_and_retains_reader_verdicts(self):
         report,requests,_=self.audit_fixture('tiered','focused',1)
-        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
         self.assertEqual(report['phases']['coverage']['decision_reviews']['i01']['missing_requirements'],[1])
         for request in requests:
             data=json.loads(request['messages'][0]['content'])
-            if 'requirements' in data and 'decision_reviews' not in request['output_config']['format']['schema']['properties']:
+            if 'decision_reviews' not in request['output_config']['format']['schema']['properties']:
                 self.assertNotIn('article_design',data['requirements'])
 
     def test_complete_writer_saves_draft_and_exact_reader_mapping_with_cta_contract(self):
         plan,pages,matrix,ctx,value=chain();ctx['reader_design']['product_fit']['cta_role']='appropriate';plan['reader_design']['product_fit']['cta_role']='appropriate'
-        value['sections'][0]['reader_progression']['before']['emotion']='機能の違いを見落としそうで心配という仮説'
-        value['sections'][2]['reader_progression']['before']['emotion']='利用前の確認を忘れそうで気がかりという仮説'
         value['sections'][1]['cta']='用途が合い相談したい場合に、利用条件の相談へ案内する'
         a=artifact(value,ctx);full=body(value);parts=full.split('\n\n## ')
         chunks=[parts[0]+'\n\n## '+parts[1],'## '+parts[2],'## '+parts[3]]
@@ -251,7 +239,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             'content_contract':{'content_text':json.dumps(contract)},'search_intent':{'content_text':'old','meta':{'reader_needs_version':'new'}},
             'research_validation':{'content_text':json.dumps(readiness)},'service_map':{'content_text':json.dumps(bp.placement(a))}}
         def save(**kw):artifacts[kw['step']]={'id':'saved',**kw};return artifacts[kw['step']]
-        index=iter([*chunks,json.dumps({'lead':'閲覧と送信の条件を整理します。'},ensure_ascii=False)])
+        index=iter(chunks)
         def send(*args,**kw):return NS(stop_reason='end_turn',content=[NS(type='text',text=next(index))],usage=NS(input_tokens=1,output_tokens=1))
         with ExitStack() as stack:
             stack.enter_context(patch.object(step_article,'get_artifact',side_effect=lambda j,k:artifacts[k]))
@@ -266,24 +254,8 @@ class Stage5AuthoringTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article.time,'sleep'))
             model=stack.enter_context(patch.object(step_article,'create_with_retry',side_effect=send))
             result=step_article.run('job','条件')
-        self.assertEqual(model.call_count,4)
-        # Actual normal writer requests, with no operator custom prompt: each
-        # part gets its own states without importing a different chapter's fear.
-        from pipeline.article_design import part_reader_brief
-        split=step_article._split_sections_into_parts([(s['title'],s['budget']['importance'],s['budget']['chars']) for s in value['sections']])
-        for call,sections in zip(model.call_args_list[:3],split):
-            instruction=next(m['content'] for m in reversed(call.kwargs['messages']) if m['role']=='user')
-            brief=part_reader_brief(value,[s[0] for s in sections])
-            self.assertTrue(brief)
-            self.assertIn(brief,instruction)
-            local=instruction.split('【今回のPARTで実現する読者への回答】')[-1]
-            for section in value['sections']:
-                feeling=section['reader_progression']['before']['emotion']
-                if feeling and section['title'] not in [s[0] for s in sections]:self.assertNotIn(feeling,local)
+        self.assertEqual(model.call_count,3)
         self.assertIn('article_draft',artifacts)
-        self.assertIn('article_lead_edit',artifacts)
-        lead_edit=json.loads(artifacts['article_lead_edit']['content_text'])
-        self.assertTrue(lead_edit['body_preserved']);self.assertFalse(lead_edit['semantically_accepted'])
         self.assertEqual([e['blueprint_id'] for e in result['meta']['section_map']['entries']],['s01','s02','s03'])
         self.assertTrue(all(s['status']=='mapped_not_semantically_verified' for s in result['meta']['reader_correspondence']['sections']))
         actual=json.dumps(model.call_args_list[0].kwargs,ensure_ascii=False)
@@ -295,16 +267,12 @@ class Stage5AuthoringTests(unittest.TestCase):
         _,pages,_,ctx,value=chain();a=artifact(value,ctx);text=body(value);design=ad.design_context(a);requests=[]
         roles=iter(fq.ROLES)
         def send(*args,**request):
-            requests.append(request)
-            if 'reader_journeys' in request['output_config']['format']['schema']['properties']:
-                result={'reader_journeys':{sid:row['journey'] for sid,row in decision_result(design,text)['reader_progression_reviews'].items()}}
-                return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
-            role=next(roles)
+            role=next(roles);requests.append(request)
             result={'checks':[{'key':k,'status':'pass','reason':'合成確認','affected_blocks':[]} for k in fq.ROLES[role]]}
             if role != 'evidence':result['editorial_findings']=[]
             if role=='coverage':result.update(decision_result(design,text,1))
-            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(with_heading_reviews(result, request),ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=1,output_tokens=1))
         with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'}),patch.object(cq,'create_with_retry',side_effect=send):
             report=fq.audit_article(None,text=text,facts='',outline=a['content_text'],contract={'required_sections':[]},requirements={'article_design':design},sources=cq.source_evidence({'content_text':json.dumps(pages)}))
-        self.assertEqual(len(requests),6);self.assertFalse(report['valid'])
+        self.assertEqual(len(requests),5);self.assertFalse(report['valid'])
         self.assertIn('decision_reviews',report['phases']['coverage'])

@@ -15,20 +15,6 @@ def response(body=BODY):
 
 
 class FreshSourcesTests(unittest.TestCase):
-    def test_non_root_trailing_slash_survives_fetch_prefetch_and_failed_cache(self):
-        base='https://official.example/rules'
-        def retrieve(url, **kwargs):
-            if url == base: raise ValueError('404')
-            return response()
-        fresh=fs.FreshSources({},[{'kind':'test','data':base+'/'}])
-        with patch.object(fs,'get_public_page',side_effect=retrieve) as get:
-            self.assertEqual(fresh.fetch(base)['status'],'failed')
-            fresh.prefetch()
-            self.assertEqual(fresh.fetch(base+'/')['status'],'success')
-        self.assertEqual([c.args[0] for c in get.call_args_list],[base,base+'/'])
-        self.assertEqual(fs.extract_urls(base+'/?x=1#part'),[base+'/?x=1'])
-        self.assertEqual(fs.normalize_url('https://official.example/'),'https://official.example')
-
     def test_navigation_urls_survive_text_extraction_and_respect_blocklist(self):
         html = '<nav><a href="/pricing.html">料金表</a><a href="/blocked">禁止</a>' \
                '<a href="https://other.example/pricing">外部</a></nav>' + BODY

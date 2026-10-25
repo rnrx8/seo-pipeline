@@ -54,12 +54,6 @@ def capture(text, decision, selected, *, facts=None, extra_requirements=None, de
             value['decision_reviews']={d['id']:{'status':'pass','reason':'request capture only','missing_requirements':[],'affected_blocks':[]} for d in design['reader_decisions']}
             if 'lead_direction' in design:
                 value['lead_review']={key:{'status':'pass' if lr.article_block_ids(text) else 'not_applicable','reason':'request capture only','affected_blocks':[]} for key in lr.KEYS}
-        if role == 'organization':
-            value['heading_answer_reviews'] = {s['id']: {
-                'heading': {'status':'pass','reason':'request capture only'},
-                'opening': {'status':'pass','reason':'request capture only'},
-                'opening_quote': s['opening_quote']}
-                for s in json.loads(request['messages'][0]['content']).get('heading_answer_entries', [])}
         return value, NS(input_tokens=0,output_tokens=0)
     if facts is None:
         facts='[confirmed] 試験用の架空サービス：Aは写真中心、Bは動画と補足説明に対応。機能Xは上位プラン月額3,000円だけで利用でき、通常プラン1,000円では利用できない。'

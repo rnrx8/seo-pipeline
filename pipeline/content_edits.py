@@ -68,37 +68,3 @@ def apply_block_edits(text: str, raw: str) -> str:
         return result
     except (ValueError, TypeError, KeyError) as exc:
         raise ContentQualityError(f'内容修正の段落IDを確認できません: {exc}') from exc
-
-
-def source_issue_locations(before: str, after: str, edits: list[dict], issues: list[dict]) -> list[dict]:
-    """Return validation locations in the immutable original's address space.
-
-    Adding/deleting paragraphs shifts candidate IDs. A retry still edits the
-    original, so candidate addresses cannot be handed back as original IDs.
-    """
-    replacements = {e['id']: e['new'] for e in edits}
-    spans = []; parts = []; position = 0
-    for i, part in enumerate(re.split(r'(\n[ \t]*\n)', before)):
-        sid = f'block-{i:04d}'; value = replacements.get(sid, part)
-        parts.append(value)
-        if value.strip():spans.append((sid, position, position + len(value)))
-        position += len(value)
-    if ''.join(parts) != after:
-        raise ValueError('Cannot trace replacement text to original blocks')
-    ranges = {}; cursor = 0
-    for block in content_blocks(after):
-        start = after.index(block['text'], cursor); cursor = start + len(block['text'])
-        ranges[block['id']] = (start, cursor)
-    result = copy.deepcopy(issues)
-    for issue in result:
-        if not issue.get('affected_blocks'):continue
-        located = {}
-        for loc in issue['affected_blocks']:
-            if loc['id'] not in ranges:raise ValueError('Unknown candidate validation address')
-            start, end = ranges[loc['id']]
-            for sid, a, b in spans:
-                if a < end and b > start:located.setdefault(sid, loc.get('reason', issue.get('reason', '')))
-        issue['affected_blocks'] = [{'id': sid, 'reason': reason} for sid, reason in located.items()]
-        issue['changed_source_block_ids'] = [sid for sid in located if sid in replacements]
-        issue['location_space'] = 'original_article_blocks'
-    return result

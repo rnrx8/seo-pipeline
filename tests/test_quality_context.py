@@ -1,4 +1,3 @@
-from heading_review_fixture import with_heading_reviews
 import copy
 import json
 import unittest
@@ -82,7 +81,7 @@ class QualityContextTests(unittest.TestCase):
         def send(job,step,request):
             requests.append((step,json.loads(request['messages'][0]['content'])))
             keys=focused.ROLES[step.removeprefix('tiered_article_')]
-            return with_heading_reviews({'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[]} for k in keys]}, request),NS(input_tokens=0,output_tokens=0)
+            return {'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[]} for k in keys]},NS(input_tokens=0,output_tokens=0)
         text='# 見出し\n\n文章の冒頭です。\n\n## 比較\n\n文章の末尾です。'
         with patch('pipeline.ai.tiered_review_enabled',return_value=True),patch('pipeline.tiered_research.checked_request',side_effect=send):
             focused.audit_article(None,text=text,facts='料金の根拠',outline='構成',contract={},requirements=self.requirements(),sources='原資料')

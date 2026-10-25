@@ -50,7 +50,7 @@ class EditorialFindingsTests(unittest.TestCase):
     def test_publication_records_bind_policy_and_individual_findings(self):
         helper=stage5.Stage5AuthoringTests()
         report,requests,ctx=helper.audit_fixture('tiered','legacy')
-        self.assertEqual(len(requests),6)
+        self.assertEqual(len(requests),5)
         for role in fq.ROLES:
             if role!='evidence':self.assertEqual(report['phases'][role]['findings_version'],ef.VERSION)
         with patch('pipeline.quality_context.compact_enabled',return_value=False),patch.dict('os.environ',{'ARTICLE_REVIEW_PROVIDER':'tiered','ARTICLE_WRITING_FLOW':'legacy'}):

@@ -7,7 +7,6 @@ import copy
 import hashlib
 import json
 import os
-import re
 from pathlib import Path
 import sys
 from types import SimpleNamespace as NS
@@ -72,11 +71,6 @@ def main():
     article=(source/'merged-article-v2.md').read_text()
     start=article.index('\n## ')
     title,old_lead=article[:start].strip().split('\n\n',1)
-    next_section=''
-    if '--with-next-section' in sys.argv:
-        matched=re.match(r'\n(## [^\n]+\n\n[^\n]+)',article[start:])
-        if not matched:raise RuntimeError('Cannot identify next section context')
-        next_section=matched.group(1)
     needs=json.loads(json.loads((hypotheses/'analysis_artifacts/reader_needs.json').read_text())['content_text'])['selected']
     feedback='主題が自然に分かる短いリード。読者の気持ちを汲み取る文章と、文同士の自然な流れが明示された必須要件。望みやためらいを外側から説明するだけでなく、何を相手に受け止めてもらいたくて、何を打ち明けにくくて、この探し方を知りたくなるのかを読者の立場で伝える。一般的な比較条件の説明へ急がず、その気持ちから記事を読む理由まで一続きに表す。元275字の約3分の2、180字前後が目安。'
     feedback_path=None
@@ -89,7 +83,6 @@ def main():
         'extra_allowance_history':[str(p) for p in extra_history],
         'rejected_control_sha256':hashlib.sha256(rejected_lead_path.read_bytes()).hexdigest() if rejected_lead_path else None,
         'source_outline_sha256':sha(outline),'source_article_raw_sha256':hashlib.sha256(article.encode()).hexdigest(),
-        'next_section_excerpt_sha256':sha(next_section) if next_section else None,
         'reader_hypotheses_sha256':sha(needs),'request_feedback_sha256':sha(feedback),'request_feedback_path':str(feedback_path) if feedback_path else None,'no_handwritten_lead_example_in_generation':True,
         'old_lead_in_generation':False,'lead_review_version':lr.VERSION,
         'pipeline_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((BACKEND/'pipeline').glob('*.py'))},
@@ -191,16 +184,13 @@ def main():
         if rejected_lead_path:
             rejected_lead=json.loads(rejected_lead_path.read_text())['lead']
             controls.append(('e',title+'\n\n'+rejected_lead,need,'fail'))
-        if next_section:
-            controls=[(i,t+'\n\n'+next_section if i=='b' else t,n,e) for i,t,n,e in controls]
-            (root/'next-section-context.md').write_text(next_section+'\n')
         write(root/'control-plan.json',[{'id':i,'text_sha256':hashlib.sha256(t.encode()).hexdigest(),'expected':e} for i,t,n,e in controls])
         for ident,text,decision,expected in controls:
             request,article_design=capture(text,decision,'coverage',facts='新しい料金・統計・機能の断定は不要。',
-                extra_requirements={'evaluation_scope':'導入だけを評価。後続H2がある場合は接続確認用の読取専用文脈。推薦の先出しや長さはH2より前の導入だけを対象にする。本文・比較表・商材紹介・まとめの省略を欠陥としない。',
+                extra_requirements={'evaluation_scope':'提示した導入のみ。本文・比較表・商材紹介・まとめの省略を欠陥としない。',
                     'keyword':'登録メール 届かない' if ident=='c' else 'セカンドパートナー 探し方',
                     'custom_prompt':feedback if ident!='c' else '短い直接操作の回答。心理的な共感は求めていない。',
-                    'measured_lead_chars':len(text.split('\n\n',1)[1].split('\n## ',1)[0].strip())})
+                    'measured_lead_chars':len(text.split('\n\n',1)[1])})
             with qb.scope(job,'quality'):value,usage=tr.checked_request(job,'coherence_control_'+ident,request)
             checks=fq.parse_focus(json.dumps({'checks':value['checks']}),fq.ROLES['coverage'],text)
             findings=ef.checked_findings(value,checks,text)

@@ -62,7 +62,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
             return value
         with patch.object(stage5,'decision_result',side_effect=reply):
             report,requests,_=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertFalse(report['valid']);self.assertEqual(len(requests),6)
+        self.assertFalse(report['valid']);self.assertEqual(len(requests),5)
         phase=report['phases']['coverage']
         self.assertTrue(all(row['status']=='pass' for row in phase['decision_reviews'].values()))
         self.assertEqual(phase['checks'][0]['status'],'fail')
@@ -78,22 +78,6 @@ class ReaderValueRevisionTests(unittest.TestCase):
         self.assertFalse(result['valid']);self.assertEqual(bp.repair_targets(saved,result),[])
         self.assertTrue(bp.lead_repair_allowed(saved,result))
 
-    def test_lived_value_lead_failure_survives_other_passed_decisions(self):
-        original=stage5.decision_result
-        def reply(design,text,missing=None):
-            value=original(design,text,missing)
-            value['lead_review']['lived_value']={'status':'fail','reason':'作業上の不便だけでその先の経験が伝わらない',
-                'affected_blocks':[{'id':lr.article_block_ids(text)[0],'reason':'選んだ背景の望む経験をリードへ接続する'}]}
-            return value
-        with patch.object(stage5,'decision_result',side_effect=reply):
-            report,requests,_=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertFalse(report['valid']);self.assertEqual(len(requests),6)
-        phase=report['phases']['coverage']
-        self.assertTrue(all(row['status']=='pass' for row in phase['decision_reviews'].values()))
-        self.assertEqual(phase['lead_review']['subject_and_reader']['status'],'pass')
-        self.assertEqual(phase['checks'][0]['status'],'fail')
-        self.assertTrue(any(f.get('origin')=='individual_lead_review' for f in report['editorial_findings']))
-
     def test_missing_or_outside_lead_review_locations_are_rejected(self):
         text='# 記事\n\n主題と読む目的。\n\n## 詳細\n\n本文。';ids=lr.article_block_ids(text)
         value={'lead_review':{key:{'status':'pass','reason':'合成確認','affected_blocks':[]} for key in lr.KEYS}}
@@ -108,7 +92,6 @@ class ReaderValueRevisionTests(unittest.TestCase):
         text='# メールが届かない\n\nメールアドレスを確認して一度再送します。';ids=lr.article_block_ids(text)
         value={'lead_review':{key:{'status':'pass','reason':'主題と行動が分かる','affected_blocks':[]} for key in lr.KEYS}}
         value['lead_review']['motivation_bridge'].update(status='not_applicable',reason='心理的背景を使わず、直接手順へつながる')
-        value['lead_review']['lived_value'].update(status='not_applicable',reason='直接の再送手順であり暮らしの希望は回答を変えない')
         self.assertEqual(lr.checked(value,ids),value['lead_review'])
 
     def test_lead_findings_do_not_authorize_all_chapter_edits(self):
@@ -121,8 +104,8 @@ class ReaderValueRevisionTests(unittest.TestCase):
 
     def test_lead_only_repair_preserves_chapters_and_invalidates_previous_review(self):
         plan,_,matrix,ctx,value=fixture();saved=artifact(value,ctx);report=lead_finding(saved)
-        changed=bp.LEAD_DIRECTIONS['decision_difficulty']
-        patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':changed,'reader_focus':copy.deepcopy(value['reader_focus'])}
+        changed='候補の閲覧と連絡を検討する読者を示し、用途によって必要プランが異なることから、この記事で利用条件を判断できるとつなぐ'
+        patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':changed}
         with ExitStack() as stack:
             stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
@@ -143,7 +126,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
 
     def test_unreviewed_or_empty_lead_cannot_be_changed(self):
         _,_,_,ctx,value=fixture()
-        patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':'別の導入','reader_focus':copy.deepcopy(value['reader_focus'])}
+        patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':'別の導入'}
         with self.assertRaises(cq.ContentQualityError):
             bp.apply_edits(value,patch_value,ctx,structural=True,targets=['s01'])
         for lead in ('',None,value['lead_direction']):
@@ -191,7 +174,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
 
     def test_existing_five_role_review_receives_lead_and_common_value_rubric(self):
         report,requests,context=stage5.Stage5AuthoringTests().audit_fixture('tiered','legacy')
-        self.assertTrue(report['valid']);self.assertEqual(len(requests),6)
+        self.assertTrue(report['valid']);self.assertEqual(len(requests),5)
         coverage=next(r for r in requests if 'decision_reviews' in r['output_config']['format']['schema']['properties'])
         self.assertIn(ap.EDITORIAL_VALUE_REVIEW,coverage['system'])
         design=json.loads(coverage['messages'][0]['content'])['requirements']['article_design']

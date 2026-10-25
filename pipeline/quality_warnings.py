@@ -4,7 +4,6 @@ import re
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from functools import wraps
-from contextlib import contextmanager
 
 _CONTEXT = ContextVar('quality_warning_context', default=None)
 WARNING_ACCOUNT = 'nishi.aworks@gmail.com'
@@ -13,16 +12,6 @@ SOFT_STAGES = {'research_completeness', 'structure_guard', 'research_validation'
 
 def enabled():
     return _CONTEXT.get() is not None
-
-
-@contextmanager
-def strict_checks():
-    """A recovery must pass its prerequisites before it can write new prose."""
-    token = _CONTEXT.set(None)
-    try:
-        yield
-    finally:
-        _CONTEXT.reset(token)
 
 def warn(message):
     context = _CONTEXT.get()
@@ -54,9 +43,6 @@ def scoped(fn, stage):
             try:
                 result = fn(job_id, *args, **kwargs)
             except ContentQualityError as exc:
-                from .editorial_recovery import EditorialRecoveryError, UpstreamRepairRequired
-                if isinstance(exc, (EditorialRecoveryError, UpstreamRepairRequired)):
-                    raise
                 # These stages only verify existing work. Their unavailable API
                 # is an unperformed check, not a successful audit. Generation
                 # stages and non-quality exceptions remain hard failures.

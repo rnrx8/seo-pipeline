@@ -95,26 +95,6 @@ def _service_focused_h2s(text: str, name: str, *, outline: bool) -> list[dict[st
     return result
 
 
-def _service_introduction_h2s(text: str, name: str, *, outline: bool) -> list[dict[str, Any]]:
-    """Count repeated introductions, not every task concerning one service.
-
-    Coverage can live in a pricing or usage section too. That does not make
-    such a section a duplicate recommendation or permission to delete it.
-    Semantic QA still checks whether each section actually needs to exist.
-    """
-    result = []
-    for section in _service_focused_h2s(text, name, outline=outline):
-        title = section['title']
-        if re.match(r'^(?:まとめ|FAQ|よくある質問)', title, re.IGNORECASE):
-            continue
-        introduction = re.search(r'特徴|強み|おすすめ|選ば|向いて|評判|紹介|とは|メリット', title)
-        task = re.search(r'料金|費用|始め方|登録|使い方|活用', title)
-        if task and not introduction:
-            continue
-        result.append(section)
-    return result
-
-
 def _service_coverage(text: str, name: str, *, outline: bool) -> dict[str, Any]:
     """Measure meaningful service coverage without requiring a standalone H2."""
     focused_h2s = _service_focused_h2s(text, name, outline=outline)
@@ -148,7 +128,6 @@ def _service_coverage(text: str, name: str, *, outline: bool) -> dict[str, Any]:
     return {
         "sufficient": bool(focused_h2s or service_h3s or contextual_sections),
         "service_h2s": [section["title"] for section in focused_h2s],
-        "service_introduction_h2s": [section["title"] for section in _service_introduction_h2s(text, name, outline=outline)],
         "service_h3s": service_h3s,
         "contextual_h2s": contextual_sections,
     }
@@ -220,12 +199,12 @@ def validate_structure(text: str, contract: dict[str, Any], *, outline: bool) ->
                     "service_name": name,
                     "preferred_placement": section.get("preferred_placement") or "within_relevant_section",
                 })
-            max_h2s = int(section.get("max_service_introduction_h2s", section.get("max_service_focused_h2s", 1)))
-            service_h2s = coverage.get("service_introduction_h2s") or []
+            max_h2s = int(section.get("max_service_focused_h2s", 1))
+            service_h2s = coverage.get("service_h2s") or []
             if len(service_h2s) > max_h2s:
                 violations.append({
                     "key": "featured_service_duplicate_h2",
-                    "reason": f"{name}の紹介・推薦を担うH2が重複している",
+                    "reason": f"{name}を主題にしたH2が重複している",
                     "service_name": name,
                     "h2_titles": service_h2s,
                     "maximum": max_h2s,
@@ -367,7 +346,7 @@ def _enrich_service_coverage(outline_text: str, section: dict[str, Any]) -> tupl
 
 def deduplicate_service_h2s(text: str, service_name: str, *, outline: bool) -> tuple[str, list[str]]:
     """Remove redundant service H2 blocks, preferring the naturally worded one."""
-    sections = _service_introduction_h2s(text, service_name, outline=outline)
+    sections = _service_focused_h2s(text, service_name, outline=outline)
     if len(sections) <= 1:
         return text, []
 

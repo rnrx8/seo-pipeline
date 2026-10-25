@@ -1,4 +1,3 @@
-from heading_review_fixture import with_heading_reviews
 from pipeline.outline_policy import current_policy
 """Offline behavioral tests for scope, durable limits, and evidence handoff."""
 import copy
@@ -66,7 +65,7 @@ class ScopedReviewTests(unittest.TestCase):
             n=budget.reserve({'model':request['model'],'max_output_tokens':100,'input':'offline fixture'})
             budget.settle(n,{'input_tokens':100,'output_tokens':20})
             result=self.message(request,fail)
-            return NS(stop_reason="end_turn",content=[NS(type='text',text=json.dumps(with_heading_reviews(result, request),ensure_ascii=False))],usage=NS(input_tokens=100,output_tokens=20))
+            return NS(stop_reason="end_turn",content=[NS(type='text',text=json.dumps(result,ensure_ascii=False))],usage=NS(input_tokens=100,output_tokens=20))
         return send
 
     def test_outline_repair_scope_preserves_relevance_without_source_bookkeeping(self):
@@ -130,7 +129,7 @@ class ScopedReviewTests(unittest.TestCase):
         def send(job,step,request):
             value=self.message(request)
             value['checks']=[c for c in value['checks'] if c['key']=='evidence_support']
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as calls:
             checks,_,_=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(calls.call_count,1)
@@ -144,7 +143,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request,fail=step.endswith('screen'))
             if step.endswith('screen'):
                 value['checks'][0]['correction_evidence']=[]
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send):
             checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(seen,['tiered_article_evidence_screen','tiered_article_evidence_adjudicate'])
@@ -163,7 +162,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request,fail=step.endswith('screen'))
             if step.endswith('screen'):
                 value['checks'][0]['correction_evidence']=[{'url':self.pages[0]['url'],'quote':'This sentence is not in the original source.'}]
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send):
             checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(seen,['tiered_article_evidence_screen','tiered_article_evidence_adjudicate'])
@@ -175,7 +174,7 @@ class ScopedReviewTests(unittest.TestCase):
         def send(job,step,request):
             value=self.message(request,fail=True)
             value['checks'][0]['correction_evidence']=[]
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as calls:
             with self.assertRaisesRegex(ContentQualityError,'訂正に必要な原文引用'):
                 evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
@@ -199,7 +198,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request)
             check=next(c for c in value['checks'] if c['key']=='evidence_support')
             check['claim_verdicts']=check['claim_verdicts'][:1]
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as calls:
             with self.assertRaisesRegex(ContentQualityError,'指摘ごとの判定'):
                 evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
@@ -256,7 +255,7 @@ class ScopedReviewTests(unittest.TestCase):
                          affected_blocks=[{'id':self.summary,'reason':'対象条件が欠ける'}],
                          correction_evidence=[{'url':self.pages[0]['url'],'quote':self.pages[0]['text']}])
             check['claim_verdicts'][1].update(status='fail',reason='対象条件が欠ける')
-            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(with_heading_reviews(value, request),ensure_ascii=False))],
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(value,ensure_ascii=False))],
                       usage=NS(input_tokens=0,output_tokens=0))
         with patch.object(research,'create_with_retry',side_effect=send) as calls:
             checks,_,_=evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)
@@ -307,8 +306,8 @@ class ScopedReviewTests(unittest.TestCase):
         def send(j,step,request):
             requests[step]=json.loads(request['messages'][0]['content'])
             fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
-            return with_heading_reviews({'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[],
-                'requires_source_check':False,'research_ids':[],'source_urls':[]} for k in fields['key']['enum']]}, request),NS(input_tokens=0,output_tokens=0)
+            return {'checks':[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[],
+                'requires_source_check':False,'research_ids':[],'source_urls':[]} for k in fields['key']['enum']]},NS(input_tokens=0,output_tokens=0)
         text=self.text.replace('Aの女性は標準プランでメッセージ無料。','女性・標準プランは無料。')
         args=dict(text=text,facts='',outline=text,contract={},requirements=self.req,sources=json.dumps(self.pages))
         with patch.object(research,'checked_request',side_effect=send):
@@ -326,7 +325,7 @@ class ScopedReviewTests(unittest.TestCase):
             other=next(c for c in value['checks'] if c['key']=='unsupported_guarantees')
             other.update(status='fail',reason='範囲外の新規指摘',
                          affected_blocks=[{'id':self.a,'reason':'範囲外'}],correction_evidence=[])
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=reply):
             checks,_,_=evidence.evidence_audit('research',self.payload,(*ROLES['evidence'],'unsupported_guarantees'),self.text)
         self.assertNotIn('unsupported_guarantees',[c['key'] for c in checks])
@@ -404,7 +403,7 @@ class ScopedReviewTests(unittest.TestCase):
                 if key=='evidence_support':
                     c.update(status='fail',research_ids=['a'],affected_blocks=self.check['affected_blocks'],reason='女性条件が欠落')
                 checks.append(c)
-            return with_heading_reviews({'checks':checks}, request),NS(input_tokens=0,output_tokens=0)
+            return {'checks':checks},NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send):
             report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
         self.assertFalse(report['valid'])
@@ -437,7 +436,7 @@ class ScopedReviewTests(unittest.TestCase):
                                   'requires_source_check':False,'research_ids':[],'source_urls':[]} for k in cq.CHECKS]}
                 if not repaired:
                     value['checks'][1]={**self.check,'requires_source_check':False}
-            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(with_heading_reviews(value, request)))],usage=NS(input_tokens=100,output_tokens=20))
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(value))],usage=NS(input_tokens=100,output_tokens=20))
         with ExitStack() as stack:
             stack.enter_context(patch.object(guard,'get_job',return_value={'id':'offline-job'}))
             stack.enter_context(patch.object(guard,'get_artifact',side_effect=lambda j,s:copy.deepcopy(artifacts[s])))
@@ -491,7 +490,7 @@ class ScopedReviewTests(unittest.TestCase):
                     c.update(requires_source_check=False,source_urls=[],research_ids=[])
                     if step=='tiered_article_evidence_scope' and c['key']=='evidence_support':
                         c.update(**{k:v for k,v in self.check.items() if k!='key'})
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send):
             report=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(self.pages))
         check=next(c for c in report['checks'] if c['key']=='evidence_support')
@@ -526,11 +525,11 @@ class ScopedReviewTests(unittest.TestCase):
         check={**self.check,'key':'comparison_conditions'}
         def send(job,step,request):
             if step=='tiered_audit_research':
-                return with_heading_reviews({'checks':[check if k=='comparison_conditions' else {'key':k,'status':'pass','reason':'fixture',
-                    'affected_blocks':[],'requires_source_check':False,'source_urls':[],'research_ids':[]} for k in CHECKS]}, request),NS(input_tokens=0,output_tokens=0)
+                return {'checks':[check if k=='comparison_conditions' else {'key':k,'status':'pass','reason':'fixture',
+                    'affected_blocks':[],'requires_source_check':False,'source_urls':[],'research_ids':[]} for k in CHECKS]},NS(input_tokens=0,output_tokens=0)
             value=self.message(request)
             value['review'].update(needed=True,block_ids=[self.a],reason='条件不明')
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send),patch('pipeline.db.get_optional_artifact',return_value=None):
             report=audit(None,stage='research',text=self.text,outline=self.text,facts='',requirements=self.req,sources=json.dumps(self.pages),contract={})
         self.assertTrue(report['evidence_pending'])
@@ -545,7 +544,7 @@ class ScopedReviewTests(unittest.TestCase):
             fields=request['output_config']['format']['schema']['properties']['checks']['items']['properties']
             checks=[{'key':k,'status':'pass','reason':'fixture','affected_blocks':[],
                      **({'requires_source_check':False,'research_ids':[],'source_urls':[]} if 'requires_source_check' in fields else {})} for k in fields['key']['enum']]
-            return with_heading_reviews({'checks':checks}, request),NS(input_tokens=0,output_tokens=0)
+            return {'checks':checks},NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send):
             for pages in (self.pages,[{**self.pages[0],'text':'女性標準プラン有料'},*self.pages[1:]]):
                 result=audit_article(None,text=self.text,facts='',outline='',contract={},requirements=self.req,sources=json.dumps(pages))
@@ -561,7 +560,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request)
             value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
                                    source_urls=[self.pages[1]['url']])
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         def restore(pages,urls,job):
             return [{**p,'text':p['text']+' additional plan conditions'} for p in pages]
         with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=restore):
@@ -578,7 +577,7 @@ class ScopedReviewTests(unittest.TestCase):
         def send(job,step,request):
             value=self.message(request)
             value['review'].update(needed=True,block_ids=[self.a],source_urls=[self.pages[1]['url']])
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as calls, \
              patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
             checks,_,trace=evidence.evidence_audit('research',payload,ROLES['evidence'],self.text)
@@ -617,7 +616,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request)
             value['review'].update(needed=step.endswith('screen'),block_ids=[self.a],
                                    source_urls=[self.pages[1]['url']],reason='対象の条件の補足がB資料にあるため確認')
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send),patch('pipeline.review_scope.save_resolution') as save:
             checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(len(seen),2)
@@ -632,7 +631,7 @@ class ScopedReviewTests(unittest.TestCase):
             def send(job,step,request):
                 value=self.message(request)
                 value['review'].update(needed=needed,block_ids=[self.a],source_urls=[url])
-                return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+                return value,NS(input_tokens=0,output_tokens=0)
             with self.subTest(url=url),patch.object(research,'checked_request',side_effect=send),self.assertRaises(ContentQualityError):
                 evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
 
@@ -643,7 +642,7 @@ class ScopedReviewTests(unittest.TestCase):
             value=self.message(request)
             value['review'].update(needed=not step.endswith('expanded'),block_ids=[self.a],
                 source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
             checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(len(seen),3)
@@ -662,7 +661,7 @@ class ScopedReviewTests(unittest.TestCase):
                 source_urls=[self.pages[0 if step.endswith('screen') else 1]['url']])
             if step.endswith('adjudicate'):
                 next(c for c in value['checks'] if c['key']=='comparison_conditions')['reason']='already resolved comparison'
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send),patch.object(evidence,'restore_requested_bodies',side_effect=lambda p,u,j:p):
             checks,_,trace=evidence.evidence_audit('article',self.payload,ROLES['evidence'],self.text)
         self.assertEqual(seen[-1]['target_block_ids'],[self.a])
@@ -727,7 +726,7 @@ class ScopedReviewTests(unittest.TestCase):
             value['review']={'needed':True,'block_ids':[self.a],
                 'source_urls':[self.pages[1]['url']],
                 'reason':'Aの条件は確認できたが、同じ表のBの料金原文がない。'}
-            return with_heading_reviews(value, request),NS(input_tokens=0,output_tokens=0)
+            return value,NS(input_tokens=0,output_tokens=0)
         with patch.object(research,'checked_request',side_effect=send) as call:
             with self.assertRaisesRegex(ContentQualityError,'追加確認範囲'):
                 evidence.evidence_audit('research',self.payload,ROLES['evidence'],self.text)

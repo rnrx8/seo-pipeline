@@ -74,14 +74,12 @@ class ReaderPresentationTests(unittest.TestCase):
             self.assertEqual(bool(featured), purpose == 'cv')
             if featured:
                 self.assertEqual(featured[0]['service_name'], 'Aケース')
-                self.assertTrue(any('推薦内容' in s for s in featured[0]['requirements']))
+                self.assertTrue(any('第一候補' in s for s in featured[0]['requirements']))
                 self.assertTrue(any('表' in s for s in featured[0]['requirements']))
 
     def test_existing_five_roles_receive_settings_and_cv_contract_without_new_call(self):
         requests = []
-        contract = {'article_purpose':'cv','featured_service':'Aケース','primary_intent':'持たずに動画を見たい',
-            'required_sections':[{'key':'featured_service_coverage','max_service_focused_h2s':1,
-                'requirements':['独立H2を使う場合も同じサービスを扱うH2を重複させない']}]}
+        contract = {'article_purpose':'cv','featured_service':'Aケース','primary_intent':'持たずに動画を見たい'}
         def send(job, step, request):
             payload = json.loads(request['messages'][0]['content'])
             requests.append((step, payload, request['system']))
@@ -97,10 +95,7 @@ class ReaderPresentationTests(unittest.TestCase):
             self.assertEqual(payload['requirements']['citation_style'], 'none')
             self.assertIn(READER_PRESENTATION_POLICY, system)
             if step == 'tiered_article_coverage':
-                from pipeline.content_contract import editorial_contract
-                self.assertEqual(payload['content_contract'],editorial_contract(contract))
-                self.assertNotIn('max_service_focused_h2s',str(payload['content_contract']))
-                self.assertIn('max_service_focused_h2s',contract['required_sections'][0])
+                self.assertEqual(payload['content_contract'],contract)
                 self.assertEqual(system.count(RECOMMENDATION_REVIEW), 1)
             else:
                 self.assertNotIn(RECOMMENDATION_REVIEW, system)

@@ -382,39 +382,6 @@ class ContentContractTests(unittest.TestCase):
         self.assertIn("## まとめ\n結論です。", repaired)
         self.assertNotIn("汎用的な重複説明", repaired)
 
-    def test_usage_and_pricing_sections_are_not_duplicate_recommendations(self):
-        contract = {'featured_service':'サービスA','required_sections':[
-            {'key':'featured_service_coverage','service_name':'サービスA','max_service_focused_h2s':1}]}
-        headings = ['サービスAがおすすめの理由', 'サービスAの始め方：無料登録から利用まで',
-                    'サービスAの料金', 'まとめ：サービスAがおすすめ']
-        for outline in (False, True):
-            text = '\n\n'.join(('### H2：' if outline else '## ')+h+'\n必要な説明。' for h in headings)
-            self.assertEqual(validate_structure(text,contract,outline=outline),[])
-            self.assertEqual(deduplicate_service_h2s(text,'サービスA',outline=outline),(text,[]))
-
-    def test_removing_a_duplicate_intro_preserves_independent_usage_section(self):
-        text = ('## サービスAがおすすめの理由\n推薦の根拠。\n'
-                '## サービスAの特徴・料金・始め方\n重複紹介。\n'
-                '## サービスAの始め方：登録から利用まで\n必要な手順と条件。\n')
-        fixed,removed=deduplicate_service_h2s(text,'サービスA',outline=False)
-        self.assertEqual(removed,['サービスAの特徴・料金・始め方'])
-        self.assertIn('必要な手順と条件。',fixed)
-
-    def test_legacy_contract_prompt_and_validation_share_introduction_scope(self):
-        from pipeline.content_contract import contract_prompt
-        import copy,json
-        contract={'required_sections':[{'key':'featured_service_coverage','service_name':'サービスA',
-            'max_service_focused_h2s':1,'requirements':['独立H2を使う場合も同じサービスを扱うH2を重複させない']}]}
-        before=copy.deepcopy(contract)
-        prompt=contract_prompt(contract)
-        presented=json.loads(prompt.split('```json\n')[1].split('\n```')[0])
-        self.assertEqual(contract,before)
-        self.assertNotIn('max_service_focused_h2s',prompt)
-        self.assertEqual(presented['required_sections'][0]['max_service_introduction_h2s'],1)
-        text='## サービスAがおすすめの理由\n推薦理由。\n## サービスAの始め方\n登録の手順。'
-        self.assertEqual(validate_structure(text,contract,outline=False),
-                         validate_structure(text,presented,outline=False))
-
     def test_article_service_repair_is_inserted_inside_comparison_h2(self):
         article = """\
 ## アプリ3社を比較

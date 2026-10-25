@@ -72,8 +72,7 @@ def build_step_plan(job: dict) -> list[Step]:
         steps.append(("review", step_review.run))
     if job.get("high_accuracy_mode"):
         steps.append(("fact_review", step_fact_review.run))
-    from .editorial_recovery import run as audit_with_recovery
-    steps.append(("content_audit", audit_with_recovery))
+    steps.append(("content_audit", step_content_audit.run))
     steps.append(("final_structure_validation", step_final_validate.run))
     return budgeted_steps(steps)
 

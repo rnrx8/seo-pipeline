@@ -7,7 +7,7 @@ from .content_quality import response_text,digest,source_evidence
 from .research_collection import collection_records
 from .fresh_sources import extract_urls, normalize_url
 from .source_spans import SPAN_POLICY, indexed_sources, span_schema, expand_references
-VERSION='tiered-research-v7-visible-source-review'
+VERSION='tiered-research-v6-claim-scope'
 POLICY='''
 previous_findingsは前回の全体確認で指摘された具体的な不足。previous_candidates・omission_candidate_from・unresolved_candidateは未採用の参考情報であり、確認済み事実ではない。資料から再確認し、根拠のある部分と未確認部分を分ける。参考情報だけで合格にしない。
 related_verified_answersは他の対象で確認できた回答と条件。横断質問では該当例をこの情報と提示原文で照合し、回答範囲を限定する。別の質問へ合格を自動転記せず、出典は今回のsourcesから選ぶ。
@@ -78,24 +78,14 @@ def stable_review_request(request):
 
 
 def structured_review_output_limit(request):
- """Reserve space for every required question/blueprint verdict and reasoning."""
+ """Reserve space for every required blueprint verdict, including reasoning."""
  original=request['max_tokens']
  if request.get('model') not in ('gpt-6-luna','gpt-6.1-sol'):return original
  props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
- questions=props.get('items',{}).get('properties',{})
- if questions and request['model']=='gpt-6.1-sol':
-  original=max(original,min(32000,2000+900*len(questions)))
- journeys=props.get('reader_journeys',{}).get('properties',{})
- if journeys:
-  return max(original,min(32000,2000+2200*len(journeys)))
  rows=props.get('blueprint_reviews',{}).get('properties',{})
- if not rows and not props.get('reader_progression_reviews'):return original
+ if not rows:return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())
- verdicts+=len(props.get('decision_reviews',{}).get('properties',{}))
- progression=props.get('reader_progression_reviews',{}).get('properties',{})
- for row in progression.values():
-  journey=row.get('properties',{}).get('journey',{}).get('properties',{})
-  verdicts+=1+sum('status' in check.get('properties',{}) for check in journey.values())
+ verdicts+=len(props.get('reader_progression_reviews',{}).get('properties',{}))
  verdicts+=len(props.get('lead_review',{}).get('properties',{}))
  return max(original,min(32000,4000+400*verdicts))
 
@@ -188,21 +178,6 @@ def coverage_decision(item):
  return result
 
 
-def record_source_review(items,pages):
- """Keep visible, quoted source review even when no claim can be published.
-
- This permits an optional omission proposal, never factual adoption. Do this
- after factual adjudication so bookkeeping does not change model inputs.
- """
- visible={p['url']:''.join(p.get('text','').split()) for p in pages if p.get('status','success')=='success'}
- for item in items:
-  refs=item.get('claim_evidence',item.get('evidence',[]))
-  urls=sorted({r['url'] for r in refs if r.get('quote','').strip() and r.get('url') in visible
-               and ''.join(r['quote'].split()) in visible[r['url']]})
-  if urls:item['reviewed_source_urls']=urls
-  else:item.pop('reviewed_source_urls',None)
-
-
 def audit_matrix(job_id,plan,pages,facts,intent_context):
  from .research_requirements import MATRIX_SYSTEM,MATRIX_SCHEMA,validate_matrix,propose_optional_omissions
  from .research_verification import COVERAGE_SYSTEM,subject_sources
@@ -286,7 +261,6 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
      replacements={i['id']:i for i in second['items']}
      value['items']=[replacements.get(i['id'],i) for i in value['items']]
   validate_matrix(value,{'items':questions},selected)
-  record_source_review(value['items'],packed)
   items.extend(value['items'])
  overall,usage=review_coverage(job_id,plan,pages,items,intent_context)
  inputs+=usage.input_tokens;outputs+=usage.output_tokens
