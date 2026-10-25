@@ -13,7 +13,7 @@ POLICY = '''【検索意図を探索してから、記事で答える問いを�
 explorationは、読者について考えた編集上の仮説と、それを記事へ使う根拠を記録する。内部の思考実況は書かない。検索語から新たな関係・商品・行動を求める理由を調べ、次の順に、一つの事情として説明できる候補を作る。
 
 1. 語から事情を広げる
-KWを対象・行為・条件・評価に分ける。複合語の限定や役割にも着目し、なぜその対象や条件を求めるかを5W1Hで考える。keyword_partsは元KWに実在する連続文字列だけ。固有名を意味のない断片へ分けない。「探し方」「おすすめ」という方法の問いだけで始めない。
+KWを対象・行為・条件・評価に分ける。複合語の限定や役割にも着目し、なぜその対象や条件を求めるかを5W1Hで考える。keyword_partsは元KWに実在する連続文字列だけ。固有名を意味のない断片へ分けない。「探し方」「おすすめ」という方法の問いだけで始めない。keyword_partsに挙げた各語は、少なくとも一つのbranchesのkeyword_partsから参照し、全語を探索へ結び付ける。複数の語を同じ枝に結び付けてよく、語ごとに別の感情や深い欲求を作る必要はない。語を参照しただけで、その意味を検討したことにはしない。
 入力で確認できない読者の事情も、KWから考えられる候補仮説として具体化できる。contextには候補の内容、unknownsには実際の検索者への該当性が未確認な点を分けて残す。仮説の内容まで「不明」にして掘り下げを止めない。年齢・性別・利用者の多さを決める必要はない。商品・CTAに都合のよい悩みを逆算せず、元の問いから候補を考える。
 
 2. 状況・不足・望む経験をつなぐ
@@ -201,7 +201,8 @@ def validate(value, sources, *, require_hypothesis_relations=False):
         if any(not _text(branch.get(k)) for k in ('concrete_material', 'article_effect')):
             _fail('具体的素材と記事への使い方がありません。')
     if used_parts != set(parts):
-        _fail('分解した語の一部が探索から抜けています。')
+        _fail('分解した語の一部が探索から抜けています。未対応: '
+              + json.dumps(sorted(set(parts) - used_parts), ensure_ascii=False))
     for need in value.get('selected', []):
         refs = need.get('hypothesis_ids')
         if (not isinstance(refs, list) or not refs or any(not isinstance(r, str) or r not in ids for r in refs)

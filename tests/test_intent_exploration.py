@@ -250,6 +250,7 @@ class IntentExplorationTests(unittest.TestCase):
             return data
         with patch.object(step, 'prepare', return_value=(brief, material, None, 'miss')), \
              patch.object(step, 'get_artifact', return_value={'content_text': sources['serp']}), \
+             patch.object(step, 'get_optional_artifact', return_value=None), \
              patch.object(step.anthropic, 'Anthropic'), patch.object(step, 'upsert_artifact', side_effect=save), \
              patch.object(step, 'create_with_retry', side_effect=[response({}), response(legacy)]) as calls:
             with self.assertRaises(ContentQualityError): step.run('j', brief['keyword'])
@@ -257,6 +258,33 @@ class IntentExplorationTests(unittest.TestCase):
         self.assertNotIn('search_intent', records)
         self.assertNotIn('product_context', records)
         self.assertEqual(json.loads(records['reader_needs']['content_text'])['status'], 'analyzing')
+        failed = json.loads(records['search_intent_failures']['content_text'])['attempts'][0]
+        self.assertEqual(json.loads(failed['raw_response']), legacy)
+        self.assertEqual(failed['request_sha256'], pb.fingerprint(failed['request']))
+        self.assertEqual(failed['request'], calls.call_args.kwargs)
+        self.assertTrue(records['search_intent_failures']['meta']['diagnostic_only'])
+
+    def test_missing_keyword_part_is_named_and_stays_a_failure(self):
+        _, _, sources, value = self.fixture()
+        value['exploration']['keyword_parts'] = [sources['keyword'], '探し']
+        with self.assertRaisesRegex(ContentQualityError, '未対応:.*"探し"'):
+            self.check(value, sources)
+
+    def test_failed_response_retention_appends_without_replaying_or_accepting_analysis(self):
+        from pipeline import step_intent as step
+        from test_reader_value_flow import response
+        _, _, sources, value = self.fixture()
+        previous = {'version': 1, 'attempts': [{'raw_response': 'previous invalid response'}]}
+        request = {'model': step.MODEL, 'max_tokens': 10000, 'messages': [{'role': 'user', 'content': 'unchanged input'}]}
+        with patch.object(step, 'get_optional_artifact', return_value={'content_text': json.dumps(previous)}), \
+             patch.object(step, 'upsert_artifact') as save, patch.object(step, 'create_with_retry') as send:
+            step._save_failed_analysis('j', response(value), sources, request, ContentQualityError('missing reference'))
+        send.assert_not_called()
+        self.assertEqual(save.call_args.kwargs['step'], 'search_intent_failures')
+        result = json.loads(save.call_args.kwargs['content_text'])
+        self.assertEqual(result['attempts'][0], previous['attempts'][0])
+        self.assertEqual(json.loads(result['attempts'][1]['raw_response']), value)
+        self.assertEqual(result['attempts'][1]['request'], request)
 
 
 if __name__ == '__main__': unittest.main()
