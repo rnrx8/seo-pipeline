@@ -31,6 +31,17 @@ def fixture():
 
 
 class SectionReconciliationTests(unittest.TestCase):
+    def test_preexisting_lead_failure_is_fixed_before_full_qa_without_touching_body(self):
+        source, before, _, _ = fixture();text=source['content_text'];body=text[text.index('## '):]
+        with patch.object(step_article,'_finish_reader_lead',return_value=('修正した導入。\n\n'+body,0,0,{'semantically_accepted':False})) as writer:
+            unchanged,meta=repair.finish_failed_lead(None,text,before,'kw',{}, {'editorial_findings':[]})
+            self.assertEqual(unchanged,text);self.assertIsNone(meta);writer.assert_not_called()
+            finding={'severity':'blocking','origin':'individual_lead_review','problem':'主題と望む暮らしがない','required_change':'元分析に沿って短く伝える'}
+            revised,meta=repair.finish_failed_lead(None,text,before,'kw',{}, {'editorial_findings':[finding]})
+            self.assertEqual(revised[revised.index('## '):],body)
+            self.assertIn('主題と望む暮らしがない',writer.call_args.kwargs['review_feedback'])
+            self.assertFalse(meta['semantically_accepted'])
+
     def test_move_preserves_lead_and_remote_conditions_including_negation(self):
         source, before, after, report = fixture()
         p = repair.plan(source, before, after, report)
