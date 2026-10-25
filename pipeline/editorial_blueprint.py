@@ -523,7 +523,7 @@ def repair_targets(artifact, report):
     return sorted(targets | related)
 
 
-def repair(job_id, keyword, report, artifact, client):
+def repair(job_id, keyword, report, artifact, client, *, repair_progress=None):
     from .ai import create_with_retry,get_step_config,message_text,tiered_review_enabled
     from .db import upsert_artifact,get_artifact,get_job
     from .research_requirements import load_plan,require_matrix
@@ -564,6 +564,8 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
     validate_shape(response,output['format']['schema'])
     candidate=apply_edits(value,response,ctx,structural=structural,targets=targets,allow_lead=allow_lead,omission_targets=omission_targets,allow_titles=allow_titles)
     text=render(candidate,ctx);contract=json.loads(get_artifact(job_id,'content_contract')['content_text'])
+    from .outline_repair_progress import completed
+    progress_meta=completed(repair_progress,text)
     issues=validate_structure(text,contract,outline=True)+budget_issues(candidate,job.get('word_count_setting'))
     if issues:fail('編集設計の修正後も必須構造が不足しています: '+json.dumps(issues,ensure_ascii=False))
     upsert_artifact(job_id=job_id,step='outline_before_local_repair',content_type='text/markdown',
@@ -573,7 +575,7 @@ section_orderは追加・移動・削除が必要なときのみ修正後全ID�
     from .outline_design import topic_assignments
     from .outline_policy import current_policy
     return upsert_artifact(job_id=job_id,step='outline',content_type='text/markdown',content_text=text,
-        meta={**artifact['meta'],**metadata(candidate,ctx),'editorial_policy':current_policy(),
+        meta={**artifact['meta'],**metadata(candidate,ctx),**progress_meta,'editorial_policy':current_policy(),
               'local_repaired':True,'audited':False,'topic_assignments':topic_assignments(text)})
 
 
