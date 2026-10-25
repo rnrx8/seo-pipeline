@@ -36,6 +36,13 @@ def requires_rate_limit_delay(step_key: str) -> bool:
 
 
 def research_resume_stage(job_id, stage, keys, load):
+    if stage=='research_plan' and 'fact_sheet' in keys:
+        saved=load(job_id,'research_plan')
+        if (saved or {}).get('meta',{}).get('ready_for_research') is True:
+            # A paid plan already exists; an optional preflight error must not
+            # send the entire plan writer again on resume.
+            research_requirements.load_plan(job_id)
+            return 'fact_sheet'
     stage = _research_resume_stage(job_id, stage, keys, load)
     # Old warn-through runs can fail at final validation even though the actual
     # unfinished prerequisite is article QA. Resume that saved draft's audit,
