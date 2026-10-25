@@ -49,10 +49,43 @@ def response_schema(legacy_schema):
     return result
 
 
-def check_indices(indices, evidence):
-    if (not isinstance(indices,list) or len(indices)!=len(set(i for i in indices if type(i) is int))
-        or any(type(i) is not int or not 0<=i<len(evidence) for i in indices)):
-        raise ContentQualityError('主張の根拠参照が不正です。')
+REFERENCE_ISSUE = 'invalid_claim_reference'
+PROBLEM_LABELS = {'not_list':'配列ではない','non_integer':'整数以外','out_of_range':'範囲外','duplicate':'重複'}
+
+
+def reference_problems(indices, evidence):
+    if not isinstance(indices,list): return ['not_list']
+    numbers=[i for i in indices if type(i) is int]
+    problems=['non_integer'] if len(numbers)!=len(indices) else []
+    if any(not 0<=i<len(evidence) for i in numbers): problems.append('out_of_range')
+    if len(numbers)!=len(set(numbers)): problems.append('duplicate')
+    return problems
+
+
+def reference_issue(claim_id, claim, evidence):
+    """Record the rejected response verbatim; never guess, clamp, or drop a reference."""
+    conflict=claim['conflict']
+    fields=[{'field':field,'indices':copy.deepcopy(indices),'problems':problems}
+            for field,indices in (('evidence_indices',claim.get('evidence_indices')),
+                                  ('conflict.evidence_indices',conflict.get('evidence_indices')))
+            if (problems:=reference_problems(indices,evidence))]
+    if not fields: return None
+    return {'code':REFERENCE_ISSUE,'claim_id':claim_id,'evidence_count':len(evidence),'fields':fields}
+
+
+def reference_reason(issue):
+    count=issue['evidence_count']
+    valid=f'有効な番号は0〜{count-1}' if count else '参照できる根拠がありません'
+    detail='、'.join(f"{f['field']}={f['indices']!r}（{'・'.join(PROBLEM_LABELS[p] for p in f['problems'])}）" for f in issue['fields'])
+    return (f'主張の根拠参照が不正です：{detail}。evidenceは{count}件で{valid}。'
+            '参照を推測で補正しないため、この主張は原文IDから再判定が必要です。')
+
+
+def reference_failures(matrix, ids=None):
+    """Question IDs whose claim/evidence mapping was rejected; this is not missing source material."""
+    return sorted({item['id'] for item in (matrix or {}).get('items',[]) if isinstance(item,dict)
+                   and (ids is None or item.get('id') in ids)
+                   and any(i.get('code')==REFERENCE_ISSUE for i in item.get('claim_policy_issues',[]))})
 
 
 def assess(item, question, pages):
@@ -73,7 +106,6 @@ def assess(item, question, pages):
             or type(claim.get('required_for_answer')) is not bool or type(claim.get('supports_current_conclusion')) is not bool
             or claim.get('disposition') not in ('publish','qualified','withhold','omit')):
             raise ContentQualityError('重要な主張の対象・動作・掲載判断が不正です。')
-        check_indices(claim.get('evidence_indices'),evidence)
         scope=claim.get('conditions')
         if not isinstance(scope,list) or any(not isinstance(c,dict) or c.get('dimension') not in (
             'audience','plan','term','price_basis','time','exception','other') or not isinstance(c.get('value'),str) or not c['value'].strip() for c in scope):
@@ -81,7 +113,17 @@ def assess(item, question, pages):
         conflict=claim.get('conflict')
         if not isinstance(conflict,dict) or conflict.get('status') not in ('none','resolved','unresolved') or not isinstance(conflict.get('resolution'),str):
             raise ContentQualityError('資料間の矛盾の確認状態が不正です。')
-        check_indices(conflict.get('evidence_indices'),evidence)
+        claim_id=f"{question['id']}.c{index+1:02d}"
+        # A malformed mapping is one rejected claim, not a stop for every other
+        # answer. Keep the original response and exact reason for the bounded
+        # re-review; the whole question stays unverified until a new response.
+        issue=reference_issue(claim_id,claim,evidence)
+        if issue:
+            reason=reference_reason(issue)
+            rows.append({**copy.deepcopy(claim),'id':claim_id,'publishable':False,'evidence':[],'conflicting_evidence':[],
+                         'validation_reason':reason,'reference_issue':issue})
+            policy_issues.append(issue);critical_missing.append(claim_id+'：'+reason)
+            continue
         if conflict['status']!='none' and (not conflict['evidence_indices'] or not conflict['resolution'].strip()):
             raise ContentQualityError('資料の矛盾に参照箇所・判断理由がありません。')
         refs=[copy.deepcopy(evidence[i]) for i in claim['evidence_indices']]
@@ -97,7 +139,6 @@ def assess(item, question, pages):
                               {'items':[question]},pages)
         publishable=(not gaps and mini['verified'] and conflict['status']!='unresolved'
                      and claim['disposition'] in ('publish','qualified'))
-        claim_id=f"{question['id']}.c{index+1:02d}"
         visible_failure=claim_id in item.get('claim_visibility_failed',[])
         pending_sources=item.get('additional_sources_needed') is True
         if visible_failure or pending_sources: publishable=False

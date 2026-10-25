@@ -18,7 +18,7 @@ load_dotenv()
 from pipeline.article_revisions import revision_run
 from pipeline.db import get_bug_fixing_jobs, get_job, get_stale_queued_jobs, get_user_credits_total, get_user_email, insert_job, upsert_artifact, update_job_error, update_job_status, update_job_step  # noqa: E402
 from pipeline.notify import alert_failed_job, alert_stale_job  # noqa: E402
-from pipeline.step_plan import build_step_plan, requires_rate_limit_delay  # noqa: E402
+from pipeline.step_plan import build_step_plan, requires_rate_limit_delay, research_resume_stage  # noqa: E402
 
 STEP_DELAY = 15  # seconds between steps (same as runner.py)
 WATCHDOG_INTERVAL_SECONDS = 300   # 5分ごとにチェック
@@ -72,6 +72,7 @@ async def _requeue_bug_fixing_jobs() -> None:
             if stage not in [key for key, _ in build_step_plan(job)]:
                 print(f'[startup] No safe resume stage for {job_id}; preserving stopped job')
                 continue
+            stage = research_resume_stage(job_id, stage, [key for key, _ in build_step_plan(job)], get_optional_artifact)
             update_job_status(job_id, "running")
             loop.run_in_executor(None, _run_pipeline, job_id, keyword, stage)
             print(f"[startup] Re-queued: {job_id} ({keyword!r})")
@@ -274,6 +275,7 @@ async def resume(req: ResumeRequest, background_tasks: BackgroundTasks,
                  'research_completeness' if get_optional_artifact(job['id'], 'fact_sheet') else None)
     if stage not in keys:
         raise HTTPException(status_code=409, detail='再開できる途中成果がありません。')
+    stage = research_resume_stage(job['id'], stage, keys, get_optional_artifact)
     claimed = req_http_patch_claim(job['id'], _base, _headers)
     if not claimed:
         return GenerateResponse(job_id=job['id'], status=get_job(job['id'])['status'])
