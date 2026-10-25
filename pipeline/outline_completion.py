@@ -101,6 +101,13 @@ def complete(job_id, artifact, request, context, client):
 
 def saved(job_id, request):
     artifact = get_optional_artifact(job_id,'outline_incomplete')
+    if artifact and not artifact.get('meta',{}).get('request_sha256'):
+        binding=get_optional_artifact(job_id,'outline_incomplete_binding')
+        value=json.loads(binding['content_text']) if binding else {}
+        if (value.get('request_sha256')==fingerprint(request)
+                and value.get('partial_sha256')==digest(artifact['content_text'])):
+            artifact=copy.deepcopy(artifact)
+            artifact['meta']['request_sha256']=value['request_sha256']
     if artifact and artifact.get('meta',{}).get('request_sha256') != fingerprint(request):
         raise ContentQualityError('未完成構成の制作依頼との対応が未確認です。全体を再送しません。')
     return artifact
