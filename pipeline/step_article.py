@@ -312,7 +312,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
 
 
 def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
-                         sections: list, part_number: int, contract: dict | None = None, job_id: str | None = None, facts: str = "") -> tuple[str, int, int]:
+                         sections: list, part_number: int, contract: dict | None = None, job_id: str | None = None, facts: str = "", citation_registry=None) -> tuple[str, int, int]:
     """Retry a defective part once, before allowing the next part to start."""
     required_outline = select_outline(outline, [title for title, _, _ in sections])
     target = sum(chars for _, _, chars in sections)
@@ -340,6 +340,17 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         total_input += ti
         total_output += to
         cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
+        if citation_registry is not None:
+            from .article_citations import render
+            try:
+                cleaned = render(cleaned, citation_registry, footer=False)
+            except ContentQualityError as exc:
+                if job_id:
+                    upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_attempt_{attempt+1}',
+                        content_type='text/markdown',content_text=cleaned,
+                        meta={'part':part_number,'attempt':attempt+1,'valid':False,'audited':False,
+                              'issues':[{'key':'citation_identity','reason':str(exc)}]})
+                raise
         issues = validate_delivery(cleaned, required_outline, contract=contract)
         issues += scope_issues(cleaned, facts)
         issues += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(cleaned)]
@@ -475,10 +486,10 @@ def _build_extra_instructions(job: dict) -> str:
 
     citation_style = job.get("citation_style") or "none"
     if citation_style == "inline_footnote":
+        from .article_citations import POLICY
         lines.append(
             "\n【出典表示】インライン注記スタイル"
-            "\n- ファクトシートの[confirmed]情報を引用した箇所の直後に ※1、※2 … と連番で注記を付ける"
-            "\n- 記事末尾に ## 出典一覧 セクションを追加し、番号順に「※N: URL（確認日）」を列挙する"
+            "\n" + POLICY +
             "\n- [hypothesis]の情報は引用しないこと"
         )
     elif citation_style == "bottom_list":
@@ -713,6 +724,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
     from .generation_context import generation_evidence
     writing_context=generation_evidence(job_id,fact['content_text'],sources)
+    citation_registry = None
+    if job.get('citation_style') == 'inline_footnote':
+        from .article_citations import from_context
+        citation_registry = from_context(writing_context)
     base_user = USER_TEMPLATE.format(
         keyword=keyword,
         intent_text=intent["content_text"],
@@ -726,7 +741,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     # --- Part 1 ---
     print("[article] Part 1/3...")
     messages = [{"role": "user", "content": base_user + part1_inst}]
-    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract, job_id=job_id, facts=fact["content_text"])
+    part1_text, ti, to = _write_complete_part(client, messages, p1_max, outline_text, p1_secs, 1, contract=contract, job_id=job_id, facts=fact["content_text"], citation_registry=citation_registry)
     total_input += ti
     total_output += to
     print(f"[article] Part 1 done ({to} tokens, {len(part1_text)}字)")
@@ -741,7 +756,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             {"role": "assistant", "content": part1_text},
             {"role": "user", "content": part2_inst},
         ]
-    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract, job_id=job_id, facts=fact["content_text"]) if p2_secs else ('', 0, 0)
+    part2_text, ti, to = _write_complete_part(client, messages, p2_max, outline_text, p2_secs, 2, contract=contract, job_id=job_id, facts=fact["content_text"], citation_registry=citation_registry) if p2_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 2 done ({to} tokens, {len(part2_text)}字)")
@@ -755,7 +770,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         {"role": "assistant", "content": part2_text if p2_secs else part1_text},
         {"role": "user", "content": part3_inst},
     ]
-    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract, job_id=job_id, facts=fact["content_text"]) if p3_secs else ('', 0, 0)
+    part3_text, ti, to = _write_complete_part(client, messages, p3_max, outline_text, p3_secs, 3, contract=contract, job_id=job_id, facts=fact["content_text"], citation_registry=citation_registry) if p3_secs else ('', 0, 0)
     total_input += ti
     total_output += to
     print(f"[article] Part 3 done ({to} tokens, {len(part3_text)}字)")
@@ -770,6 +785,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = _re.sub(r'\\\*\\\*', '**', article_text)
     article_text = _re.sub(r'\\\*', '*', article_text)
     article_text = _re.sub(r'\\_', '_', article_text)
+    if citation_registry is not None:
+        from .article_citations import render
+        article_text = render(article_text, citation_registry)
 
     # Preserve the writer output separately. Later review steps may update `article`,
     # but diagnostics must retain what the writing model originally produced.
@@ -824,6 +842,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if lead_edit['status'] != 'edited_pending_qa':
             raise ContentQualityError('リードの長さ指定を満たせませんでした。初稿と仕上げ履歴を保持し、記事は更新しません。')
 
+    if citation_registry is not None:
+        article_text = render(article_text, citation_registry)
     delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')
@@ -842,6 +862,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
+            **({'citation_registry':citation_registry} if citation_registry is not None else {}),
             **reader_meta,
             'lead_edit_version':lead_edit['version'] if lead_edit else None,
             "section_map": bind_sections(article_text, outline_text, contract),

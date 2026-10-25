@@ -204,7 +204,63 @@ class SectionReconciliationTests(unittest.TestCase):
             self.assertNotIn('cta_placement',saved['meta'])
             self.assertEqual(set(saved['meta']['outline_body_repair']['preserved_section_sha256']),{'s03','s04','s05'})
             self.assertTrue(saved['meta']['outline_body_repair']['lead_preserved'])
-            save.assert_called_once()
+            self.assertEqual([c.kwargs['step'] for c in save.call_args_list],
+                             ['outline_body_repair_candidate','article'])
+
+    def test_completed_body_is_not_regenerated_after_a_lead_failure(self):
+        source,before,after,report=fixture()
+        records={'article':source,'article_before_editorial_recovery':source,
+                 'outline_before_editorial_recovery':before,'outline':after,
+                 'content_audit_before_editorial_recovery':{'content_text':json.dumps(report)},
+                 'content_contract':{'content_text':'{}'}}
+        packet=repair.plan(source,before,after,report)
+        result={'sections':{sid:packet['source_sections'][sid]['body'] for sid in packet['target_section_ids']}}
+        calls=[]
+        def save(**kw):
+            calls.append(kw['step']);records[kw['step']]=copy.deepcopy(kw);return kw
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(repair,'get_artifact',side_effect=lambda j,k:copy.deepcopy(records[k])))
+            stack.enter_context(patch.object(repair,'get_job',return_value={}))
+            stack.enter_context(patch('pipeline.generation_context.generation_evidence',return_value='確認済み条件'))
+            stack.enter_context(patch('pipeline.ai.get_step_config',return_value=('gpt-6.1-sol',1000)))
+            stack.enter_context(patch('pipeline.ai.hybrid_writing_enabled',return_value=False))
+            send=stack.enter_context(patch('pipeline.tiered_research.checked_request',return_value=(result,None)))
+            stack.enter_context(patch.object(repair,'upsert_artifact',side_effect=save))
+            lead=stack.enter_context(patch.object(repair,'finish_failed_lead',side_effect=RuntimeError('provider interrupted')))
+            with self.assertRaisesRegex(RuntimeError,'provider interrupted'):
+                repair.run('j','kw')
+            self.assertEqual(calls,['outline_body_repair_candidate'])
+            lead.side_effect=lambda client,candidate,*args:(candidate,None)
+            repaired=repair.run('j','kw')
+            self.assertEqual(send.call_count,1)
+            self.assertEqual(calls,['outline_body_repair_candidate','article'])
+            self.assertFalse(repaired['meta']['content_audited'])
+
+    def test_candidate_hash_and_current_input_must_match_before_reuse(self):
+        source,before,after,report=fixture()
+        packet=repair.plan(source,before,after,report)
+        text,binding=repair.assemble(packet,{sid:packet['source_sections'][sid]['body'] for sid in packet['target_section_ids']},after['content_text'])
+        from pipeline.content_quality import digest
+        saved={'content_text':text,'meta':{'input_sha256':'current','text_sha256':digest(text),'section_map':binding}}
+        with patch.object(repair,'get_artifact',return_value=saved):
+            self.assertIsNone(repair.cached_candidate('j','new-input',after,{},None))
+            self.assertEqual(repair.cached_candidate('j','current',after,{},None)[0],text)
+            saved['content_text']+='\n差し替え'
+            with self.assertRaisesRegex(ContentQualityError,'本文が変わって'):
+                repair.cached_candidate('j','current',after,{},None)
+
+    def test_source_rebinding_does_not_authorize_unrelated_prose_changes(self):
+        source,before,after,report=fixture()
+        packet=repair.plan(source,before,after,report)
+        text,binding=repair.assemble(packet,{sid:packet['source_sections'][sid]['body'] for sid in packet['target_section_ids']},after['content_text'])
+        original='女性は無料、男性は先に有料の手続きが必要です。'
+        changed=text.replace(original,original+'※1')
+        kept,rebound=repair.preserved_sections(packet,changed,binding,after,{'entries':[]})
+        self.assertEqual(rebound,['s04'])
+        self.assertNotIn('s04',kept)
+        changed=text.replace(original,'男性も無料です。※1')
+        with self.assertRaisesRegex(ContentQualityError,'変更対象外'):
+            repair.preserved_sections(packet,changed,binding,after,{'entries':[]})
 
     def test_deleting_only_a_redundant_root_section_requires_no_new_prose(self):
         source,before,_,_=fixture()

@@ -76,9 +76,15 @@ def failed_audit_checkpoint(job_id: str, expected_snapshot: str) -> dict | None:
 
 
 def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
-                         word_count_setting, contract, section_map, cta_plan=None):
+                         word_count_setting, contract, section_map, cta_plan=None, citation_registry=None):
     """Validate a saved model patch with the same gates as a fresh repair."""
     require_article_repair_scope(report)
+    if citation_registry is not None:
+        from .article_citations import tokens
+        value = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))
+        for edit in value['edits']:
+            edit['new'] = tokens(edit['new'],citation_registry)
+        raw = json.dumps(value,ensure_ascii=False)
     if packet is not None:
         from .review_scope import validate_edits
         validate_edits(raw,packet)
@@ -134,10 +140,14 @@ def apply_reviewed_edits(text, raw, packet, report, issues, facts, outline,
         problems.append(str(exc) + '。既存見出しを保持し、追加H4は既存H3内だけに配置してください。')
     if problems:
         raise ContentPatchValidationError('\n'.join(problems))
+    if citation_registry is not None:
+        from .article_citations import render
+        candidate = render(candidate,citation_registry)
+        candidate_sections = carry_sections(text,candidate,outline,section_map,allow_h4=True)
     return candidate, candidate_sections
 
 
-def prepare_content_repair(client, *, job_id, text, report, requirements, sources, facts, contract, issues):
+def prepare_content_repair(client, *, job_id, text, report, requirements, sources, facts, contract, issues, citation_registry=None):
     """Build the normal repair request without sending or saving an audit."""
     require_article_repair_scope(report)
     model, max_tokens = get_step_config('content_repair')
@@ -182,6 +192,10 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
             'editorial_findings':[f for f in report.get('editorial_findings',[]) if f['severity']=='blocking'],
             'failed_checks':[c for c in report['checks'] if c['status']=='fail'],
             'structural_issues':issues,'article_blocks':content_blocks(text)}
+    if citation_registry is not None:
+        from .article_citations import POLICY
+        repair_system += '\n'+POLICY
+        repair_data['citation_registry'] = citation_registry
     messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]
     if hybrid_writing_enabled():
         max_tokens=repair_output_limit(repair_data,max_tokens,lambda sample:
@@ -197,6 +211,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     artifact = get_artifact(job_id, 'article')
     text = artifact['content_text']
+    citation_registry = (artifact.get('meta') or {}).get('citation_registry')
+    if job.get('citation_style') == 'inline_footnote':
+        from .article_citations import integrity_issues
+        citation_issues = integrity_issues(text,citation_registry)
+        if citation_issues:
+            raise ContentQualityError('有料QAの前に出典対応の修正が必要です: '+json.dumps(citation_issues,ensure_ascii=False))
     facts = audit_facts(get_artifact(job_id, 'fact_sheet')['content_text'], artifact,
                        high_accuracy=bool(job.get('high_accuracy_mode')),
                        evidence=get_artifact(job_id, 'fact_review_evidence') if job.get('high_accuracy_mode') else None)
@@ -305,7 +325,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             break
         repair_request, packet = prepare_content_repair(
             client, job_id=job_id, text=text, report=report, requirements=requirements,
-            sources=sources, facts=facts, contract=contract, issues=issues)
+            sources=sources, facts=facts, contract=contract, issues=issues,citation_registry=citation_registry)
         messages = repair_request['messages']
         # Invalid or mechanically incomplete patches never touch the article. Retry once,
         # against the same audited original, independently of semantic repairs.
@@ -328,7 +348,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                 candidate, candidate_sections = apply_reviewed_edits(
                     text, raw, packet, report, issues, facts, outline,
                     job.get('word_count_setting'), contract, section_map,
-                    (artifact.get('meta') or {}).get('cta_placement'))
+                    (artifact.get('meta') or {}).get('cta_placement'),citation_registry=citation_registry)
                 break
             except ContentQualityError as exc:
                 if encoding_attempt == 1:
