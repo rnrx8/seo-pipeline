@@ -61,3 +61,15 @@ class OutlineSuffixTests(unittest.TestCase):
         with patch('pipeline.tiered_research.checked_request') as send:
             result,usage=oc.complete('j',artifact,request,ctx,None)
         self.assertEqual(result,value);send.assert_not_called();self.assertEqual(usage.output_tokens,0)
+
+    def test_legacy_binding_is_separate_and_requires_matching_partial_and_request(self):
+        _,_,request,artifact=self.setup_value();artifact['meta'].pop('request_sha256')
+        original=copy.deepcopy(artifact)
+        binding={'request_sha256':oc.fingerprint(request),'partial_sha256':oc.digest(artifact['content_text'])}
+        with patch.object(oc,'get_optional_artifact',side_effect=[artifact,{'content_text':json.dumps(binding)}]):
+            recovered=oc.saved('j',request)
+        self.assertEqual(recovered['meta']['request_sha256'],oc.fingerprint(request))
+        self.assertEqual(artifact,original)
+        binding['partial_sha256']='different'
+        with patch.object(oc,'get_optional_artifact',side_effect=[artifact,{'content_text':json.dumps(binding)}]):
+            with self.assertRaises(ContentQualityError):oc.saved('j',request)
