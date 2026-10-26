@@ -121,13 +121,13 @@ def eligible(report,context):
     try:packet(report,context);return True
     except (ContentQualityError,KeyError,TypeError,ValueError,StopIteration):return False
 
-def apply(text,proposal,p):
+def apply(text,proposal,p,*,anchor_fn=anchors):
     edits=proposal.get('edits');blocks={b['id']:b['text'] for b in p['article_blocks']}
     if (set(proposal)!={'edits'} or not isinstance(edits,list) or len(edits)!=len(p['target_block_ids'])
             or {e.get('id') for e in edits}!=set(p['target_block_ids'])):fail('対象段落が不足・重複している。')
     for edit in edits:
         if (set(edit)!={'id','new'} or not plain_paragraph(edit['new']) or edit['new']==blocks[edit['id']]
-                or anchors(edit['new'])!=anchors(blocks[edit['id']])):fail('構造・数値・引用・条件の変更または未変更。')
+                or anchor_fn(edit['new'])!=anchor_fn(blocks[edit['id']])):fail('構造・数値・引用・条件の変更または未変更。')
     candidate=apply_block_edits(text,json.dumps(proposal,ensure_ascii=False))
     old={b['id']:b['text'] for b in content_blocks(text)};new={b['id']:b['text'] for b in content_blocks(candidate)}
     if set(old)!=set(new) or {i for i in old if old[i]!=new[i]}!=set(p['target_block_ids']):fail('対象外の段落が変わっている。')

@@ -33,6 +33,14 @@ class ProsePreflightTests(unittest.TestCase):
             with self.assertRaises(cq.ContentQualityError):p.complete('j',None,text=text,check_candidate=lambda t:None)
         save.assert_not_called()
 
+    def test_shortening_rhetorical_words_is_not_a_change_in_factual_conditions(self):
+        text='# 題\n\n## 章\n\n必要なのは確かめ方を変えることです。'+'あ'*310;bid=content_blocks(text)[-1]['id']
+        proposal={'edits':[{'id':bid,'new':'確かめ方を変えましょう。'}]}
+        with patch('pipeline.tiered_research.checked_request',return_value=(proposal,None)),patch('pipeline.db.upsert_artifact') as save:
+            result=p.complete('j',None,text=text,check_candidate=lambda t:self.assertEqual(readability_issues(t),[]))
+        self.assertIn('確かめ方を変えましょう。',result)
+        self.assertFalse(json.loads(save.call_args.kwargs['content_text'])['semantic_quality_verified'])
+
     def test_preflight_cannot_repeat_in_production_with_different_input(self):
         self.assertEqual(qb.review_operation('tiered_article_prose_preflight'),('article','prose_preflight',1))
         meta={'phase':'article','role':'prose_preflight','call_limit':1,'request_sha256':'new'}
