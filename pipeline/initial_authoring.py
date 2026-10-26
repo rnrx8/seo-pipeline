@@ -165,12 +165,16 @@ def record_request(request):
     try:
         from .content_quality import digest
         from .db import upsert_artifact
-        payload = json.dumps(request, ensure_ascii=False, sort_keys=True)
+        # Tool conversations contain SDK content blocks. Normalize the same
+        # provider input once for both its identity and the persisted snapshot.
+        payload = json.dumps(request, ensure_ascii=False, sort_keys=True,
+                             default=lambda block: block.model_dump(mode='json'))
+        snapshot = json.loads(payload)
         key = digest(payload)
         upsert_artifact(job_id, 'authoring_request_' + key, 'application/json', json.dumps({
             'version': active['version'] if active else VERSION, 'stage': stage, 'request_sha256': key,
             'editorial_contract_sha256': active['sha256'] if active else None,
             'request_state': 'prepared_not_send_confirmation',
-            'request': request}, ensure_ascii=False), meta={'authoring_version': VERSION, 'request_sha256': key})
+            'request': snapshot}, ensure_ascii=False), meta={'authoring_version': VERSION, 'request_sha256': key})
     except Exception as exc:
         print('[authoring_request] Snapshot unavailable:', type(exc).__name__)

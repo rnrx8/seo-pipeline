@@ -79,10 +79,15 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
         send.assert_not_called();self.assertTrue(req.validate_matrix(result,plan,pages))
         self.assertFalse(repair.eligible(result,plan,pages))
 
-    def test_failed_third_audit_recovers_without_replaying_subjects_or_retrieval(self):
+    def test_completed_factual_review_enters_answer_repair_at_any_attempt(self):
+        for attempt in (1,2,3):
+            with self.subTest(attempt=attempt):
+                self._resume_verified_handoff(attempt)
+
+    def _resume_verified_handoff(self, attempt):
         plan,pages,value=self.fixture()
         facts='original facts'
-        value.update(valid=False,attempt=3,policy_sha256='previous-policy',
+        value.update(valid=False,attempt=attempt,policy_sha256='previous-policy',
                      plan_sha256=req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
                      material_revision=req.material_revision(pages,facts))
         store={'research_matrix':{'content_text':json.dumps(value)},
@@ -92,9 +97,21 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
         with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(store[s])),patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch.object(req,'upsert_artifact',side_effect=save),patch('pipeline.ai.tiered_review_enabled',return_value=True),patch('pipeline.research_collection.recover_empty_collections',return_value=False),patch('pipeline.research_verification.audit_matrix',side_effect=AssertionError('must not replay all subjects')),patch.object(req,'supplement_once',side_effect=AssertionError('must not recollect sources')),patch.object(tr,'review_coverage',return_value=({'coverage_sufficient':True,'coverage_reason':'evidence retained','coverage_issues':[]},NS(input_tokens=1,output_tokens=1))):
             saved=req.verify('j','kw')
             self.assertTrue(saved['meta']['valid'])
-            self.assertEqual(json.loads(saved['content_text'])['attempt'],3)
+            self.assertEqual(json.loads(saved['content_text'])['attempt'],attempt)
             self.assertEqual(store['research_matrix_before_answer_repair']['content_text'],json.dumps(value))
             self.assertTrue(req._require_matrix_strict('j')['valid'])
+
+    def test_new_factual_review_repairs_handoff_before_any_supplement_or_rescreen(self):
+        plan,pages,value=self.fixture()
+        store={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'},
+               'serp':{'content_text':'serp'},'search_intent':{'content_text':'intent'}}
+        def save(**kw):store[kw['step']]=copy.deepcopy(kw);return kw
+        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(store[s])),patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch.object(req,'upsert_artifact',side_effect=save),patch('pipeline.ai.tiered_review_enabled',return_value=True),patch('pipeline.research_collection.recover_empty_collections',return_value=False),patch.object(req,'refresh_dynamic_sources'),patch('pipeline.research_verification.audit_matrix',return_value=(value,NS(input_tokens=2,output_tokens=3))) as audit,patch.object(req,'supplement_once',side_effect=AssertionError('no missing source')),patch.object(req,'resolve_current_findings',side_effect=AssertionError('no rescreen')),patch.object(tr,'review_coverage',return_value=({'coverage_sufficient':True,'coverage_reason':'evidence retained','coverage_issues':[]},NS(input_tokens=1,output_tokens=1))):
+            saved=req.verify('j','kw')
+        audit.assert_called_once()
+        self.assertTrue(saved['meta']['valid'])
+        self.assertEqual(json.loads(saved['content_text'])['attempt'],1)
+        self.assertEqual(saved['meta']['input_tokens'],3)
 
     def test_evolving_findings_repair_only_remaining_rounds_and_stop_on_pass(self):
         plan,pages,value=self.fixture()
@@ -116,6 +133,20 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
         self.assertEqual(usage.input_tokens,2)
         self.assertFalse(repair.eligible(result,plan,pages))
 
+    def test_repair_interruption_keeps_completed_factual_review_for_resume(self):
+        plan,pages,value=self.fixture()
+        store={'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'},
+               'serp':{'content_text':'serp'},'search_intent':{'content_text':'intent'}}
+        def save(**kw):store[kw['step']]=copy.deepcopy(kw);return kw
+        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(store[s])),patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch.object(req,'upsert_artifact',side_effect=save),patch('pipeline.ai.tiered_review_enabled',return_value=True),patch('pipeline.research_collection.recover_empty_collections',return_value=False),patch.object(req,'refresh_dynamic_sources'),patch('pipeline.research_verification.audit_matrix',return_value=(value,NS(input_tokens=2,output_tokens=3))),patch.object(repair,'run',side_effect=RuntimeError('provider unavailable')):
+            with self.assertRaisesRegex(RuntimeError,'provider unavailable'):req.verify('j','kw')
+        failed=json.loads(store['research_matrix']['content_text'])
+        self.assertEqual(failed['attempt'],1)
+        self.assertFalse(failed['valid'])
+        self.assertTrue(all(i['verified'] for i in failed['items']))
+        self.assertEqual(store['research_matrix']['content_text'],store['research_matrix_before_answer_repair']['content_text'])
+        self.assertEqual(store['fact_sheet']['content_text'],'facts')
+
     def test_unchanged_answer_and_repeated_findings_cannot_authorize_replay(self):
         plan,pages,value=self.fixture()
         unchanged=copy.deepcopy(value);unchanged['answer_repair_rounds']=1
@@ -124,3 +155,13 @@ class VerifiedAnswerRepairTests(unittest.TestCase):
         ask.assert_called_once()
         self.assertIn('unchanged',result['answer_repair_stopped_reason'])
         self.assertFalse(repair.eligible(result,plan,pages))
+
+    def test_exhausted_early_answer_repair_cannot_fall_back_to_full_rescreen(self):
+        plan,pages,value=self.fixture()
+        value.update(valid=False,attempt=1,answer_repair_stopped_reason='unchanged_findings_or_answers',
+            plan_sha256=req.digest(json.dumps(plan,ensure_ascii=False,sort_keys=True)),
+            material_revision=req.material_revision(pages,'facts'))
+        store={'research_matrix':{'content_text':json.dumps(value)},
+               'fresh_sources':{'content_text':json.dumps(pages)},'fact_sheet':{'content_text':'facts'}}
+        with patch.object(req,'load_plan',return_value=plan),patch.object(req,'get_artifact',side_effect=lambda j,s:copy.deepcopy(store[s])),patch.object(req,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch('pipeline.ai.tiered_review_enabled',return_value=True),patch('pipeline.research_collection.recover_empty_collections',return_value=False),patch('pipeline.research_verification.audit_matrix',side_effect=AssertionError('no paid rescreen')),patch.object(req,'supplement_once',side_effect=AssertionError('no repeated retrieval')):
+            with self.assertRaises(req.ContentQualityError):req.verify('j','kw')

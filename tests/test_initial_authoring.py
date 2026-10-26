@@ -64,6 +64,24 @@ class InitialAuthoringTests(unittest.TestCase):
             record_request(request)
             save.assert_not_called()
 
+    def test_sdk_tool_conversation_snapshot_matches_plain_provider_input(self):
+        from anthropic.types import TextBlock, ToolUseBlock
+        request = {'model':'native', 'messages':[
+            {'role':'assistant', 'content':[
+                TextBlock(type='text', text='取得します。'),
+                ToolUseBlock(type='tool_use', id='tool1', name='fetch', input={'url':'https://example.com'})]},
+            {'role':'user', 'content':[{'type':'tool_result','tool_use_id':'tool1','content':'原文'}]}]}
+        original = copy.deepcopy(request)
+        plain = json.loads(json.dumps(request, default=lambda b:b.model_dump(mode='json')))
+        with scope('job','article'), patch('pipeline.db.upsert_artifact') as save:
+            record_request(request)
+            record_request(plain)
+        self.assertEqual(save.call_count,2)
+        first, second = [json.loads(c.args[3]) for c in save.call_args_list]
+        self.assertEqual(first['request'],plain)
+        self.assertEqual(first['request_sha256'],second['request_sha256'])
+        self.assertEqual(request,original)
+
     def test_declared_child_reference_maps_to_its_owner_without_editing_answers(self):
         from pipeline.editorial_blueprint import canonicalize_research_refs, validate
         from test_reader_progression import chain

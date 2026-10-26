@@ -868,10 +868,11 @@ def verify(job_id, keyword, api_key=None):
     recovered = recover_empty_collections(job_id, keyword, plan_value, api_key=api_key, loader=get_optional_artifact)
     previous_value=json.loads(previous['content_text']) if previous else {}
     material_updated=(previous_value.get('valid') is False and not failed_material_unchanged(job_id,previous_value))
-    if (previous_value.get('valid') is False and previous_value.get('attempt')==3
+    if (previous_value.get('valid') is False
+            and type(previous_value.get('attempt')) is int and previous_value['attempt'] >= 1
             and previous_value.get('plan_sha256')==digest(json.dumps(plan_value,ensure_ascii=False,sort_keys=True))
             and not material_updated):
-        from .research_answer_repair import eligible, run as repair_answers
+        from .research_answer_repair import MAX_ROUNDS, eligible, run as repair_answers
         pages=json.loads(get_artifact(job_id,'fresh_sources')['content_text']) if previous_value.get('items') else []
         if tiered_review_enabled() and eligible(previous_value,plan_value,pages):
             if not get_optional_artifact(job_id,'research_matrix_before_answer_repair'):
@@ -880,9 +881,17 @@ def verify(job_id, keyword, api_key=None):
             value,usage=repair_answers(job_id,previous_value,plan_value,pages,context)
             facts=get_artifact(job_id,'fact_sheet')['content_text']
             model,_=get_step_config('content_audit')
-            saved,gaps=save_matrix_result(job_id,plan_value,pages,facts,value,usage,3,model)
+            saved,gaps=save_matrix_result(job_id,plan_value,pages,facts,value,usage,previous_value['attempt'],model)
             if not gaps:return saved
-        raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
+            raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
+        exhausted_answer_repair = (
+            previous_value.get('answer_repair_stopped_reason')
+            or previous_value.get('answer_repair_rounds',0) >= MAX_ROUNDS)
+        if previous_value['attempt'] >= 3 or (
+                exhausted_answer_repair and previous_value.get('coverage_issues')
+                and all(i.get('repair_kind') in ('handoff','editorial')
+                        for i in previous_value['coverage_issues'])):
+            raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
     resolution=False
     if (not material_updated and previous_value.get('valid') is False and type(previous_value.get('attempt')) is int
             and previous_value['attempt']>=2):
@@ -909,13 +918,24 @@ def verify(job_id, keyword, api_key=None):
         context = {k:get_artifact(job_id,k)['content_text'] for k in ('serp','search_intent')} if plan_value.get('policy_sha256') else {}
         value,usage=audit_matrix(job_id,None if is_openai_model(model) else anthropic.Anthropic(api_key=api_key),plan_value,pages,facts,model,budget,intent_context=context)
         gaps=validate_matrix(value,plan_value,pages)
-        if gaps and attempt == 2 and tiered_review_enabled():
+        # Once factual checks are complete, repair the named handoff/editorial
+        # findings directly. Re-screening unchanged sources cannot fix them.
+        repaired = False
+        if gaps and tiered_review_enabled():
             from .research_answer_repair import eligible, run as repair_answers
             if eligible(value, plan_value, pages):
+                # Persist the completed factual review before a new repair
+                # request, so an interruption resumes this same boundary.
+                before,_=save_matrix_result(job_id,plan_value,pages,facts,value,usage,attempt+1,model)
+                if not get_optional_artifact(job_id,'research_matrix_before_answer_repair'):
+                    upsert_artifact(job_id=job_id,step='research_matrix_before_answer_repair',content_type='application/json',content_text=before['content_text'],meta=before.get('meta',{}))
                 value, repair_usage = repair_answers(job_id, value, plan_value, pages, context)
                 usage = SimpleNamespace(input_tokens=usage.input_tokens+repair_usage.input_tokens, output_tokens=usage.output_tokens+repair_usage.output_tokens)
+                repaired = True
         saved,gaps=save_matrix_result(job_id,plan_value,pages,facts,value,usage,attempt+1,model)
         if not gaps:return saved
+        if repaired and all(i.get('repair_kind') in ('handoff','editorial') for i in gaps):
+            raise ContentQualityError('現在の不足は回答修正後も未解決です。同じ要求を自動再試行しません。')
         if attempt<1:
             supplement_once(job_id,keyword,plan_value,gaps,api_key,matrix=value)
         elif attempt==1:
