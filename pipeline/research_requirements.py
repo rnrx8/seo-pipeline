@@ -288,8 +288,25 @@ def plan(job_id, keyword, api_key=None):
             return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),
                 meta={'model':model,'input_tokens':inputs,'output_tokens':outputs,'planning_review_passed':True})
         if enabled():
-            warn('調査計画に確認事項があります。質問の計画を保持して調査へ進みます: '+json.dumps(verdict['issues'],ensure_ascii=False))
-            return provisional
+            # An available review has concrete findings. Carry them into the
+            # existing one-shot local repair before paying to collect facts;
+            # otherwise AI-added optional details become downstream blockers.
+            # An unavailable/malformed review above still uses the original
+            # plan, and a failed repair never restarts whole-plan generation.
+            upsert_artifact(job_id=job_id,step='research_plan_before_planning_repair',
+                content_type='application/json',content_text=json.dumps(value,ensure_ascii=False),meta=candidate_meta)
+            repaired=optional_check(_repair_plan_candidate,job_id,value,verdict,payload,api_key,prefix='planning')
+            if repaired is None:return provisional
+            value,verdict,added_inputs,added_outputs=repaired
+            inputs+=added_inputs;outputs+=added_outputs
+            if verdict['valid']:
+                value['policy_sha256']=plan_policy()
+                return upsert_artifact(job_id=job_id,step='research_plan',content_type='application/json',
+                    content_text=json.dumps(value,ensure_ascii=False),meta={'model':model,'input_tokens':inputs,
+                    'output_tokens':outputs,'planning_review_passed':True,'planning_local_repaired':True})
+            warn('調査計画の部分修正後も確認事項があります。保存した計画から続けます: '+json.dumps(verdict['issues'],ensure_ascii=False))
+            return save_unreviewed_plan(job_id,value,{'model':model,'input_tokens':inputs,
+                'output_tokens':outputs,'planning_local_repaired':True})
         payload['previous_plan']=value
         payload['planning_issues']=verdict['issues']
     # A full-plan retry can introduce new obligations. Use the same bounded
