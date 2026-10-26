@@ -480,6 +480,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     from .editorial_contract import enrich_request
     request = enrich_request(request)
     unfinished = None
+    recovered = None
     if structured_intent:
         from .outline_completion import saved, complete, fingerprint
         unfinished = saved(job_id, request)
@@ -490,7 +491,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         outline_text = json.dumps(value,ensure_ascii=False)
         blueprint_meta['suffix_completed'] = True
     else:
-        message = create_with_retry(client, **request)
+        if structured_intent:
+            from .outline_candidate_reuse import saved as saved_candidate
+            recovered = saved_candidate(job_id,request)
+        message = recovered or create_with_retry(client, **request)
+        if recovered:
+            blueprint_meta['saved_candidate_reused']={
+                'source_sha256':recovered.saved_candidate_sha256,
+                'request_sha256':recovered.saved_request_sha256,'new_provider_calls':0}
         total_input = message.usage.input_tokens
         total_output = message.usage.output_tokens
         if getattr(message, 'stop_reason', None) == 'max_tokens':
@@ -518,8 +526,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             if projected:blueprint_meta['reference_projection']=projected
             blueprint_meta = {**blueprint_meta, **blueprint.metadata(blueprint_value, blueprint_context)}
             outline_text = blueprint.render(blueprint_value, blueprint_context)
+            omissions=blueprint.required_omissions(blueprint_value,blueprint_context)
+            if omissions:
+                from .quality_warnings import warn
+                warn('構成を保存し生成を続けます。必須論点の掲載保留が残っています: '
+                     + json.dumps(omissions,ensure_ascii=False))
         except (ValueError, TypeError, KeyError) as exc:
-            upsert_artifact(job_id=job_id, step='outline_design_incomplete', content_type='application/json',
+            upsert_artifact(job_id=job_id, step='outline_recovery_incomplete' if recovered else 'outline_design_incomplete', content_type='application/json',
                 content_text=message_text(message), meta={'audited':False,'error':str(exc)})
             raise ContentQualityError('編集設計が不完全です。保存した出力を確認してください: '+str(exc)) from exc
     upsert_artifact(job_id=job_id, step='outline_draft', content_type='text/markdown',
@@ -532,7 +545,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         )
     design_issues = assignment_issues(outline_text, load_plan(job_id))
     if design_issues:
-        upsert_artifact(job_id=job_id, step="outline_design_incomplete", content_type="text/markdown",
+        upsert_artifact(job_id=job_id, step="outline_design_issues", content_type="text/markdown",
                         content_text=outline_text, meta={"issues": design_issues, "audited": False})
         from .quality_warnings import warn
         warn("構成の論点割当て・回答設計に確認事項があります: " + json.dumps(design_issues, ensure_ascii=False))
