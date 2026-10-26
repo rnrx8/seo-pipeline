@@ -124,6 +124,36 @@ def render(text, registry, *, footer=True):
     return body
 
 
+def render_draft(text, registry, *, footer=True):
+    """Retain prose without attaching an unresolvable citation to any source.
+
+    Strict render/QA still reject the original response. Delivery may remove an
+    invalid marker, never invent or guess its URL. The caller retains raw text.
+    """
+    try:
+        return render(text, registry, footer=footer)
+    except ValueError as exc:
+        from .quality_warnings import enabled, warn
+        if not enabled():raise
+        known={r['number']:r['url'] for r in registry['entries']}
+        conflicting={int(m[1]) for line,visible in _lines(text)
+                     if visible and (m:=DEFINITION.fullmatch(line.strip()))
+                     and known.get(int(m[1]))!=m[2]}
+        lines=[]
+        for line,visible in _lines(text):
+            if not visible:
+                lines.append(line);continue
+            if DEFINITION.fullmatch(line.strip()):continue
+            line=TOKEN.sub(lambda m: '※'+str(registry['source_ids'][m[1]])
+                           if m[1] in registry['source_ids'] else '',line)
+            # Remove only remaining marker syntax, not the claim or sentence.
+            line=re.sub(r'\[\[cite:[^\s\]]*\]?\]?', '', line)
+            line=re.sub(r'※(\d+)(?!\d)',lambda m: '' if int(m[1]) not in known or int(m[1]) in conflicting else m[0],line)
+            lines.append(line)
+        warn('出典対応に未解決点があります。対応不明の記号を外し、原稿と元の出力を保持します: '+str(exc))
+        return render(''.join(lines),registry,footer=footer)
+
+
 def integrity_issues(text, registry=None):
     """Cheap final/pre-QA check, without asserting source support."""
     try:
