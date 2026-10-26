@@ -43,7 +43,7 @@ def paragraph_limits(text,p):
         limits[b['id']]=max(1,len(b['text'])+(601-run['characters'])//count)
     return limits
 
-def packet(report,context):
+def packet(report,context,*,allow_layout=False):
     """Derive scope only from complete, current, concrete native QA evidence."""
     from .content_quality import POLICY_VERSION
     from .article_design import checked_result
@@ -53,7 +53,7 @@ def packet(report,context):
     if (not design or report.get('stage')!='article' or report.get('valid') is not False
             or report.get('snapshot')!=expected or report.get('policy_version')!=POLICY_VERSION
             or report.get('evidence_pending') or report.get('structural_issues') or report.get('readability_issues')
-            or any(report.get(k) for k in ('local_completion','editorial_completion','scoped_reader_completion'))):
+            or any(report.get(k) for k in ('local_completion','editorial_completion','scoped_reader_completion','scoped_edit_completion'))):
         fail('元の全文QAが未完了・古い、または資料/構造の問題がある。')
     parsed=parse_audit(json.dumps(report));allowed={'coverage','prose_quality'}
     if (parsed['valid'] or any(c['status']=='fail' for c in parsed['checks'] if c['key'] not in allowed)
@@ -82,7 +82,9 @@ def packet(report,context):
     if (not cov.get('decision_reviews') or any(v['status']!='pass' for v in cov['decision_reviews'].values())
             or not cov.get('lead_review') or any(v['status']!='pass' for v in cov['lead_review'].values())):
         fail('主要な回答またはリードの未合格は対象外。')
-    if scopes_checked(org,groups(text,context['outline'],design),text):fail('見出し階層・回答範囲の変更は対象外。')
+    scope_findings=scopes_checked(org,groups(text,context['outline'],design),text)
+    if scope_findings and not allow_layout:fail('見出し階層・回答範囲の変更は対象外。')
+    scope_ids={bid for f in scope_findings for bid in f['block_ids']}
     openings=heading_answers.checked(org,text)
     if any(f['aspect']!='opening' for f in openings):fail('見出し自体の変更は対象外。')
     opening_ids={bid for f in openings for bid in f['block_ids']}
@@ -102,9 +104,9 @@ def packet(report,context):
         elif f.get('role')=='organization':
             # Organization may describe the same opening in its global finding
             # and its per-heading verdict. Both stay unresolved in the base.
-            if (f.get('check_key')!='prose_quality' or f.get('stage_to_fix') not in ('article','presentation')
-                    or not set(f['block_ids'])<=opening_ids
-                    or f.get('origin') and (f['origin']!='individual_heading_answer' or f.get('aspect')!='opening')):
+            if (f.get('check_key')!='prose_quality' or f.get('stage_to_fix') not in (('article','outline','presentation') if allow_layout else ('article','presentation'))
+                    or not (set(f['block_ids'])<=opening_ids and (not f.get('origin') or f['origin']=='individual_heading_answer' and f.get('aspect')=='opening')
+                        or allow_layout and set(f['block_ids'])<=scope_ids and f.get('origin') in (None,'individual_heading_scope'))):
                 fail('冒頭以外の構造修正は対象外。')
         else:fail('別担当の未解決指摘がある。')
     targets={bid for f in findings for bid in f['block_ids']}
@@ -112,7 +114,7 @@ def packet(report,context):
         fail('未解決判定と修正対象が一致しない。')
     blocks=content_blocks(text);by_id={b['id']:b for b in blocks}
     first_heading=next(i for i,b in enumerate(blocks) if b['text'].lstrip().startswith('## '))
-    if not targets or any(i not in by_id or not plain_paragraph(by_id[i]['text']) or blocks.index(by_id[i])<=first_heading for i in targets):
+    if not targets or any(i not in by_id or not (plain_paragraph(by_id[i]['text']) or allow_layout and i in scope_ids and by_id[i]['text'].startswith(('### ','#### '))) or blocks.index(by_id[i])<=first_heading for i in targets):
         fail('リード・見出し・表・リスト等は変更不可。')
     return {'article_blocks':blocks,'target_block_ids':sorted(targets),'findings':findings,
             'article_design':copy.deepcopy(design)}

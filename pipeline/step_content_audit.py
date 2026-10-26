@@ -342,6 +342,30 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             upsert_artifact(job_id=job_id,step='content_audit_scoped_completion',content_type='application/json',
                 content_text=json.dumps(completed_report,ensure_ascii=False),meta={'valid':True})
             return publish_pass(job_id,artifact,candidate,completed_report,mapped,True,saved)
+        from . import scoped_edit_completion
+        current_article={**artifact,'content_text':text,'meta':{**(artifact.get('meta') or {}),'section_map':section_map}}
+        current_outline=get_artifact(job_id,'outline')
+        if scoped_edit_completion.eligible(current_article,current_outline,report,context):
+            def check_combined(candidate,revised,mapped):
+                violations=validate_delivery(candidate,revised['content_text'],job.get('word_count_setting'),contract=contract,section_map=mapped)
+                violations+=readability_issues(candidate)+scope_issues(candidate,facts)+validate_structure(candidate,contract,outline=False)
+                violations+=validate_structure(revised['content_text'],contract,outline=True)
+                violations+=cta_placement_issues(candidate,(artifact.get('meta') or {}).get('cta_placement'),mapped)
+                if citation_registry is not None:
+                    from .article_citations import integrity_issues
+                    violations+=integrity_issues(candidate,citation_registry)
+                violations+=[{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(candidate)]
+                if violations:raise ContentQualityError('章内の統合編集後の機械検査が未合格です: '+json.dumps(violations,ensure_ascii=False))
+            candidate,revised,mapped,completed_report=scoped_edit_completion.complete(job_id,client,
+                article=current_article,outline=current_outline,report=report,context=context,check_candidate=check_combined)
+            current=editorial_completion.candidate_context(context,revised,mapped);current['text']=candidate
+            from .content_quality import _require_audit_strict
+            _require_audit_strict(completed_report,snapshot(**current),stage='article',context=current)
+            from .outline_design import topic_assignments
+            revised['meta']['topic_assignments']=topic_assignments(revised['content_text'])
+            upsert_artifact(job_id=job_id,step='outline',content_type='text/markdown',content_text=revised['content_text'],meta=revised['meta'])
+            saved=upsert_artifact(job_id=job_id,step='content_audit',content_type='application/json',content_text=json.dumps(completed_report,ensure_ascii=False),meta={'valid':True})
+            return publish_pass(job_id,artifact,candidate,completed_report,mapped,True,saved)
         if editorial_completion.base_valid(report, context) and (get_artifact(job_id, 'outline').get('meta') or {}).get('blueprint_version'):
             def check_editorial(candidate, revised_outline, mapped):
                 violations = validate_delivery(candidate, revised_outline['content_text'], job.get('word_count_setting'), contract=contract, section_map=mapped)
@@ -442,6 +466,14 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
     review_meta = {}
     mapping=report.get('phases',{}).get('coverage',{}).get('reader_correspondence')
+    if mapping and report.get('scoped_edit_completion'):
+        from .scoped_edit_completion import apply
+        from .editorial_completion import candidate_context
+        from .article_design import correspondence
+        r=report['scoped_edit_completion']
+        _,revised,binding=apply(r['base_article'],r['base_outline'],r['base_report'],r['base_context'],r['proposal'])
+        ctx=candidate_context(r['base_context'],revised,binding)
+        mapping=correspondence(text,revised['content_text'],ctx['requirements']['article_design'])
     if mapping and report.get('scoped_reader_completion'):
         from .article_design import correspondence
         before=report['scoped_reader_completion']['base_context']
@@ -467,7 +499,7 @@ def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
         upsert_artifact(job_id=job_id, step='article_reviewed', content_type='text/markdown',
             content_text=text, meta={**review_meta, 'content_audit_snapshot': report['snapshot']})
         upsert_artifact(job_id=job_id, step='review', content_type='text/markdown',
-            content_text=get_step_config('content_audit')[0]+(' 全文確認＋変更段落と影響を受ける章の独立確認：合格。\n' if report.get('scoped_reader_completion') else ' 全文確認＋局所編集の変更影響確認：合格。\n' if report.get('editorial_completion') else ' 全文確認＋局所文章修正確認：合格。\n' if report.get('local_completion') else ' 最終確認：全項目合格。\n') + '\n'.join(
+            content_text=get_step_config('content_audit')[0]+(' 全文確認＋変更段落と影響を受ける章の独立確認：合格。\n' if report.get('scoped_reader_completion') or report.get('scoped_edit_completion') else ' 全文確認＋局所編集の変更影響確認：合格。\n' if report.get('editorial_completion') else ' 全文確認＋局所文章修正確認：合格。\n' if report.get('local_completion') else ' 最終確認：全項目合格。\n') + '\n'.join(
                 f"- {c['key']}: {c['reason']}" for c in report['checks']),
             meta={'model': get_step_config('content_audit')[0], 'valid': True,
                   'content_audit_snapshot': report['snapshot'], 'integrated_final_review': True})
