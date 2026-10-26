@@ -45,7 +45,13 @@ def is_openai_model(model):
 
 def get_step_config(step: str) -> tuple[str, int]:
     """Return (model, max_tokens) for the given step name."""
-    if hybrid_writing_enabled():
+    hybrid = hybrid_writing_enabled()
+    draft_model = os.getenv('ARTICLE_DRAFT_MODEL', '').strip()
+    if step == 'article' and draft_model:
+        if draft_model not in ('claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-4-8'):
+            raise ValueError('Unsupported ARTICLE_DRAFT_MODEL')
+        return draft_model, STEP_CONFIG['article']['max_tokens']
+    if hybrid:
         if step == 'article':
             return ('claude-sonnet-5-5', STEP_CONFIG['article']['max_tokens'])
         if step == 'content_repair':
