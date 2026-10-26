@@ -539,6 +539,8 @@ def _finish_reader_lead(client, text, outline, keyword, job, learned_rules, revi
     total_input = total_output = 0
     for attempt in range(2):
         request = writer_request(payload, model=get_step_config('article')[0])
+        from .editorial_contract import enrich_request
+        request = enrich_request(request)
         msg = create_with_retry(client, **request)
         total_input += msg.usage.input_tokens
         total_output += msg.usage.output_tokens
@@ -617,9 +619,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     job = get_job(job_id)
     # Final review uses these same account rules. Apply them during writing so
     # they do not arrive as new requirements only after a paid draft exists.
-    from .db import get_learned_style_rules
+    from .editorial_contract import learned_rules as assignment_rules
     from .step_review import _build_learned_rules_block
-    learned_rules = get_learned_style_rules(job['tenant_id']) if job.get('tenant_id') else []
+    learned_rules = assignment_rules(job)
     structure_prompts += _build_learned_rules_block(learned_rules)
     from .research_requirements import require_matrix
     matrix = require_matrix(job_id)
@@ -632,30 +634,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         readiness_requirements=intent_review_requirements(job, keyword)
         require_audit(readiness, snapshot(outline['content_text'], fact['content_text'], outline['content_text'],
                                       contract, readiness_requirements, sources), stage="research")
-    try:
-        user_id = job.get("tenant_id")
-        category = job.get("category")
-        if user_id and category:
-            companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in get_company_settings(user_id, category)]
-            restriction = job.get("company_restriction", "ai")
-            company_prompt = _build_company_prompt(companies, restriction)
-            if company_prompt:
-                print(f"[article] Loaded {len(companies)} company settings for category='{category}'")
-        extra_instructions = _build_extra_instructions(job)
-        service_id = job.get("service_id")
-        if service_id:
-            service = registered_for_authoring(get_service_by_id(service_id), structured_intent=structured_intent)
-            if service:
-                service_prompt = _build_service_prompt(service)
-                print(f"[article] Loaded service: {service.get('name')}")
-        cta_id = job.get("cta_id")
-        if cta_id:
-            cta = get_cta_by_id(cta_id)
-            if cta:
-                cta_prompt = _build_cta_prompt(cta)
-                print(f"[article] Loaded CTA: {cta.get('name')}")
-    except Exception as e:
-        print(f"[article] Warning: could not load job settings: {e}")
+    from .editorial_contract import settings
+    companies, service, cta = settings(job, loaders=(get_company_settings, get_service_by_id, get_cta_by_id))
+    companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in companies]
+    company_prompt = _build_company_prompt(companies, job.get('company_restriction', 'ai'))
+    extra_instructions = _build_extra_instructions(job)
+    service = registered_for_authoring(service, structured_intent=structured_intent)
+    if service:
+        service_prompt = _build_service_prompt(service)
+    if cta:
+        cta_prompt = _build_cta_prompt(cta)
+
 
     word_count_setting = planning_setting(job, outline)
 
@@ -692,15 +681,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if cta_prompt:
         cta_prompt=_build_cta_prompt(cta,service_map)
 
-    _service_name = ""
-    if service_map:
-        try:
-            job_svc_id = job.get("service_id") if job else None
-            if job_svc_id:
-                _svc = get_service_by_id(job_svc_id)
-                _service_name = _svc.get("name", "") if _svc else ""
-        except Exception:
-            pass
+    _service_name = (service or {}).get('name', '')
 
     part1_inst, part2_inst, part3_inst = _build_part_instructions(
         word_count_setting,

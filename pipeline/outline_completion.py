@@ -78,10 +78,11 @@ def complete(job_id, artifact, request, context, client):
     if (artifact.get('meta',{}).get('request_sha256') != fingerprint(request)
             or artifact['meta'].get('stop_reason') != 'max_tokens'):
         raise ContentQualityError('未完成構成と現在の制作依頼が一致しません。再送しません。')
-    fixed, key, head, remaining, fragment = prefix(artifact['content_text'], bp.SCHEMA)
-    bp.validate_shape(fixed, {'type':'object','properties':{k:bp.SCHEMA['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
+    expected_schema = bp.schema()
+    fixed, key, head, remaining, fragment = prefix(artifact['content_text'], expected_schema)
+    bp.validate_shape(fixed, {'type':'object','properties':{k:expected_schema['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
     if key:
-        for row in head: bp.validate_shape(row, bp.SCHEMA['properties'][key]['items'])
+        for row in head: bp.validate_shape(row, expected_schema['properties'][key]['items'])
     if remaining['properties']:
         payload = {'completed_fields':fixed,'array_prefix':{key:head} if key else {},
                    'missing_schema':remaining,'discarded_fragment':fragment,'production_context':context,
@@ -95,7 +96,7 @@ def complete(job_id, artifact, request, context, client):
     result = copy.deepcopy(fixed)
     for name,value in tail.items():
         result[name] = copy.deepcopy(head)+value if name==key else value
-    bp.validate_shape(result,bp.SCHEMA)
+    bp.validate_shape(result,expected_schema)
     return result, usage
 
 

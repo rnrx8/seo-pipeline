@@ -35,7 +35,15 @@ def materials_for(service, sources):
     return sorted({m['id']: m for m in materials}.values(), key=lambda m: m['id'])
 
 
-def prepare(job_id, keyword):
+def prepare(job_id, keyword, *, settings_snapshot=None):
+    from .editorial_contract import CURRENT, validate
+    active = CURRENT.get()
+    if active:
+        validate(active, job_id)
+        if active['production_brief']['keyword'] != keyword:
+            raise ContentQualityError('制作仕様のキーワードが一致しません。')
+        return (copy.deepcopy(active['production_brief']), copy.deepcopy(active['product_input']),
+                copy.deepcopy(active['cached_product']), 'frozen_assignment')
     from .db import (get_job, get_service_by_id, get_cta_by_id, get_primary_sources,
                      get_primary_sources_by_preset, get_company_settings, get_cached_product_context)
     job = get_job(job_id)
@@ -64,7 +72,13 @@ def prepare(job_id, keyword):
             print('[product_context] Cache unavailable:', type(exc).__name__)
             cached = None
             cache_status = 'unavailable'
+    # A new assignment must capture the actual catalog (which may contain
+    # exclusions). A read outage is not an empty catalog. This precedes all
+    # model calls; later stages reuse the complete saved assignment.
     companies = get_company_settings(tenant, job['category']) if tenant and job.get('category') else []
+    if settings_snapshot is not None:
+        settings_snapshot.update(service=copy.deepcopy(service), cta=copy.deepcopy(cta),
+                                 companies=copy.deepcopy(companies), primary_sources=copy.deepcopy(sources))
     brief = {
         'version': VERSION, 'keyword': keyword, 'product_input_sha256': input_hash,
         'request': {k: copy.deepcopy(job.get(k)) for k in (

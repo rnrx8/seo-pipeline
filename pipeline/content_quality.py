@@ -154,6 +154,11 @@ def requirements_for(job: dict, keyword: str) -> dict:
             ('custom_prompt', 'must_include', 'must_reference_urls', 'never_reference_urls',
              'company_restriction', 'word_count_setting', 'article_purpose', 'target_audience',
              'tone_style', 'citation_style', 'service_id', 'cta_id')}}
+    from .editorial_contract import view
+    pinned = view()
+    if pinned:
+        result['editorial_contract'] = pinned
+        result['editorial_assignment'] = copy.deepcopy(pinned['assignment'])
     if job.get('id'):
         from .research_requirements import load_plan
         result['research_plan'] = load_plan(job['id'])

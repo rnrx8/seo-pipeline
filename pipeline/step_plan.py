@@ -144,6 +144,8 @@ def build_step_plan(job: dict) -> list[Step]:
 
 def budgeted_steps(steps):
     from .quality_warnings import scoped as warning_scoped
+    from .initial_authoring import scoped as assignment_scoped
+    steps = [(key, assignment_scoped(fn, key)) for key, fn in steps]
     if tiered_review_enabled():
         from .quality_budget import scoped
         steps = [(key, scoped(fn, stage=key)) for key, fn in steps]

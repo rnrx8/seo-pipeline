@@ -8,11 +8,11 @@ import json
 
 
 def prepare(request):
-    from .editorial_blueprint import SCHEMA, model_output_config, repair_schema
+    from .editorial_blueprint import SCHEMA, schema as current_schema, model_output_config, repair_schema
     config = request.get('output_config') or {}
     schema = (config.get('format') or {}).get('schema')
-    candidates = [SCHEMA]+[repair_schema(allow_lead=lead,allow_omissions=omissions,allow_titles=titles)
-                          for lead in (False,True) for omissions in (False,True) for titles in (False,True)]
+    candidates = [SCHEMA, current_schema()]+[repair_schema(allow_lead=lead,allow_omissions=omissions,allow_titles=titles,separated=separated)
+                          for lead in (False,True) for omissions in (False,True) for titles in (False,True) for separated in (False,True)]
     original = next((value for value in candidates
                      if schema == value or schema == model_output_config(value)['format']['schema']), None)
     if original is None:

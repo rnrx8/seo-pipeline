@@ -72,6 +72,20 @@ SCHEMA = {'type':'array','minItems':1,'items':{'type':'object','properties':{
     'required':['id','question','role','scope','depends_on','research_ids','answer_requirements'],'additionalProperties':False}}
 
 
+def output_schema(decisions=()):
+    from .editorial_contract import CURRENT
+    result = copy.deepcopy(SCHEMA)
+    if CURRENT.get() or any('editorial_notes' in d for d in decisions):
+        item = result['items']
+        item['properties']['editorial_notes'] = {'type':'array','items':{'type':'string'},
+            'description':'AIの編集提案や内部確認。本文に答える必須情報ではなく、ユーザー指定へ昇格させない。'}
+        item['required'].append('editorial_notes')
+        item['properties']['answer_requirements']['description'] = (
+            '読者がこの問いを理解・判断するための回答内容。利用対象・料金期間等の実条件は保つ。'
+            '語調や保証否定などの内部注意はeditorial_notesに分け、必須回答に含めない。')
+    return result
+
+
 def fail(message):
     from .content_quality import ContentQualityError
     raise ContentQualityError(message)

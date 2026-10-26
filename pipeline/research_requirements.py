@@ -223,6 +223,8 @@ def _plan_context(job_id, keyword):
 def plan_output_schema(context):
     """Expose the existing adopted-question contract in the producer schema."""
     schema=copy.deepcopy(PLAN_SCHEMA)
+    from .reader_decisions import output_schema
+    schema['format']['schema']['properties']['reader_decisions'] = output_schema()
     needs=context.get('reader_needs',{}).get('selected',[])
     if needs:
         decisions=schema['format']['schema']['properties']['reader_decisions']
@@ -369,7 +371,9 @@ def plan_repair_schema(value):
         'id':{'type':'string'},'reason':{'type':'string'},'replaced_by':{'type':'array','items':{'type':'string'}}},
         'required':['id','reason','replaced_by'],'additionalProperties':False}},
         candidate_services={'type':'array','items':{'type':'string'}}, scope_reason={'type':'string'})
-    if value.get('reader_decisions'): props['reader_decisions'] = DECISION_SCHEMA
+    if value.get('reader_decisions'):
+        from .reader_decisions import output_schema
+        props['reader_decisions'] = output_schema(value['reader_decisions'])
     if 'content_gaps' in value: props['content_gaps'] = GAP_SCHEMA
     return {'format':{'type':'json_schema','schema':{'type':'object','properties':props,
         'required':list(props),'additionalProperties':False}}}

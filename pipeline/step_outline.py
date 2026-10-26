@@ -413,52 +413,38 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     job = get_job(job_id)
     computed_target = None
     word_count_instruction = "- ユーザーの文字数指定はありません。各章の回答要素から必要な分量を見積もる。競合の取得文字数が不明なら文字数を推測して必須目標にしない。"
-    try:
-        user_id = job.get("tenant_id")
-        category = job.get("category")
-        if user_id and category:
-            companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in get_company_settings(user_id, category)]
-            restriction = job.get("company_restriction", "ai")
-            company_prompt = _build_company_prompt(companies, restriction)
-            if company_prompt:
-                print(f"[outline] Loaded {len(companies)} company settings for category='{category}'")
-        word_count = job.get("word_count_setting")
-        if word_count:
-            # ユーザー指定優先。機械算出値で上書きしない。
+    from .editorial_contract import settings
+    companies, service, cta = settings(job, loaders=(get_company_settings, get_service_by_id, get_cta_by_id))
+    companies = [registered_for_authoring(c, structured_intent=structured_intent) for c in companies]
+    company_prompt = _build_company_prompt(companies, job.get('company_restriction', 'ai'))
+    extra_instructions = _build_extra_instructions(job)
+    service = registered_for_authoring(service, structured_intent=structured_intent)
+    if service:
+        service_prompt = _build_service_prompt(service)
+    if cta:
+        cta_prompt = _build_cta_prompt(cta)
+    word_count = job.get("word_count_setting")
+    if word_count:
+        # ユーザー指定優先。機械算出値で上書きしない。
+        word_count_instruction = (
+            f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
+            f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
+            f"- コンテンツ構造契約のprotected=trueの情報要件は残し、独立H2を固定せず重複章は統合する\n"
+            f"- optional_sectionsや補足説明から調整する\n"
+            f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
+        )
+        print(f"[outline] word_count_setting={word_count!r}")
+    else:
+        # ユーザー未設定時のみ、競合本文の異常値除外平均×1.2を機械算出して
+        # 機械可読な目標文字数を確定し、jobに永続化（生成/レビューの真実源化）。
+        computed = _calc_target_word_count(serp["content_text"])
+        if computed:
+            computed_str, hard_cap = computed
+            computed_target = computed_str
             word_count_instruction = (
-                f"- 目標文字数は「{word_count}」とする（SERP平均ではなくこの指定値を使うこと）\n"
-                f"- この文字数に収まるようにH2・H3のセクション数を調整すること\n"
-                f"- コンテンツ構造契約のprotected=trueの情報要件は残し、独立H2を固定せず重複章は統合する\n"
-                f"- optional_sectionsや補足説明から調整する\n"
-                f"- 全セクションを薄く書くより、優先度の高いセクションを充実させる構成を選ぶこと"
+                f"- 競合取得ページの文字数による参考規模は「{computed_str}」。本文抽出の誤差を含む参考値で、ユーザー指定や必須下限ではない。\n"
+                "- 章の内容から分量を見積もり、参考値へ合計を合わせるために説明や章を追加しない。"
             )
-            print(f"[outline] word_count_setting={word_count!r}")
-        else:
-            # ユーザー未設定時のみ、競合本文の異常値除外平均×1.2を機械算出して
-            # 機械可読な目標文字数を確定し、jobに永続化（生成/レビューの真実源化）。
-            computed = _calc_target_word_count(serp["content_text"])
-            if computed:
-                computed_str, hard_cap = computed
-                computed_target = computed_str
-                word_count_instruction = (
-                    f"- 競合取得ページの文字数による参考規模は「{computed_str}」。本文抽出の誤差を含む参考値で、ユーザー指定や必須下限ではない。\n"
-                    "- 章の内容から分量を見積もり、参考値へ合計を合わせるために説明や章を追加しない。"
-                )
-        extra_instructions = _build_extra_instructions(job)
-        service_id = job.get("service_id")
-        if service_id:
-            service = registered_for_authoring(get_service_by_id(service_id), structured_intent=structured_intent)
-            if service:
-                service_prompt = _build_service_prompt(service)
-                print(f"[outline] Loaded service: {service.get('name')}")
-        cta_id = job.get("cta_id")
-        if cta_id:
-            cta = get_cta_by_id(cta_id)
-            if cta:
-                cta_prompt = _build_cta_prompt(cta)
-                print(f"[outline] Loaded CTA: {cta.get('name')}")
-    except Exception as e:
-        print(f"[outline] Warning: could not load job settings: {e}")
 
     from .initial_authoring import assignment, assignment_prompt, model_context, model_evidence, brief_from_settings
     editorial_brief = brief_from_settings(job, service, cta)
@@ -487,10 +473,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             word_count_instruction=word_count_instruction) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
     prompt = editorial_assignment + prompt
     request = dict(
-        **({'output_config':blueprint.OUTPUT_CONFIG} if structured_intent else {}),
+        **({'output_config':blueprint.output_config()} if structured_intent else {}),
         model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
         messages=[{'role':'user','content':prompt}],
     )
+    from .editorial_contract import enrich_request
+    request = enrich_request(request)
     unfinished = None
     if structured_intent:
         from .outline_completion import saved, complete, fingerprint

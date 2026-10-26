@@ -105,6 +105,31 @@ def model_output_config(schema):
 OUTPUT_CONFIG = model_output_config(SCHEMA)
 
 
+def section_schema(*, separated=None):
+    from .editorial_contract import CURRENT
+    result = copy.deepcopy(SECTION_SCHEMA)
+    use_separation = bool(CURRENT.get()) if separated is None else separated
+    if use_separation:
+        result['properties']['internal_checks'] = {**STRINGS, 'description':
+            'AIの禁止注意・採用事情・取得限界など内部確認だけ。読者向け本文へ転記しない。なければ空配列。'}
+        result['required'].append('internal_checks')
+        result['properties']['answer_elements']['description'] = (
+            'この節の問いへの答え、理由、例、実際の利用条件。'
+            'instructionは読者へ説明する意味を指定する。免責・内部禁止・採用事情はinternal_checksへ分ける。')
+    return result
+
+
+def schema(value=None):
+    result = copy.deepcopy(SCHEMA)
+    separated = None if value is None else any('internal_checks' in s for s in value.get('sections', []))
+    result['properties']['sections']['items'] = section_schema(separated=separated)
+    return result
+
+
+def output_config():
+    return model_output_config(schema())
+
+
 def context(plan, matrix):
     from .generation_context import bundle_data
     bundle = bundle_data(plan,matrix,quotes=False,planning=True)
@@ -157,7 +182,7 @@ def canonicalize_research_refs(value, ctx):
     ID in need_ids, map it to its one declared owner. Unknown or ambiguous IDs
     still fail validation. This does not change answers, prose or acceptance.
     """
-    validate_shape(value,SCHEMA)
+    validate_shape(value,schema(value))
     result=copy.deepcopy(value)
     needs=ctx['reader_design'].get('reader_needs',[])
     need_ids={n['id'] for n in needs}
@@ -186,7 +211,7 @@ def canonicalize_research_refs(value, ctx):
 
 def validate(value, ctx):
     """Structural referential integrity only; semantic acceptance belongs to review."""
-    validate_shape(value,SCHEMA)
+    validate_shape(value,schema(value))
     checked_focus(value['reader_focus'],ctx['reader_design'])
     sections=value['sections'];seen={};stack={};h2_titles=set()
     needs={n['id'] for n in ctx['reader_design'].get('reader_needs',[])}
@@ -442,9 +467,9 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, 
     return validate(canonicalize_research_refs(candidate,ctx),ctx)
 
 
-def repair_schema(*, allow_lead=False, allow_omissions=False, allow_titles=False):
+def repair_schema(*, allow_lead=False, allow_omissions=False, allow_titles=False, separated=None):
     fields={
-        'edits':{'type':'array','items':obj({'id':STRING,'section':SECTION_SCHEMA})},
+        'edits':{'type':'array','items':obj({'id':STRING,'section':section_schema(separated=separated)})},
         'delete_ids':STRINGS,'section_order':STRINGS}
     if allow_lead:fields.update(lead_direction=DIRECTION_SCHEMA,reader_focus=READER_FOCUS_SCHEMA)
     if allow_titles:fields['titles']=copy.deepcopy(SCHEMA['properties']['titles'])
