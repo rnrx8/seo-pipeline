@@ -547,6 +547,8 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
 
 def _require_audit_strict(report: dict, expected: str, *, stage: str | None = None, context: dict | None = None) -> None:
     checked = parse_audit(json.dumps(report, ensure_ascii=False))
+    if report.get('scoped_verification_completion') and stage != 'article':
+        raise ContentQualityError('差分の独立確認には記事全体との照合が必要です。')
     if report.get('scoped_edit_completion') and stage != 'article':
         raise ContentQualityError('統合編集の完了には記事全体との照合が必要です。')
     if report.get('local_completion') and stage != 'article':
@@ -558,6 +560,12 @@ def _require_audit_strict(report: dict, expected: str, *, stage: str | None = No
     if stage and report.get('stage') != stage:
         raise ContentQualityError('監査工程が現在の本文に対応していません。')
     if stage == 'article':
+        if report.get('scoped_verification_completion'):
+            from .verification_completion import validate_completion
+            validate_completion(report, expected, context)
+            if not checked['valid'] or report.get('valid') is not True or report.get('snapshot')!=expected or report.get('policy_version')!=POLICY_VERSION:
+                raise ContentQualityError('差分の独立確認が現在の原稿に対応しません。')
+            return
         if report.get('scoped_edit_completion'):
             from .scoped_edit_completion import validate_completion
             validate_completion(report,expected,context)

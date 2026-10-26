@@ -466,6 +466,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 def publish_pass(job_id, artifact, text, report, section_map, repaired, saved):
     review_meta = {}
     mapping=report.get('phases',{}).get('coverage',{}).get('reader_correspondence')
+    if mapping and report.get('scoped_verification_completion'):
+        from .verification_completion import compose
+        from .article_design import correspondence
+        r=report['scoped_verification_completion']
+        _,current,binding=compose(r['base_report'],r['base_context'],r['edits'],r['source_urls'],r['review'])
+        mapping=correspondence(text,current['outline'],current['requirements']['article_design'],binding)
     if mapping and report.get('scoped_edit_completion'):
         from .scoped_edit_completion import apply
         from .editorial_completion import candidate_context
