@@ -59,8 +59,9 @@ def correct(job,client,article,outline,report,context,proposal,verdict,old_view,
         bp=finish.bp
         schema=bp.obj({'article_edits':finish.scoped_repair_output_config(sorted(targets))['format']['schema']['properties']['edits'],
             'scope_promises':bp.obj({i:bp.obj({k:bp.STRING for k in ('title','question','conclusion')}) for i in p['target_section_ids']})})
-        payload={'article_before':context['text'],'current_edits':proposal,'failed_checks':{k:v for k,v in verdict['checks'].items() if v['status']=='fail'},
-            'target_block_ids':sorted(targets),'paragraph_limits':{i:n for i,n in p['paragraph_limits'].items() if i in targets},'reader_focus':p['article_design']['reader_focus']}
+        payload={'article_before':context['text'],'current_edits':proposal,'failed_checks':[{'key':k,**v} for k,v in verdict['checks'].items() if v['status']=='fail'],
+            'target_block_ids':sorted(targets),'target_section_ids':p['target_section_ids'],
+            'article_blocks':[b for b in p['article_blocks'] if b['id'] in targets],'paragraph_limits':{i:n for i,n in p['paragraph_limits'].items() if i in targets},'reader_focus':p['article_design']['reader_focus']}
         model,_=get_step_config('content_repair')
         patch,_=checked_request(job,'tiered_scoped_edit_correction',dict(model=model,max_tokens=6000,
             system='直前の独立確認で不合格だった箇所だけを修正する。元の条件を戻し、新しい事実を削除できる。対象外の合格文は保持する。親の問いと見出しは実際の関連する説明に合わせる。移動・新情報・免責は禁止。元の文に戻す段落も返してよい。JSONのみ。',
