@@ -103,3 +103,28 @@ class InitialAuthoringTests(unittest.TestCase):
         self.assertEqual(payload['editorial_assignment']['request']['tone_style'], '読者に直接語る')
         self.assertEqual(request['system'].count(READER_PRESENTATION_POLICY), 1)
         self.assertEqual(request['system'].count(STANDARD), 1)
+
+    def test_registered_product_rules_survive_final_qa_and_repair(self):
+        from pipeline import content_quality, step_content_audit
+        source=assignment(brief_from_settings({'article_purpose':'cv','tone_style':'普段の言葉'},
+            {'name':'A','must_include':'条件と料金を対応させる','must_exclude':'禁止表現'}))
+        article={'content_text':'本文。','meta':{'editorial_assignment':copy.deepcopy(source)}}
+        outline={'content_text':'構成。','meta':{'blueprint_version':'fixture'}}
+        with patch.object(content_quality,'intent_review_requirements',return_value={}), \
+             patch.object(content_quality,'astra_review_enabled',return_value=False), \
+             patch('pipeline.db.get_optional_artifact',side_effect=lambda j,s:article if s=='article' else outline), \
+             patch('pipeline.article_design.design_context',return_value={}):
+            requirements=content_quality.final_review_requirements({'id':'job'},'比較')
+        self.assertEqual(requirements['editorial_assignment'],source)
+        packet={'requirements':{},'article_blocks':[]}
+        with patch.object(step_content_audit,'require_article_repair_scope'), \
+             patch('pipeline.quality_context.compact_enabled',return_value=True), \
+             patch('pipeline.review_scope.repair_packet',return_value=packet):
+            request,_=step_content_audit.prepare_content_repair(None,job_id='job',text='本文。',
+                report={'checks':[],'editorial_findings':[]},requirements=requirements,
+                sources='[]',facts='',contract={'featured_service':'A'},issues=[])
+        sent=json.loads(request['messages'][0]['content'])['editorial_assignment']
+        self.assertEqual(sent,source)
+        self.assertEqual(sent['product']['must_exclude'],'禁止表現')
+        requirements['editorial_assignment']['product']['must_exclude']='変更'
+        self.assertEqual(article['meta']['editorial_assignment']['product']['must_exclude'],'禁止表現')

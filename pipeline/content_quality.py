@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import re
 from datetime import datetime, timezone
@@ -194,6 +195,9 @@ def final_review_requirements(job: dict, keyword: str, *, include_article_design
         if outline and (outline.get('meta') or {}).get('blueprint_version'):
             requirements['article_design']=design_context(outline)
             article=get_optional_artifact(job['id'],'article')
+            assigned=(article.get('meta') or {}).get('editorial_assignment') if article else None
+            assigned=assigned or (outline.get('meta') or {}).get('editorial_assignment')
+            if assigned:requirements['editorial_assignment']=copy.deepcopy(assigned)
             binding=(article.get('meta') or {}).get('section_map') if article else None
             if binding:
                 from .article_design import bind_review_requirements

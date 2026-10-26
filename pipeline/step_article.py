@@ -873,6 +873,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         meta={
             "model": get_step_config("article")[0],
             **authoring_metadata(SYSTEM_PROMPT),
+            'editorial_assignment': job['_editorial_assignment'],
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
