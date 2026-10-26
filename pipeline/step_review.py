@@ -194,6 +194,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception as exc:
         raise ValueError(f"content_contract artifact is required before review: {exc}") from exc
     content_contract_block = contract_prompt(contract)
+    editorial_assignment=(article_artifact.get('meta') or {}).get('editorial_assignment')
+    editorial_request=('\n【制作依頼：編集方針の基準】\n'+json.dumps(editorial_assignment,ensure_ascii=False)+'\n'
+        if editorial_assignment else assignment_prompt(brief_from_settings(job, {'name': contract.get('featured_service')})))
 
     # 文字数調整指示・学習済み執筆ルールを構築
     word_count_instruction = ""
@@ -227,7 +230,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         messages=[
             {
                 "role": "user",
-                "content": assignment_prompt(brief_from_settings(job, {'name': contract.get('featured_service')})) + REVIEW_TEMPLATE.format(
+                "content": editorial_request + REVIEW_TEMPLATE.format(
                     article_text=article_text,
                     word_count_instruction=word_count_instruction,
                     content_contract_block=content_contract_block,

@@ -460,8 +460,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     except Exception as e:
         print(f"[outline] Warning: could not load job settings: {e}")
 
-    from .initial_authoring import assignment_prompt, model_context, model_evidence, brief_from_settings
-    editorial_assignment = assignment_prompt(brief_from_settings(job, service, cta))
+    from .initial_authoring import assignment, assignment_prompt, model_context, model_evidence, brief_from_settings
+    editorial_brief = brief_from_settings(job, service, cta)
+    editorial_assignment = assignment_prompt(editorial_brief)
     fact = {**fact, 'content_text': model_evidence(fact['content_text'])}
     if structured_intent:
         intent = {**intent, 'content_text': model_evidence(intent['content_text'])}
@@ -558,6 +559,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         meta={
             **blueprint_meta,
             **authoring_metadata(SYSTEM_PROMPT),
+            'editorial_assignment': assignment(editorial_brief),
             "model": MODEL,
             "input_tokens": total_input,
             "output_tokens": total_output,

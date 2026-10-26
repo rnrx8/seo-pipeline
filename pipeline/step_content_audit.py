@@ -197,7 +197,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
         repair_system += '\n'+POLICY
         repair_data['citation_registry'] = citation_registry
     from .initial_authoring import assignment, brief_from_settings
-    repair_data['editorial_assignment'] = assignment(brief_from_settings(
+    repair_data['editorial_assignment'] = requirements.get('editorial_assignment') or assignment(brief_from_settings(
         requirements, {'name': contract.get('featured_service')}))
     messages=[{'role':'user','content':json.dumps(repair_data,ensure_ascii=False)}]
     if hybrid_writing_enabled():
