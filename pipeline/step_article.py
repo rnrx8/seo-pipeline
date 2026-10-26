@@ -694,9 +694,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if volume_sections:
         p1_secs, p2_secs, p3_secs = _split_sections_into_parts(volume_sections)
         from .article_design import part_reader_brief
-        part1_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p1_secs])
-        part2_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p2_secs])
-        part3_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p3_secs])
+        writing_basis=(outline.get('meta') or {}).get('blueprint_context')
+        part1_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p1_secs],writing_basis)
+        part2_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p2_secs],writing_basis)
+        part3_inst += part_reader_brief(blueprint_value, [title for title, _, _ in p3_secs],writing_basis)
         p1_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p1_secs) if p1_secs else None)
         p2_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p2_secs) if p2_secs else None)
         p3_max = _calc_part_max_tokens(word_count_setting, sum(wc for _, _, wc in p3_secs) if p3_secs else None)

@@ -238,6 +238,24 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .article_design import bind_review_requirements
     requirements = bind_review_requirements(requirements, text, outline, section_map)
     client = anthropic.Anthropic(api_key=api_key, max_retries=0) if hybrid_writing_enabled() else (None if astra_review_enabled() else anthropic.Anthropic(api_key=api_key))
+    # Known mechanical overflow is not a reason to purchase a whole semantic
+    # audit, then purchase the same audit again after shortening the prose.
+    if hybrid_writing_enabled():
+        from .prose_preflight import complete as preflight_prose
+        def check_prose(candidate):
+            mapped=carry_sections(text,candidate,outline,section_map,allow_h4=False)
+            violations=validate_delivery(candidate,outline,job.get('word_count_setting'),contract=contract,section_map=mapped)
+            violations+=readability_issues(candidate)+scope_issues(candidate,facts)+validate_structure(candidate,contract,outline=False)
+            violations+=cta_placement_issues(candidate,(artifact.get('meta') or {}).get('cta_placement'),mapped)
+            if citation_registry is not None:
+                from .article_citations import integrity_issues
+                violations+=integrity_issues(candidate,citation_registry)
+            if violations:raise ContentQualityError('文章量整理後の機械検査が未合格です: '+json.dumps(violations,ensure_ascii=False))
+        candidate=preflight_prose(job_id,client,text=text,check_candidate=check_prose)
+        if candidate!=text:
+            section_map=carry_sections(text,candidate,outline,section_map,allow_h4=False);text=candidate
+            artifact=upsert_artifact(job_id=job_id,step='article',content_type='text/markdown',content_text=text,
+                meta={**(artifact.get('meta') or {}),'section_map':section_map,'content_audited':False,'content_audit_snapshot':None})
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
     first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
     attempt_limit = 2

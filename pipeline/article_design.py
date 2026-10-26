@@ -29,7 +29,7 @@ def design_context(artifact):
         'sections':[{k:copy.deepcopy(s[k]) for k in fields} for s in value['sections']]}
 
 
-def part_reader_brief(blueprint, h2_titles):
+def part_reader_brief(blueprint, h2_titles, context=None):
     """Bring this part's own reader states beside its final writing instruction.
 
     Use the validated design, rather than inferring feelings or copying a global
@@ -38,7 +38,8 @@ def part_reader_brief(blueprint, h2_titles):
     if not blueprint or not h2_titles:return ''
     import json
     titles=set(h2_titles);selected=False;rows=[]
-    for section in blueprint['sections']:
+    sections=blueprint['sections']
+    for index,section in enumerate(sections):
         if section['level']==2:selected=section['title'] in titles
         progression=section.get('reader_progression')
         if not selected or not progression:continue
@@ -50,6 +51,15 @@ def part_reader_brief(blueprint, h2_titles):
              'reader_feeling':before['emotion'],
              'answer_elements':[e['instruction'] for e in section['answer_elements']],
              'outcome':{k:v for k,v in after.items() if v}}
+        if context:
+            # The nearby conclusion is an editorial proposal, never a new fact.
+            # Keep the actual claim's type/scope beside it, including claims in
+            # null-progression children. Do not invalidate old saved blueprints.
+            end=next((j for j in range(index+1,len(sections)) if sections[j]['level']<=section['level']),len(sections))
+            refs=list(dict.fromkeys(cid for s in sections[index:end] for e in s['answer_elements'] for cid in e['claim_ids']))
+            row['accepted_claims']=[copy.deepcopy(context['accepted_claims'][cid]) for cid in refs]
+            row['reader_goals']=[{'need_id':n['id'],'desired_state':n['desired_state']} for n in context['reader_design'].get('reader_needs',[])
+                                 if n['id'] in section['need_ids'] and n.get('desired_state')]
         rows.append(row)
     if not rows:return ''
     return ('\n\n【今回のPARTで実現する読者への回答】\n'
@@ -58,6 +68,7 @@ def part_reader_brief(blueprint, h2_titles):
         'answerや具体策へつなぐ。具体策の提示だけで気持ちまで受け止めた扱いにしない。'
         '仮説は読者全員の気持ちと断定せず、分析用の語句を転記しない。'
         'reader_feelingが空の章に感情を作り足さず、同じ共感文や固定位置を全章に課さない。\n'
+        +('accepted_claimsは採用した主張、answer/answer_elementsは編集上の提案。主張の種別・条件・claim_limitsを保ち、冒頭やまとめの要約でも推論を集計結果や実証事実へ変えない。reader_goalsは本人が望む体験であり、章の判断がその体験へどう役立つかを考える素材。全節への感情の追加指示ではない。\n' if context else '')
         +json.dumps(rows,ensure_ascii=False,separators=(',',':')))
 
 

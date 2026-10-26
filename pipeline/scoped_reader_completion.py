@@ -40,7 +40,7 @@ def paragraph_limits(text,p):
         probe=apply_block_edits(text,json.dumps({'edits':[{'id':b['id'],'new':b['text']+'字'*301}]},ensure_ascii=False))
         run=next(i for i in readability_issues(probe) if i['key']=='continuous_prose' and b['id'] in {l['id'] for l in i['affected_blocks']})
         count=len(targets & {l['id'] for l in run['affected_blocks']})
-        limits[b['id']]=len(b['text'])+max(0,601-run['characters'])//count
+        limits[b['id']]=max(1,len(b['text'])+(601-run['characters'])//count)
     return limits
 
 def packet(report,context):

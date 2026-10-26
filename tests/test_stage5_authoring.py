@@ -273,7 +273,7 @@ class Stage5AuthoringTests(unittest.TestCase):
         split=step_article._split_sections_into_parts([(s['title'],s['budget']['importance'],s['budget']['chars']) for s in value['sections']])
         for call,sections in zip(model.call_args_list[:3],split):
             instruction=next(m['content'] for m in reversed(call.kwargs['messages']) if m['role']=='user')
-            brief=part_reader_brief(value,[s[0] for s in sections])
+            brief=part_reader_brief(value,[s[0] for s in sections],a['meta']['blueprint_context'])
             self.assertTrue(brief)
             self.assertIn(brief,instruction)
             local=instruction.split('【今回のPARTで実現する読者への回答】')[-1]
