@@ -8,9 +8,15 @@ def sha(value):return digest(json.dumps(value,ensure_ascii=False,sort_keys=True)
 def delta(old_view,new_view):
     v=copy.deepcopy(new_view)
     if 'article_design' in v:
-        # Every affected native case already carries its own adopted design.
-        # Avoid a second copy of all unrelated section plans in the delta.
-        v['article_design']={k:x for k,x in v['article_design'].items() if k not in ('sections','section_binding')}
+        v['article_design']={'reader_focus':v['article_design']['reader_focus']}
+    if 'article_before' in v:
+        from .content_edits import content_blocks
+        original={b['id']:b['text'] for b in content_blocks(v.pop('article_before'))}
+        before={b['id']:b['text'] for b in content_blocks(old_view['article_after'])}
+        after={b['id']:b['text'] for b in content_blocks(new_view['article_after'])}
+        if set(before)!=set(after):raise ContentQualityError('再確認前に段落構造が変わっています。')
+        v['correction_blocks']=[{'id':i,'original':original[i],'before':before[i],'after':after[i]} for i in after if before[i]!=after[i]]
+        v['review_scope']='保存済み確認から変わった段落の原文・修正前後と、影響する全nativeケース。その他の本文は保存済み確認と不変で、article_afterは最終全文。'
     old={c['id']:c for c in old_view['reader_cases']['cases']}
     v['reader_cases']['cases']=[c for c in v['reader_cases']['cases'] if c!=old.get(c['id'])]
     old={c['id']:c for c in old_view['heading_answer_entries']}
