@@ -11,7 +11,7 @@ from . import editorial_blueprint as bp, reader_qa, heading_answers, heading_sco
 from .content_edits import content_blocks, scoped_repair_output_config
 from .content_quality import ContentQualityError, digest, snapshot
 
-POLICY='scoped-editorial-reader-completion-v1'
+POLICY='scoped-editorial-reader-completion-v2-delta-recheck'
 SYSTEM=reader.SYSTEM+'''
 今回は親の約束が狭いという指摘も同時に残っている。既存の関連する説明に限り、
 指定した親見出しのtitle/question/conclusionと本文の見出し・冒頭を合わせて直せる。
@@ -60,7 +60,8 @@ def apply(article,outline,report,context,proposal):
     p=packet(article,outline,report,context)
     if set(proposal)!={'article_edits','scope_promises'} or set(proposal['scope_promises'])!=set(p['target_section_ids']):fail('親の変更対象が不整合。')
     edits=proposal['article_edits'];ids=[e.get('id') for e in edits]
-    if len(ids)!=len(set(ids)) or not set(p['mandatory_reader_block_ids'])<=set(ids) or not set(ids)<=set(p['target_block_ids']):fail('本文の対象が不足・拡大。')
+    if len(ids)!=len(set(ids)) or not set(ids)<=set(p['target_block_ids']):fail('本文の対象が重複・拡大。')
+    if any(not set(f['block_ids'])&set(ids) for f in p['findings'] if f.get('role')=='coverage'):fail('未対応の章の指摘がある。')
     old=bp.require_projection(outline);patch=[]
     for sid,value in proposal['scope_promises'].items():
         if set(value)!={'title','question','conclusion'}:fail('根拠・読者設計は変更不可。')
@@ -75,7 +76,7 @@ def apply(article,outline,report,context,proposal):
         if before['id'] in ids and not before['text'].startswith('#') and not reader.plain_paragraph(after['text']):fail('段落の形式が変更。')
     return text,revised,binding
 
-def view(article,outline,report,context,proposal,text,revised,binding):
+def view(article,outline,report,context,proposal,text,revised,binding,*,include_flagged_scopes=True):
     current=layout.candidate_context(context,revised,binding);current['text']=text
     def cases(c):return {s['id']:s for batch in reader_qa.packets(c['text'],c['outline'],c['requirements']['article_design']) for s in batch['cases']}
     before,after=cases(context),cases(current)
@@ -85,7 +86,7 @@ def view(article,outline,report,context,proposal,text,revised,binding):
         'findings':report['editorial_findings'],'scope_promises':proposal['scope_promises'],
         'changed_blocks':proposal['article_edits'],'reader_cases':{'cases':[after[i] for i in after if after[i]!=before[i]]},
         'heading_answer_entries':[h for h in heading_answers.entries(text) if h!=old_headings[h['id']]],
-        'heading_scope_groups':[h for h in heading_scope.groups(text,current['outline'],current['requirements']['article_design']) if h!=old_scopes[h['id']]]}
+        'heading_scope_groups':[h for h in heading_scope.groups(text,current['outline'],current['requirements']['article_design']) if h!=old_scopes[h['id']] or include_flagged_scopes and h['id'] in proposal['scope_promises']]}
     return result,current
 
 def review_config(v):
@@ -128,10 +129,22 @@ def complete(job_id,client,*,article,outline,report,context,check_candidate):
         'base_context':context,'base_report':report,'proposal':proposal}
     upsert_artifact(job_id=job_id,step='scoped_edit_candidate',content_type='application/json',content_text=json.dumps(receipt,ensure_ascii=False),meta={'audited':False})
     model,limit=get_step_config('content_audit')
-    verdict,_=checked_request(job_id,'tiered_scoped_edit_review',dict(model=model,max_tokens=max(limit,10000),
+    def review_request(value):return dict(model=model,max_tokens=max(limit,10000),
         system=reader.REVIEW+'\n'+reader_qa.CONTEXT_POLICY+'\n'+reader_qa.reader_journey.REVIEW_POLICY+'\n'+heading_answers.POLICY+'\n'+heading_scope.POLICY,
-        messages=[{'role':'user','content':json.dumps(v,ensure_ascii=False)}],output_config=review_config(v)))
-    require_review(verdict,v,report,context,text)
+        messages=[{'role':'user','content':json.dumps(value,ensure_ascii=False)}],output_config=review_config(value))
+    legacy,_=view(article,outline,report,context,proposal,text,revised,binding,include_flagged_scopes=False)
+    from .tiered_research import structured_review_output_limit
+    legacy_request=review_request(legacy);legacy_request['max_tokens']=structured_review_output_limit(legacy_request)
+    verdict=cached_result(job_id,'tiered_scoped_edit_review',legacy_request)
+    if verdict is not None:v=legacy
+    else:verdict,_=checked_request(job_id,'tiered_scoped_edit_review',review_request(v))
+    try:require_review(verdict,v,report,context,text)
+    except ContentQualityError:
+        if not any(c.get('status')=='fail' for c in verdict.get('checks',{}).values()):raise
+        from .scoped_edit_correction import correct
+        proposal,text,revised,binding,verdict,v,correction=correct(job_id,client,article,outline,report,context,proposal,verdict,v,check_candidate)
+        current=layout.candidate_context(context,revised,binding);current['text']=text
+        receipt.update(proposal=proposal,correction=correction)
     receipt.update(review=verdict,review_input_sha256=digest(json.dumps(v,ensure_ascii=False,sort_keys=True)))
     result=copy.deepcopy(report);result.update(valid=True,snapshot=snapshot(**current),acceptance_mode='full_audit_plus_scoped_editorial_reader_review',scoped_edit_completion=receipt)
     for c in result['checks']:
@@ -152,5 +165,8 @@ def validate_completion(report,expected,context):
         for old,new in zip(raw['checks'],report['checks']):
             if old['key']!=new['key'] or old['status']!='fail' and old!=new or old['status']=='fail' and new['status']!='pass':fail('合否の対応が不整合。')
         if r['review_input_sha256']!=digest(json.dumps(v,ensure_ascii=False,sort_keys=True)):fail('確認資料が不一致。')
+        if r.get('correction'):
+            from .scoped_edit_correction import validate
+            validate(r,context,v)
         require_review(r['review'],v,raw,base,text)
     except (KeyError,ValueError,TypeError) as exc:fail('保存記録が不足・不整合。')

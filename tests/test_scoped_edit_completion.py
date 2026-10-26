@@ -111,6 +111,17 @@ class ScopedEditCompletionTests(unittest.TestCase):
                 check_candidate=lambda *a:(_ for _ in ()).throw(cq.ContentQualityError('mechanical fail')))
         self.assertEqual(sent.call_count,1)
 
+    def test_flagged_parent_is_reviewed_even_if_writer_keeps_its_question(self):
+        p=copy.deepcopy(self.proposal)
+        p['scope_promises']=copy.deepcopy(finish.packet(self.article,self.outline,self.report,self.ctx)['scope_promises'])
+        p['scope_promises']['s01']['conclusion']+='準備も扱います。'
+        p['article_edits']=[e for e in p['article_edits'] if not e['new'].startswith('## ')]
+        t,o,b=finish.apply(self.article,self.outline,self.report,self.ctx,p)
+        v,_=finish.view(self.article,self.outline,self.report,self.ctx,p,t,o,b)
+        self.assertEqual([g['id'] for g in v['heading_scope_groups']],['s01'])
+        verdict=self.verdict(v);verdict['heading_scope_reviews']['s01']['s02']['relation']='next_decision'
+        with self.assertRaises(cq.ContentQualityError):finish.require_review(verdict,v,self.report,self.ctx,t)
+
     def test_shared_budget_and_one_shot_roles_apply_in_production_too(self):
         from pipeline import quality_budget as q
         for role in ('scoped_edit_repair','scoped_edit_review'):
