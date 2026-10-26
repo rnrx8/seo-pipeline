@@ -4,7 +4,7 @@ import json
 import os
 from types import SimpleNamespace
 
-VERSION = 'focused-research-v14-linked-conditions'
+VERSION = 'focused-research-v15-claim-publication'
 READ_POLICY = '''
 以前の不足理由は参考であり、原文に情報がないことの証明ではない。
 今回の質問だけを保存済み資料から再読する。価格等は対象・期間・条件を含めて読む。
@@ -15,8 +15,7 @@ FOCUS_POLICY = '''
 confirmedは採用するanswerの各主張が種別に応じた共通基準を満たし、必要な対象・期間・条件を保持していることを表す。質問文の全細目が完了したことや記事全体の合格を意味しない。
 未回答の細目とその理由はreason・omission_reasonに残し、その不足で検索意図への回答が成立しないかは後続の全体網羅性判定に委ねる。必須論点の削除や重要度の変更はしない。
 資料は引用先・確認済みURLを優先提示している。source_catalogには本文を今回提示していない資料も含む。
-additional_sources_neededは採用するanswerの事実・条件・反証を照合するために資料がさらに必要かを表す。記載しない細目が不明という理由だけでtrueにしない。
-回答自体の根拠が足りなければtrueとし、その質問を未確認として扱う。
+additional_sources_neededは質問に残る根拠確認・調査の要否。claims形式では不足のある主張だけwithholdとし、原文で独立確認できた主張のpublish/qualifiedを維持する。必須の細目が未解決なら質問全体の未確認・網羅性不足を維持するが、確認済みの部分まで消さない。claimsのない旧回答形式では回答全体が未確認になる。
 他の質問に不足があることを理由に、根拠が揃った回答まで未確認に戻さない。
 sources_complete=trueは保存済み対象ページの集合を提示済みという意味。各本文はtruncatedなら抜粋であり、全文の提示やウェブ全体の探索完了ではない。
 それでも不足なら未確認を返す。全体の網羅性は別工程で検査する。
@@ -142,7 +141,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
 
     def require_enough_sources(result):
         for item in result['items']:
-            if item.get('additional_sources_needed'):
+            if item.get('additional_sources_needed') and 'claims' not in item:
                 item.setdefault('unresolved_candidate',{k:copy.deepcopy(item.get(k)) for k in
                     ('answer','evidence','reason','applicable_at','publication_conditions','claim_limits','supports_current_conclusion')})
                 item.update(status='unresearched', verified=False, basis='unresolved', answer='', evidence=[],
@@ -203,6 +202,7 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
             # At most one expansion. No search, recursive escalation, or new budget.
             result = expand_pending(result, 'gpt-6.1-sol', 'expanded', FOCUS_POLICY)
         replace(require_enough_sources(result))
-    # Never publish a candidate whose final reader still needs evidence.
+    # Legacy answers are all-or-nothing. Structured claims retain their own
+    # source/condition verdicts even while required sibling research is pending.
     require_enough_sources(value)
     return value, SimpleNamespace(input_tokens=inputs, output_tokens=outputs)

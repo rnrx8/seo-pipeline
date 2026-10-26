@@ -1,0 +1,412 @@
+{
+  "origin": "Saved production review responses before manual source/adoption correction; no model regeneration or invented claims. Only the cited displayed source spans are retained.",
+  "cases": [
+    {
+      "step": "tiered_focused_1_audit",
+      "question": {
+        "id": "q03",
+        "question": "既婚者クラブの相手の探し方（条件検索の仕組み、地域・年齢などで絞り込めるか）はどうなっているか",
+        "required": true,
+        "subject": "既婚者クラブ",
+        "priority": "essential",
+        "priority_reason": "上位記事の主要比較軸（検索型かAI型か）であり、自分で地域の相手を選びたい読者への推薦理由の中心になるため",
+        "source_requirement": "standard",
+        "requires_current": false,
+        "official_check_required": true
+      },
+      "raw_response": {
+        "items": {
+          "q03": {
+            "reason": "条件検索の存在と基本検索の無料利用は原文で確認できる。一方、地域指定検索の仕様と無料利用条件は確認できず、地域の相手を選べることを中心にした推薦には不足が残る。",
+            "evidence": [
+              {
+                "source_kind": "primary",
+                "independence_group": "kikonclub-official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s2",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "kikonclub-official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s12",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "kikonclub-official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s4",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "kikonclub-official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s5",
+                "expert_source_ref": ""
+              }
+            ],
+            "official_checked_urls": [
+              "https://kikonclub.com",
+              "https://kikonclub.com/features",
+              "https://kikonclub.com/price",
+              "https://kikonclub.com/about",
+              "https://kikonclub.com/faq/"
+            ],
+            "applicable_at": "2026-10-26取得時点の公式掲載内容。",
+            "omission_reason": "地域・年齢という個別検索条件を裏付ける原文がない。特に地域指定とその無料条件は予定された推薦・利用案内に必要なため、単なる補助情報として省略して全体を充足とはしない。",
+            "claim_limits": [
+              "条件検索の存在と男女共通の基本検索の無料利用は説明できる。",
+              "地域・年齢で絞り込めることや、地域指定検索が無料であることは推測しない。",
+              "おすすめ配信の「同エリア」を検索条件の根拠に転用しない。"
+            ],
+            "exploration_complete": true,
+            "exploration_reason": "取得済みの公式トップ、機能一覧、料金、サービス紹介の関連本文を確認した。公式FAQは取得失敗。検索記録もあるが、地域指定を裏付ける第三者本文は提示されていない。",
+            "claims": [
+              {
+                "text": "既婚者クラブには条件検索機能があり、自分で条件を絞って相手を探せる。",
+                "subject": "既婚者クラブ",
+                "operation": "条件検索による相手探し",
+                "answer_type": "sourced",
+                "basis": "primary",
+                "supports_current_conclusion": true,
+                "conditions": [],
+                "evidence_indices": [
+                  0,
+                  2,
+                  3
+                ],
+                "required_for_answer": true,
+                "disposition": "publish",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              },
+              {
+                "text": "基本的な相手検索は男女とも無料で利用できる。",
+                "subject": "既婚者クラブ",
+                "operation": "基本検索の無料利用",
+                "answer_type": "sourced",
+                "basis": "primary",
+                "supports_current_conclusion": true,
+                "conditions": [
+                  {
+                    "dimension": "audience",
+                    "value": "男女とも"
+                  },
+                  {
+                    "dimension": "price_basis",
+                    "value": "基本的な相手検索は無料"
+                  }
+                ],
+                "evidence_indices": [
+                  1
+                ],
+                "required_for_answer": true,
+                "disposition": "publish",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              },
+              {
+                "text": "地域を指定して相手を検索でき、その地域指定検索を無料会員が利用できる。",
+                "subject": "既婚者クラブ",
+                "operation": "地域指定検索の無料利用",
+                "answer_type": "sourced",
+                "basis": "unresolved",
+                "supports_current_conclusion": false,
+                "conditions": [],
+                "evidence_indices": [],
+                "required_for_answer": true,
+                "disposition": "withhold",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              }
+            ],
+            "additional_sources_needed": true
+          }
+        },
+        "coverage_sufficient": true,
+        "coverage_reason": "saved per-question response replay; article completeness is checked separately"
+      },
+      "source_index": {
+        "s2": {
+          "url": "https://kikonclub.com",
+          "quote": "ポート（2025年1月） 当サービスは内閣府所轄行政委員会個人情報保護委員会認証であるJAPHICマークの認定を受けております。 既婚者同士 の友達が作れる マッチングアプリ 既婚者クラブは、既婚者同士が悩み相談や趣味の共有、 日常の会話を通じて新しいつながりを探すサービスです。 気軽な話し相手、趣味友達、互いを理解し合える相手など、望む関係は人によって異なります。 条件検索や掲示板・つぶやきを使い、プロフィールや会話で目的を確かめながら交流できます。 「既婚者フレンド」として新しい人間関係を築き、日々の生"
+        },
+        "s4": {
+          "url": "https://kikonclub.com",
+          "quote": "抱える悩みを 一緒に解決できる 既婚者フレンドを探そう! POINT 1 “ 既婚者専用 ”だから安心 登録会員は既婚者だけ。だから余計な駆け引きや気遣いなく知り合うことができ、既婚者特有の悩みを共感しあえる関係を築けます。 累計会員数 110 万 人 累計マッチング数 860 万 組 当社調べ（ 2026年10月 ） POINT 2 業界最大級 の会員数 既婚者マッチング業界国内最大級の会員数の中からあなたの価値観に合った相手を見つけられます。 POINT 3 充実の サポート機能 細かい条件で絞り込める"
+        },
+        "s5": {
+          "url": "https://kikonclub.com",
+          "quote": "検索機能や、掲示板、つぶやきなど理想の出会いをサポートするさまざまな機能が基本無料でご利用いただけます。 POINT 4 安心の プライバシー保護 写真のぼかし加工機能や特定電話番号からの閲覧制限、さらにアプリではなくWebサービスなのでスマホのホーム画面にアイコンが置かれないなど、あなたのプライバシーを守る機能も満載です。 理想の相手と出会えたという口コミや プライバシーがしっかりしていて安心との評判が多数寄せられております。 35歳｜アルバイト 匿名性が高くて安心。知り合いにバレずに使えそうです。 興味"
+        },
+        "s12": {
+          "url": "https://kikonclub.com",
+          "quote": "員登録して プロフィールを登録 2 気になる方を 「いいね」してみよう 3 お互いに「いいね」で マッチングメッセージを送ろう マッチングが成立するとメッセージや画像のやり取りができるようになります。 会員登録からプロフィール登録、 お相手の検索などの基本的なご利用までは 男性/女性ともに無料！ 女性の場合はその他の機能もすべて無料 で ご利用いただけますが、男性の場合は メッセージの送受信やお相手の ㊙︎プロフィールの閲覧など様々な便利機能の ご利用に以下のプラン加入が必要です。 ミニ 3,280 円 /"
+        }
+      },
+      "pages": [
+        {
+          "url": "https://kikonclub.com",
+          "text": "ポート（2025年1月） 当サービスは内閣府所轄行政委員会個人情報保護委員会認証であるJAPHICマークの認定を受けております。 既婚者同士 の友達が作れる マッチングアプリ 既婚者クラブは、既婚者同士が悩み相談や趣味の共有、 日常の会話を通じて新しいつながりを探すサービスです。 気軽な話し相手、趣味友達、互いを理解し合える相手など、望む関係は人によって異なります。 条件検索や掲示板・つぶやきを使い、プロフィールや会話で目的を確かめながら交流できます。 「既婚者フレンド」として新しい人間関係を築き、日々の生\n抱える悩みを 一緒に解決できる 既婚者フレンドを探そう! POINT 1 “ 既婚者専用 ”だから安心 登録会員は既婚者だけ。だから余計な駆け引きや気遣いなく知り合うことができ、既婚者特有の悩みを共感しあえる関係を築けます。 累計会員数 110 万 人 累計マッチング数 860 万 組 当社調べ（ 2026年10月 ） POINT 2 業界最大級 の会員数 既婚者マッチング業界国内最大級の会員数の中からあなたの価値観に合った相手を見つけられます。 POINT 3 充実の サポート機能 細かい条件で絞り込める\n検索機能や、掲示板、つぶやきなど理想の出会いをサポートするさまざまな機能が基本無料でご利用いただけます。 POINT 4 安心の プライバシー保護 写真のぼかし加工機能や特定電話番号からの閲覧制限、さらにアプリではなくWebサービスなのでスマホのホーム画面にアイコンが置かれないなど、あなたのプライバシーを守る機能も満載です。 理想の相手と出会えたという口コミや プライバシーがしっかりしていて安心との評判が多数寄せられております。 35歳｜アルバイト 匿名性が高くて安心。知り合いにバレずに使えそうです。 興味\n員登録して プロフィールを登録 2 気になる方を 「いいね」してみよう 3 お互いに「いいね」で マッチングメッセージを送ろう マッチングが成立するとメッセージや画像のやり取りができるようになります。 会員登録からプロフィール登録、 お相手の検索などの基本的なご利用までは 男性/女性ともに無料！ 女性の場合はその他の機能もすべて無料 で ご利用いただけますが、男性の場合は メッセージの送受信やお相手の ㊙︎プロフィールの閲覧など様々な便利機能の ご利用に以下のプラン加入が必要です。 ミニ 3,280 円 /",
+          "status": "success",
+          "fetched_at": "2026-10-26T18:04:14.421031+00:00"
+        }
+      ],
+      "request_sha256": "a24d89bf1f3fc3a7c35689db850de4e6fa99b4f8c37f3782414126d7da7f377f",
+      "original_result_sha256": "1d1eef4a07cf2476095bc006636865c1c3019252b9188b0afaa3425298fa5000",
+      "expected_kept_operations": [
+        "条件検索による相手探し",
+        "基本検索の無料利用"
+      ],
+      "expected_withheld_operations": [
+        "地域指定検索の無料利用"
+      ]
+    },
+    {
+      "step": "tiered_focused_2_audit",
+      "question": {
+        "id": "q19",
+        "question": "カドルの写真限定公開（ギャラリー機能）とシークレットモードはどのような機能で、利用に必要なプラン・費用はあるか",
+        "required": false,
+        "subject": "カドル",
+        "priority": "important",
+        "priority_reason": "上位記事がカドルを身バレ対策で推す根拠にしており、条件付きで公平に示す必要があるため",
+        "source_requirement": "standard",
+        "requires_current": false,
+        "official_check_required": true
+      },
+      "raw_response": {
+        "items": {
+          "q19": {
+            "reason": "ギャラリーの存在と写真の対象範囲は確認できるが、利用対象・プラン・費用は確認できないため、利用可能という案内は保留する。シークレットモードは男性Prime以上・ON設定・表示先の例外を確認でき、Primeの代表料金も前後の料金本文で照合できるため独立して採用する。",
+            "evidence": [
+              {
+                "source_kind": "primary",
+                "independence_group": "cuddle_official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s20",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "cuddle_official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s29",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "cuddle_official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s30",
+                "expert_source_ref": ""
+              },
+              {
+                "source_kind": "primary",
+                "independence_group": "cuddle_official",
+                "expert_name": "",
+                "expert_scope_reason": "",
+                "source_ref": "s31",
+                "expert_source_ref": ""
+              }
+            ],
+            "official_checked_urls": [
+              "https://www.cuddle-jp.com/",
+              "https://www.cuddle-jp.com/pricing.html"
+            ],
+            "applicable_at": "2026-10-26取得時点の公式掲載情報。Prime価格は税込明示を確認。",
+            "omission_reason": "ギャラリーの利用対象・必要プラン・費用は未回答。写真限定公開を利用条件付きで比較する部分は未完成だが、確認済みのシークレットモードと代表料金は保持する。",
+            "claim_limits": [
+              "ギャラリーは存在と作用のみ説明し、無料・全会員利用可能という案内や推薦理由に広げない。",
+              "ギャラリーでプロフィール画像そのものを限定公開できると説明しない。",
+              "シークレットモードは男性Prime以上、ON設定、自分がアプローチした相手には表示されるという条件を保持する。",
+              "Primeの月額換算を1か月契約料金に置き換えない。",
+              "いずれの機能も身元露見の完全防止や他社より安全という保証にしない。"
+            ],
+            "exploration_complete": true,
+            "exploration_reason": "公式トップページの写真説明・FAQと、料金ページのプラン機能・比較表・女性向け機能を確認した。提示資料内ではギャラリーの条件を補えない。",
+            "claims": [
+              {
+                "text": "カドルには、プロフィール画像以外の写真の公開範囲を制限するギャラリー機能がある。",
+                "subject": "カドルのギャラリー機能",
+                "operation": "写真の公開範囲を制限する",
+                "answer_type": "sourced",
+                "basis": "primary",
+                "supports_current_conclusion": true,
+                "conditions": [
+                  {
+                    "dimension": "other",
+                    "value": "プロフィール画像以外の写真"
+                  }
+                ],
+                "evidence_indices": [
+                  0
+                ],
+                "required_for_answer": false,
+                "disposition": "qualified",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              },
+              {
+                "text": "ギャラリー機能を利用できる対象者、必要プラン、費用条件。",
+                "subject": "カドルのギャラリー機能",
+                "operation": "利用条件を定める",
+                "answer_type": "sourced",
+                "basis": "unresolved",
+                "supports_current_conclusion": false,
+                "conditions": [],
+                "evidence_indices": [],
+                "required_for_answer": true,
+                "disposition": "withhold",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              },
+              {
+                "text": "男性はPrime以上でシークレットモードを利用できる。加入後にマイページでONにすると、自分がアプローチした相手以外にはプロフィールが表示されなくなる。",
+                "subject": "カドル男性Prime以上の会員",
+                "operation": "プロフィールの表示範囲を制限する",
+                "answer_type": "sourced",
+                "basis": "primary",
+                "supports_current_conclusion": true,
+                "conditions": [
+                  {
+                    "dimension": "audience",
+                    "value": "男性"
+                  },
+                  {
+                    "dimension": "plan",
+                    "value": "Prime以上"
+                  },
+                  {
+                    "dimension": "other",
+                    "value": "加入後にマイページでシークレットモードをONにする"
+                  },
+                  {
+                    "dimension": "exception",
+                    "value": "自分がアプローチした相手にはプロフィールが表示される"
+                  }
+                ],
+                "evidence_indices": [
+                  0,
+                  1,
+                  2
+                ],
+                "required_for_answer": true,
+                "disposition": "qualified",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              },
+              {
+                "text": "Primeの12か月プランは加入日を含む360日間で、一括総額167,760円、月額換算13,980円（税込）。",
+                "subject": "カドルPrime",
+                "operation": "12か月プランを一括払いで契約する",
+                "answer_type": "sourced",
+                "basis": "primary",
+                "supports_current_conclusion": true,
+                "conditions": [
+                  {
+                    "dimension": "plan",
+                    "value": "男性向けPrime 12か月"
+                  },
+                  {
+                    "dimension": "term",
+                    "value": "加入日を含む360日間"
+                  },
+                  {
+                    "dimension": "price_basis",
+                    "value": "一括総額167,760円、月額換算13,980円、税込"
+                  }
+                ],
+                "evidence_indices": [
+                  1,
+                  2,
+                  3
+                ],
+                "required_for_answer": false,
+                "disposition": "publish",
+                "conflict": {
+                  "status": "none",
+                  "evidence_indices": [],
+                  "resolution": ""
+                }
+              }
+            ],
+            "additional_sources_needed": true
+          }
+        },
+        "coverage_sufficient": true,
+        "coverage_reason": "saved per-question response replay; article completeness is checked separately"
+      },
+      "source_index": {
+        "s20": {
+          "url": "https://www.cuddle-jp.com",
+          "quote": "性を保ってご利用いただける機能をご用意しております。 実名ではなくニックネームでご登録いただけるほか、プロフィール画像以外の写真は「ギャラリー機能」で公開範囲を制限することが可能です。 また、男性会員様はPrime以上のプランで利用できる「 シークレットモード 」をONにしていただくことで、ご自身がアプローチしたお相手以外にはプロフィールが表示されなくなります。 本名や個人情報を登録する必要はありますか？ サイト上の表示はニックネームをご利用いただけます。 安心してサービスをご利用いただくため、事務局による"
+        },
+        "s29": {
+          "url": "https://www.cuddle-jp.com/pricing.html",
+          "quote": "10%OFF ¥ 13,480 /月 一括 ¥ 40,440 1 ヶ月 プラン （30日） ¥ 14,980 ・税込表示です。 ・ご加入日を含んだ日数です。 ・12・6・3ヶ月プランの支払いは一括となります。 Prime より有利に出会いたい方へ あなたのいいねを特別表示し、身バレも防ぐ シークレットモードをご利用いただけます 追加される機能 Standardのすべての機能 女性へのいいね数：50回/日 メッセージ付きいいね：7回/週 おすすめ画面でブースト：4回/月 相手から画面であなたのいいねを特別表示"
+        },
+        "s30": {
+          "url": "https://www.cuddle-jp.com/pricing.html",
+          "quote": " あなたの表示にプランに応じた「バッジ」が表示される シークレットモード機能が使える ※1 アイテムの購入 プランに応じた一部機能を追加購入できます ※1 加入後、マイページ内の「シークレットモード」から設定をON/OFFできます。 利用期間別プラン 一番おトク 12 ヶ月 プラン （360日） 1ヶ月プランから 約30%OFF ¥ 13,980 /月 一括 ¥ 167,760 6 ヶ月 プラン （180日） 1ヶ月プランから 約20%OFF ¥ 15,980 /月 一括 ¥ 95,880 オススメ 3 ヶ"
+        },
+        "s31": {
+          "url": "https://www.cuddle-jp.com/pricing.html",
+          "quote": "月 プラン （90日） 1ヶ月プランから 約10%OFF ¥ 17,980 /月 一括 ¥ 53,940 1 ヶ月 プラン （30日） ¥ 19,980 ・税込表示です。 ・ご加入日を含んだ日数です。 ・12・6・3ヶ月プランの支払いは一括となります。 Prestige すべての機能を活かせます 相手がアクティブユーザーか確認できたり、 お問い合わせの優先サポートを受けられます 追加される機能 Primeのすべての機能 女性へのいいね数：100回/日 メッセージ付きいいね：14回/週 おすすめ画面でブースト"
+        }
+      },
+      "pages": [
+        {
+          "url": "https://www.cuddle-jp.com",
+          "text": "性を保ってご利用いただける機能をご用意しております。 実名ではなくニックネームでご登録いただけるほか、プロフィール画像以外の写真は「ギャラリー機能」で公開範囲を制限することが可能です。 また、男性会員様はPrime以上のプランで利用できる「 シークレットモード 」をONにしていただくことで、ご自身がアプローチしたお相手以外にはプロフィールが表示されなくなります。 本名や個人情報を登録する必要はありますか？ サイト上の表示はニックネームをご利用いただけます。 安心してサービスをご利用いただくため、事務局による",
+          "status": "success",
+          "fetched_at": "2026-10-26T17:47:59.980131+00:00"
+        },
+        {
+          "url": "https://www.cuddle-jp.com/pricing.html",
+          "text": "10%OFF ¥ 13,480 /月 一括 ¥ 40,440 1 ヶ月 プラン （30日） ¥ 14,980 ・税込表示です。 ・ご加入日を含んだ日数です。 ・12・6・3ヶ月プランの支払いは一括となります。 Prime より有利に出会いたい方へ あなたのいいねを特別表示し、身バレも防ぐ シークレットモードをご利用いただけます 追加される機能 Standardのすべての機能 女性へのいいね数：50回/日 メッセージ付きいいね：7回/週 おすすめ画面でブースト：4回/月 相手から画面であなたのいいねを特別表示\n あなたの表示にプランに応じた「バッジ」が表示される シークレットモード機能が使える ※1 アイテムの購入 プランに応じた一部機能を追加購入できます ※1 加入後、マイページ内の「シークレットモード」から設定をON/OFFできます。 利用期間別プラン 一番おトク 12 ヶ月 プラン （360日） 1ヶ月プランから 約30%OFF ¥ 13,980 /月 一括 ¥ 167,760 6 ヶ月 プラン （180日） 1ヶ月プランから 約20%OFF ¥ 15,980 /月 一括 ¥ 95,880 オススメ 3 ヶ\n月 プラン （90日） 1ヶ月プランから 約10%OFF ¥ 17,980 /月 一括 ¥ 53,940 1 ヶ月 プラン （30日） ¥ 19,980 ・税込表示です。 ・ご加入日を含んだ日数です。 ・12・6・3ヶ月プランの支払いは一括となります。 Prestige すべての機能を活かせます 相手がアクティブユーザーか確認できたり、 お問い合わせの優先サポートを受けられます 追加される機能 Primeのすべての機能 女性へのいいね数：100回/日 メッセージ付きいいね：14回/週 おすすめ画面でブースト",
+          "status": "success",
+          "fetched_at": "2026-10-26T17:47:59.864924+00:00"
+        }
+      ],
+      "request_sha256": "482cd5eb715d9559977033959c1518b6a51d372bd762de593726bd6fae8ea96d",
+      "original_result_sha256": "1c2a0f922aded49947ec7e82f4806c0b8121420773c9eefac962dffe34b338b3",
+      "expected_kept_operations": [
+        "写真の公開範囲を制限する",
+        "プロフィールの表示範囲を制限する",
+        "12か月プランを一括払いで契約する"
+      ],
+      "expected_withheld_operations": [
+        "利用条件を定める"
+      ]
+    }
+  ]
+}

@@ -170,10 +170,12 @@ class ClaimEvidenceTests(unittest.TestCase):
         self.assertFalse(value['items'][0]['verified'])
         _,_,new=fixture();self.assertFalse(req.validate_matrix(new,plan,pages))
 
-    def test_focused_review_pending_flag_is_not_overridden_by_claim_projection(self):
+    def test_question_research_gap_does_not_veto_an_explicitly_supported_claim(self):
         plan,pages,value=fixture();value['items'][0]['additional_sources_needed']=True
-        self.assertTrue(req.validate_matrix(value,plan,pages))
-        self.assertFalse(value['items'][0]['verified'])
+        self.assertFalse(req.validate_matrix(value,plan,pages))
+        self.assertTrue(value['items'][0]['verified'])
+        self.assertTrue(value['items'][0]['additional_sources_needed'])
+        self.assertTrue(value['items'][0]['claim_states'][0]['publishable'])
 
     def test_complete_tiered_routes_keep_claims_through_screen_adjudication_and_coverage(self):
         from pipeline import tiered_research as tr

@@ -3,7 +3,7 @@ import copy
 from datetime import datetime, timezone
 from .content_quality import ContentQualityError
 
-VERSION = 'claim-evidence-v1'
+VERSION = 'claim-evidence-v2-partial-publication'
 POLICY = '''
 【重要な主張を正とする回答形式】
 今回の出力はclaims。answer・publication_conditions・answer_type・basis・status・supports_current_conclusionの質問単位の集計はシステムが作るため出力しない。既存のanswerへの指示は各claimのtextとconditionsへ適用する。
@@ -12,6 +12,7 @@ conditionsは読者が利用判断に必要な実条件だけ。出典の取得�
 evidence_indicesは同じ質問のevidence配列の0始まり番号。主張そのもの（inferenceは前提）を支える資料だけを対応させる。異なるページの条件を合成するときは対象・プラン・時点を照合する。
 conflictはnone/resolved/unresolved。食い違う取得資料があればevidence_indicesとresolutionへ記録し、対象・条件・時点の違いを説明できるときだけresolvedにする。ページ種別が概要やFAQという理由だけで一方を優先せず、矛盾が残る主張はwithholdとする。非公表と取得失敗・未探索を混同しない。
 dispositionはpublish/qualified/withhold/omit。qualifiedは適用条件を限定した説明であり、未解決の主張に「かもしれない」を付けて掲載することではない。required_for_answerには主回答・結論に不可欠かを指定する。補助的な番号の矛盾だけで、確認できた運営者・機能全体を失わせない。
+additional_sources_neededは質問に残る調査作業の状態。各主張の掲載判断はdisposition・根拠・条件・矛盾で決める。根拠不足の主張はwithholdとし、その不足を理由に独立して確認できた別の主張までwithholdにしない。質問の必須回答が不足していることと、確認済みの部分を掲載できることは別に記録する。
 sourced/proposal/inferenceの区別と出典基準は共通方針に従う。proposalのbasisはguidanceとし、質問に商業情報が含まれていても日常的な確認手順・判断の提案は区別する。未確認の仕様・料金・現行規約・専門判断を提案に付け替えない。すべてを出典の事実として扱わず、提案を商業条件や専門判断の抜け道にしない。claim_limitsは質問全体に対する内部の執筆境界。本文用の免責文ではない。
 '''
 
@@ -140,16 +141,16 @@ def assess(item, question, pages):
         publishable=(not gaps and mini['verified'] and conflict['status']!='unresolved'
                      and claim['disposition'] in ('publish','qualified'))
         visible_failure=claim_id in item.get('claim_visibility_failed',[])
-        pending_sources=item.get('additional_sources_needed') is True
-        if visible_failure or pending_sources: publishable=False
+        # The question's remaining research is not a veto on independently
+        # reviewed publish/qualified claims. Missing support remains withhold.
+        if visible_failure: publishable=False
         # A resolved conflict must refer to real fetched text as well as supporting evidence.
         available={p['url']:p.get('text','') for p in pages if p.get('status','success')=='success'}
         conflict_valid=all(evidence[i].get('url') in available and
             ''.join(evidence[i].get('quote','').split()) in ''.join(available[evidence[i]['url']].split())
             and bool(evidence[i].get('quote','').strip()) for i in conflict['evidence_indices'])
         if not conflict_valid: publishable=False
-        reason=('照合担当が追加の保存済み資料を必要としています。' if pending_sources else
-                '今回の照合で原文を確認できていません。新しい照合が必要です。' if visible_failure else
+        reason=('今回の照合で原文を確認できていません。新しい照合が必要です。' if visible_failure else
                 '資料の矛盾が未解決' if conflict['status']=='unresolved' else
                 '矛盾を判断した原文が未取得・不一致' if not conflict_valid else
                 '\n'.join(g['reason'] for g in gaps) if gaps else
@@ -185,14 +186,61 @@ def assess(item, question, pages):
     else: item.pop('claim_validation_issue',None)
 
 
+def publication_view(item):
+    """Read-only publication projection; never approves a question or coverage.
+
+    A failed required sibling may leave verified=False while individual claims
+    are supported. Only rows produced by the current per-claim validator can
+    cross that boundary; malformed mappings and unseen sources cannot.
+    Callers must retain their existing policy/material-currentness checks.
+    """
+    result = copy.deepcopy(item)
+    # Compact QA records rename the validated rows to claims. Provider claims
+    # have no publishable field, so they cannot enter via this representation.
+    if ('claim_states' not in result and result.get('claim_format') == VERSION
+            and isinstance(result.get('claims'), list) and result['claims']
+            and all(type(r.get('publishable')) is bool for r in result['claims'])):
+        result['claim_states'] = copy.deepcopy(result['claims'])
+    if item.get('verified'):
+        return result
+    if (item.get('claim_format') != VERSION or item.get('claim_policy_issues')
+            or not isinstance(result.get('claim_states'), list)):
+        return None
+    if not any(r.get('required_for_answer') and not r.get('publishable')
+               for r in result['claim_states']):
+        # An otherwise rejected/revoked answer is not a partially complete one.
+        return None
+    rows = [r for r in result['claim_states'] if r.get('publishable') is True
+            and r.get('id') not in item.get('claim_visibility_failed', [])]
+    if not rows:
+        return None
+    result['claim_states'] = copy.deepcopy(rows)
+    result['answer'] = '\n'.join(r['text'] for r in rows)
+    result['publication_conditions'] = list(dict.fromkeys(
+        c['value'] for r in rows for c in r['conditions']))
+    result['answer_type'] = ('proposal' if all(r['answer_type']=='proposal' for r in rows) else
+                            'inference' if any(r['answer_type']=='inference' for r in rows) else 'sourced')
+    result['basis'] = rows[0]['basis']
+    result['supports_current_conclusion'] = all(r['supports_current_conclusion'] for r in rows)
+    result['evidence'] = []
+    for row in rows:
+        for ref in row['evidence']:
+            if ref not in result['evidence']: result['evidence'].append(copy.deepcopy(ref))
+    result['status'] = 'confirmed'  # Only the projected answer, not the question.
+    return result
+
+
 def ledger(value,pages):
     """Display/export projection, with source acquisition time kept distinct from applicability."""
     fetched={p['url']:p.get('fetched_at') for p in pages}
     result=[]
     for item in value['items']:
+        projected=publication_view(item)
+        accepted={r['id'] for r in (projected or {}).get('claim_states',[]) if r['publishable']}
         for row in item.get('claim_states',[]):
             result.append({**copy.deepcopy(row),'question_id':item['id'],
-                'publishable':bool(item.get('verified') and row['publishable']),
+                'publishable':row['id'] in accepted,
+                'question_verified':bool(item.get('verified')),
                 'checked_at':item.get('claims_checked_at'),
                 'evidence':[{**copy.deepcopy(r),'fetched_at':fetched.get(r['url'])} for r in row['evidence']]})
     return {'version':VERSION,'claims':result}

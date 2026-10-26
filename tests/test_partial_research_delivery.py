@@ -18,6 +18,7 @@ from test_reader_value_flow import response
 class PartialResearchDeliveryTests(unittest.TestCase):
     def setUp(self):
         self.plan, pages, self.matrix, self.ctx, self.value = fixture()
+        self.pages=pages
         self.plan['policy_sha256'] = req.plan_policy()
         self.matrix.update(valid=False, attempt=3, coverage_sufficient=False,
                            coverage_reason='選び分けの説明に改善余地がある')
@@ -81,6 +82,10 @@ class PartialResearchDeliveryTests(unittest.TestCase):
              patch.object(step_article, 'create_with_retry', return_value=response({'lead': lead})):
             article = warnings.scoped(step_article.run, 'article')('job', '条件')
         self.assertEqual(writer.call_count, 1)
+        if hasattr(self, 'expected_writer_terms'):
+            sent=json.dumps(writer.call_args.args[1],ensure_ascii=False)
+            for term in self.expected_writer_terms:self.assertIn(term,sent)
+            self.assertNotIn('未確認の地域検索',sent)
         self.assertIn('## 閲覧と送信の利用条件', article['content_text'])
         final = warnings.scoped(step_final_validate.run, 'final_structure_validation')('job', '条件')
         self.assertFalse(json.loads(final['content_text'])['valid'])
@@ -89,6 +94,30 @@ class PartialResearchDeliveryTests(unittest.TestCase):
         self.assertFalse(self.store['article']['meta']['publication_approved'])
         self.assertTrue(self.store['article']['meta']['completion_with_warnings'])
         self.assertEqual(self.store['research_matrix'], original)
+
+    def test_supported_parts_reach_native_outline_and_body_inputs_with_an_unknown_sibling(self):
+        item=self.matrix['items'][0]
+        unknown=copy.deepcopy(item['claims'][0])
+        unknown.update(text='未確認の地域検索',operation='地域検索',disposition='withhold',evidence_indices=[])
+        item['claims'].append(unknown);item['additional_sources_needed']=True
+        req.validate_matrix(self.matrix,self.plan,self.pages)
+        self.assertFalse(item['verified'])
+        self.store['fact_sheet']['content_text']=req.accepted_facts(self.matrix,self.plan)
+        self.matrix['facts_sha256']=digest(self.store['fact_sheet']['content_text'])
+        self.put_matrix()
+        self.expected_writer_terms=['男性スタンダードは閲覧できます。','送信はプレミアムのみです。','q1.c01','q1.c02']
+        self.test_failed_review_reaches_real_outline_guard_service_map_writer_and_final_save()
+
+    def test_stale_partial_claims_cannot_survive_material_currentness_checks(self):
+        from pipeline.generation_context import bundle_data
+        item=self.matrix['items'][0]
+        unknown=copy.deepcopy(item['claims'][0]);unknown.update(disposition='withhold',evidence_indices=[])
+        item['claims'].append(unknown);req.validate_matrix(self.matrix,self.plan,self.pages)
+        self.matrix['facts_sha256']='source-material-changed';self.put_matrix()
+        original=copy.deepcopy(self.store['research_matrix'])
+        value=warnings.scoped(lambda j:bundle_data(self.plan,req.require_matrix(j),quotes=True),'article')('job')
+        self.assertEqual(value['decisions'],[]);self.assertEqual(value['sources'],{})
+        self.assertEqual(self.store['research_matrix'],original)
 
     def test_resume_reuses_completed_failed_review_without_research_or_plan_resend(self):
         keys = ['research_plan', 'fact_sheet', 'research_completeness', 'outline', 'article']

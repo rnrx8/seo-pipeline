@@ -493,7 +493,7 @@ def propose_optional_omissions(items, plan, pages, *, supporting_only=False, def
     Before the bounded re-review, a rejected claim/evidence mapping is a
     response defect rather than an unknown fact, so it is not offered yet.
     """
-    from .claim_evidence import reference_failures
+    from .claim_evidence import reference_failures, publication_view
     deferred=set(reference_failures({'items':items})) if defer_reference_issues else set()
     planned={q['id']:q for q in plan['items']}
     reviewed={}
@@ -509,6 +509,9 @@ def propose_optional_omissions(items, plan, pages, *, supporting_only=False, def
         q=planned[item['id']]
         if (item.get('verified') or q.get('required') is not False or item['id'] in deferred
             or q.get('priority') not in (('supporting',) if supporting_only else ('important','supporting'))):
+            continue
+        if publication_view(item):
+            # Preserve supported parts; only the unanswered part remains a gap.
             continue
         if supporting_only and item.get('answer','').strip() and item.get('evidence'):
             # Preserve a concrete partial candidate for bounded source review.
@@ -658,10 +661,12 @@ def validate_matrix(value, plan_value, pages):
 def accepted_facts(value, plan_value):
     """Render verified answers deterministically; do not rewrite quoted evidence."""
     from .source_freshness import current_check_date
+    from .claim_evidence import publication_view
     planned = {i['id']:i for i in plan_value['items']}
     blocks=[]
-    for i in value['items']:
-        if not i.get('verified') or i.get('basis')=='omitted':continue
+    for item in value['items']:
+        i=publication_view(item)
+        if not i or i.get('basis')=='omitted':continue
         title = planned[i['id']]['question']
         date = i.get('applicable_at') or '掲載情報として確認。適用開始日は未指定。'
         refs='\n'.join('出典：'+r['url']+'｜確認箇所：'+json.dumps(r['quote'],ensure_ascii=False) for r in i['evidence'])
@@ -1018,5 +1023,6 @@ def require_matrix(job_id):
         matrix = json.loads(get_artifact(job_id, 'research_matrix')['content_text'])
         if not matrix_inputs_current(job_id,matrix):
             # Stale verdicts are diagnostics, never current publishable evidence.
-            matrix = {**matrix, 'items': [{**item, 'verified': False} for item in matrix.get('items', [])]}
+            matrix = {**matrix, 'items': [{**item, 'verified': False,
+                'claim_states':[], 'claim_format':None} for item in matrix.get('items', [])]}
         return matrix

@@ -2,7 +2,7 @@
 import copy
 import json
 
-POLICY_VERSION='generation-evidence-v7-reader-progression'
+POLICY_VERSION='generation-evidence-v8-verified-claim-handoff'
 POLICY='''以下は保存済み調査から執筆に引き継ぐ回答・条件と省略項目。全体QAの合格を意味しない。回答の対象・期間・適用条件を維持する。
 reader_designの背景・感情・商品適合は設計上の仮説であり検証済み事実ではない。reader_decisionsの主回答と前後関係を保持し、問い・必要な回答・伝え方・読後の状態を構成と本文へ反映する。商品資料の主張や心理仮説から新しい事実を追加せず、確認済みdecisionsの範囲で説明する。
 本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
@@ -10,6 +10,7 @@ reader_designの背景・感情・商品適合は設計上の仮説であり検�
 省略・未確認項目は本文で断定しない。現在の結論に使用不可の情報を現在の比較に使わない。
 decisionsのanswerは採用した回答、publication_conditionsは回答と一緒に示す対象・契約・税・期間などの条件、claim_limitsは説明してよい範囲。publishable=falseの論点は掲載しない。supports_current_conclusion=falseの回答で現在の優劣を決めない。claim_limitsは執筆の境界であり、その制約説明を読者へ列挙する文章ではない。
 claimsがある場合、各idのtext・subject・operation・conditions・source_idsを一組として扱う。親のpublication_conditionsは集合であり、すべての条件をすべての主張へ付けたり別プランの条件を合成しない。
+修正用資料のclaims.source_indicesは同じ回答のevidenceまたはevidence_sources配列の0始まり番号。別の回答や元の調査候補の番号に置き換えない。
 原資料の独立照合は最終の事実確認で実施する。sourcesは出典対応用であり、記事設定で指定された場合だけ出典を表示する。採用経緯の説明を本文に作らない。'''
 
 
@@ -77,6 +78,7 @@ def bundle_data(plan, matrix, *, quotes, planning=False):
     from .content_quality import ContentQualityError
     from .research_requirements import matrix_policy
     from .quality_warnings import enabled, warn
+    from .claim_evidence import publication_view
     policy_matches = matrix.get('policy_sha256') == matrix_policy()
     if not policy_matches:
         if not enabled(): raise ContentQualityError('旧方針の調査回答は執筆資料に使えません。採用経緯と回答を分離して再確認してください。')
@@ -93,9 +95,11 @@ def bundle_data(plan, matrix, *, quotes, planning=False):
         warn('質問と回答に不一致があります。不明な回答は使用しません。')
     rows=[];sources={};ref_ids={};constraints={}
     for item in items:
-        if not policy_matches or not item.get('verified') or item['id'] not in questions:
+        projection=publication_view(item) if policy_matches and item['id'] in questions else None
+        if not projection or (not item.get('verified') and not enabled()):
             if not enabled(): raise ContentQualityError('未確認の回答を執筆用資料へ渡せません。')
             continue
+        item=projection
         row={k:copy.deepcopy(v) for k,v in questions[item['id']].items()
              if k not in {'priority_reason','source_requirement'}}
         # Preserve unknown future answer/condition fields; drop only review bookkeeping.
@@ -176,7 +180,12 @@ def repair_requirements(requirements, *, planning=False):
         question.pop('source_requirement',None)
     decisions=result.get('research_decisions')
     if not isinstance(decisions,dict):return result
-    for item in decisions.get('items',[]):
+    from .claim_evidence import publication_view
+    for index,item in enumerate(decisions.get('items',[])):
+        projection=publication_view(item)
+        if projection:
+            item=projection
+            decisions['items'][index]=item
         item.update(publication_scope(item))
         if 'publishable' not in item:
             item['publishable']=item.get('basis')!='omitted' and item.get('status') in ('confirmed','explicitly_undisclosed')
@@ -184,8 +193,16 @@ def repair_requirements(requirements, *, planning=False):
                     'exploration_complete','official_checked_urls','omission_candidate_from','omission_source_review',
                     'unresolved_candidate','reviewed_source_urls','additional_sources_needed'):
             item.pop(key,None)
-        item['claims']=[{k:copy.deepcopy(c[k]) for k in ('id','text','subject','operation','answer_type','conditions',
-            'supports_current_conclusion')} for c in item.pop('claim_states',[]) if c['publishable'] and item.get('publishable')]
+        if 'claim_states' in item:
+            refs=item.get('evidence',item.get('evidence_sources',[]))
+            item['claims']=[{k:copy.deepcopy(c[k]) for k in ('id','text','subject','operation','answer_type','conditions',
+                'supports_current_conclusion')} | {'source_indices':[n for n,r in enumerate(refs) if r in c['evidence']]}
+                for c in item.pop('claim_states') if c['publishable'] and item.get('publishable')]
+        elif any('disposition' in c or 'evidence_indices' in c for c in item.get('claims',[])):
+            # Unvalidated provider claims are not an already projected packet.
+            item['claims']=[]
+        else:
+            item.setdefault('claims',[])
         for key in ('claim_evidence','claim_format','claims_checked_at','claim_validation_issue','claim_visibility_failed','claim_policy_issues'):item.pop(key,None)
         for ref in item.get('evidence',item.get('evidence_sources',[])):
             for key in ('source_kind','independence_group','expert_scope_reason'):ref.pop(key,None)

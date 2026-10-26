@@ -2,7 +2,7 @@
 import copy
 import json
 
-CONTEXT_POLICY = 'role-input-v7-canonical-claim-projection'
+CONTEXT_POLICY = 'role-input-v8-preserve-claim-publication-state'
 
 
 def compact_enabled():
@@ -35,7 +35,9 @@ def decision_brief(requirements):
                             # Source documents remain available to evidence QA;
                             # preserve every URL, condition and disposition.
                             ref.pop('quote',None);ref.pop('expert_qualification_quote',None)
-                for key in ('claim_evidence','claims_checked_at','claim_validation_issue','claim_visibility_failed','claim_policy_issues'):
+                # Keep actual rejection/visibility flags through the review
+                # view: repair must not revive a rejected sibling mapping.
+                for key in ('claim_evidence','claims_checked_at','claim_validation_issue'):
                     item.pop(key,None)
             # Source text belongs to the evidence reviewer. All answer, date,
             # adoption/omission and unknown future fields survive verbatim.

@@ -88,8 +88,9 @@ class DraftReadinessTests(unittest.TestCase):
         c={'id':'q.c','text':'claim','conditions':['condition'],'future_semantics':{'limit':7},
            'evidence':[{'url':'https://a.example','quote':'raw quote','reviewed_at':'today'}],
            'conflicting_evidence':[{'url':'https://b.example','quote':'conflict quote'}]}
+        from pipeline.claim_evidence import VERSION as CLAIM_VERSION
         requirements={'research_decisions':{'valid':True,'evidence_ledger':{'duplicate':True},
-            'items':[{'id':'q','claim_format':'claim-evidence-v1','claim_states':[c],
+            'items':[{'id':'q','claim_format':CLAIM_VERSION,'claim_states':[c],
                       'claims':[{'old':'candidate'}],'claim_evidence':{'duplicate':True},'future_item_limit':'keep'}]}}
         before=copy.deepcopy(requirements);out=quality_context.decision_brief(requirements)['research_decisions']
         self.assertEqual(requirements,before);projected=out['items'][0]['claims'][0]
