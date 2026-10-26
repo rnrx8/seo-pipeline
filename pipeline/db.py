@@ -108,6 +108,13 @@ def upsert_artifact(
         data["payload"] = payload
     if meta is not None:
         data["meta"] = meta
+    from .editorial_contract import CURRENT, validate
+    active = CURRENT.get()
+    if active:
+        validate(active, job_id)
+        data['meta'] = {**(data.get('meta') or {}),
+                        'editorial_contract_version': active['version'],
+                        'editorial_contract_sha256': active['sha256']}
 
     from .article_revisions import save
     saved = save(job_id, step, data)
@@ -156,6 +163,12 @@ def get_cached_product_context(tenant_id: str, input_sha256: str) -> dict | None
 
 def get_company_settings(user_id: str, category: str) -> list:
     """カテゴリに一致する企業設定を取得（レベル降順）"""
+    from .editorial_contract import CURRENT, settings
+    active = CURRENT.get()
+    if active:
+        if user_id != active['tenant_id'] or category != active['settings_category']:
+            raise ValueError('制作仕様と企業設定の対象が一致しません。')
+        return settings({})[0]
     resp = requests.get(
         f"{_base()}/company_settings",
         headers=_headers(),
@@ -205,6 +218,12 @@ def get_primary_sources_by_preset(user_id: str, preset_id: str) -> list:
 
 def get_service_by_id(service_id: str) -> dict | None:
     """IDでサービス設定を1件取得"""
+    from .editorial_contract import CURRENT, settings
+    active = CURRENT.get()
+    if active:
+        if service_id != active['selection']['service_id']:
+            raise ValueError('制作仕様と商材の対象が一致しません。')
+        return settings({})[1]
     resp = requests.get(
         f"{_base()}/services",
         headers=_headers(),
@@ -218,6 +237,12 @@ def get_service_by_id(service_id: str) -> dict | None:
 
 def get_cta_by_id(cta_id: str) -> dict | None:
     """IDでCTAブロックを1件取得"""
+    from .editorial_contract import CURRENT, settings
+    active = CURRENT.get()
+    if active:
+        if cta_id != active['selection']['cta_id']:
+            raise ValueError('制作仕様とCTAの対象が一致しません。')
+        return settings({})[2]
     resp = requests.get(
         f"{_base()}/cta_blocks",
         headers=_headers(),
@@ -244,17 +269,25 @@ def get_job_company_restriction(job_id: str) -> str:
     return "ai"
 
 
-def get_learned_style_rules(user_id: str) -> list:
+def get_learned_style_rules(user_id: str, *, strict=False) -> list:
     """テナントの有効な学習済み執筆ルールを取得（新しい順）。
 
     記事の校正モードから蓄積された文体・表現・媒体レギュレーションのルール。
-    取得失敗時は空リストを返し、生成は通常どおり継続する。
+    旧ジョブの取得失敗時は空リスト。新版の開始時はstrictで取得し、
+    障害と未登録を区別して課金前に扱う。新版の後工程は保存済みルールを使う。
     """
+    from .editorial_contract import CURRENT, learned_rules
+    active = CURRENT.get()
+    if active:
+        if user_id != active['tenant_id']:
+            raise ValueError('制作仕様と文体ルールの所有者が一致しません。')
+        return learned_rules({})
     if not user_id:
         return []
     resp = requests.get(
         f"{_base()}/learned_style_rules",
         headers=_headers(),
+        timeout=20,
         params={
             "tenant_id": f"eq.{user_id}",
             "status": "eq.active",
@@ -262,6 +295,8 @@ def get_learned_style_rules(user_id: str) -> list:
             "order": "created_at.desc",
         },
     )
+    if strict:
+        resp.raise_for_status()
     return resp.json() if resp.status_code == 200 else []
 
 

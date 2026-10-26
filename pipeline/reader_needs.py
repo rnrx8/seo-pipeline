@@ -52,7 +52,16 @@ FIT = obj({'role':{'type':'string','enum':['useful','conditional','not_useful','
 
 
 def output_schema(*, new_product):
-    props = {'exploration':exploration.model_schema(),'selected':arr(NEED),
+    from .editorial_contract import CURRENT
+    need = copy.deepcopy(NEED)
+    if CURRENT.get():
+        need['properties']['editorial_notes'] = {**arr(STR), 'description':
+            '執筆者への内部注意・避ける断定・根拠確認の注意。読者への回答とは別に保存する。なければ空配列。'}
+        need['required'].append('editorial_notes')
+        need['properties']['answer_requirements']['description'] = (
+            '読者の問いに答える情報・比較軸・具体策・必要な利用条件。'
+            '断定禁止・免責・中立にする指示・情報取得事情は含めずeditorial_notesへ。')
+    props = {'exploration':exploration.model_schema(),'selected':arr(need),
              'excluded':arr(obj({'question':STR,'reason':STR})), 'product_fit':FIT, 'analysis':STR}
     if new_product: props['product_understanding'] = UNDERSTANDING
     return {'format':{'type':'json_schema','schema':obj(props)}}

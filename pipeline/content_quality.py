@@ -154,6 +154,11 @@ def requirements_for(job: dict, keyword: str) -> dict:
             ('custom_prompt', 'must_include', 'must_reference_urls', 'never_reference_urls',
              'company_restriction', 'word_count_setting', 'article_purpose', 'target_audience',
              'tone_style', 'citation_style', 'service_id', 'cta_id')}}
+    from .editorial_contract import view
+    pinned = view()
+    if pinned:
+        result['editorial_contract'] = pinned
+        result['editorial_assignment'] = copy.deepcopy(pinned['assignment'])
     if job.get('id'):
         from .research_requirements import load_plan
         result['research_plan'] = load_plan(job['id'])
@@ -542,13 +547,29 @@ def audit(client, *, stage: str, text: str, facts: str, outline: str,
 
 def _require_audit_strict(report: dict, expected: str, *, stage: str | None = None, context: dict | None = None) -> None:
     checked = parse_audit(json.dumps(report, ensure_ascii=False))
+    if report.get('scoped_edit_completion') and stage != 'article':
+        raise ContentQualityError('統合編集の完了には記事全体との照合が必要です。')
     if report.get('local_completion') and stage != 'article':
         raise ContentQualityError('局所文章修正の完了には記事全体との照合が必要です。')
     if report.get('editorial_completion') and stage != 'article':
         raise ContentQualityError('局所編集の完了には記事全体との照合が必要です。')
+    if report.get('scoped_reader_completion') and stage != 'article':
+        raise ContentQualityError('章内の局所確認には記事全体との照合が必要です。')
     if stage and report.get('stage') != stage:
         raise ContentQualityError('監査工程が現在の本文に対応していません。')
     if stage == 'article':
+        if report.get('scoped_edit_completion'):
+            from .scoped_edit_completion import validate_completion
+            validate_completion(report,expected,context)
+            if not checked['valid'] or report.get('valid') is not True or report.get('snapshot')!=expected or report.get('policy_version')!=POLICY_VERSION:
+                raise ContentQualityError('統合編集の確認が現在の原稿に対応しません。')
+            return
+        if report.get('scoped_reader_completion'):
+            from .scoped_reader_completion import validate_completion
+            validate_completion(report,expected,context)
+            if not checked['valid'] or report.get('valid') is not True or report.get('snapshot')!=expected or report.get('policy_version')!=POLICY_VERSION:
+                raise ContentQualityError('章内の局所確認が現在の原稿に対応しません。')
+            return
         if report.get('editorial_completion'):
             from .editorial_completion import validate_completion
             validate_completion(report, expected, context)

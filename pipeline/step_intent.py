@@ -100,8 +100,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     serp_text = serp['content_text']
     brief, product_input, cached, cache_status = prepare(job_id, keyword)
     client = anthropic.Anthropic(api_key=api_key)
+    from .editorial_contract import CURRENT
+    assignment_meta = {'editorial_contract': CURRENT.get()} if CURRENT.get() else {}
     upsert_artifact(job_id=job_id, step='production_brief', content_type='application/json',
-                    content_text=json.dumps(brief, ensure_ascii=False))
+                    content_text=json.dumps(brief, ensure_ascii=False), meta=assignment_meta)
     # Invalidate old derived reader design even if this model call stops early.
     upsert_artifact(job_id=job_id, step='reader_needs', content_type='application/json',
                     content_text=json.dumps({'version':NEEDS_VERSION, 'status':'analyzing'}))
@@ -118,6 +120,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         system=SYSTEM_PROMPT + '\nselectedのidはi01等。採用した問いを調査・構成へ引き継ぐ。商品理解が既存の場合は資料全文を再分析せず、その不明点と条件を維持する。商品理解のvalue_connectionsはこのキーワードだけの訴求へ限定せず、資料から説明できる利用状況と価値を整理する。',
         output_config=output_schema(new_product=new_product),
         messages=[{'role':'user','content':json.dumps(payload, ensure_ascii=False)}])
+    from .editorial_contract import enrich_request
+    request = enrich_request(request)
     message = create_with_retry(client, **request)
     try:
         if getattr(message, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(message).strip():

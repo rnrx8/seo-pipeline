@@ -293,6 +293,13 @@ def run(job_id, keyword, api_key=None):
                'removed_section_ids': packet['removed_section_ids'],
                'editorial_findings': report.get('editorial_findings', []),
                'confirmed_facts': generation_evidence(job_id, '', ''), 'content_contract': contract}
+    from .article_design import part_reader_brief
+    new_design=require_projection(outline)
+    targets=set(packet['target_section_ids']);h2_titles=[];current_h2=None
+    for section in new_design['sections']:
+        if section['level']==2:current_h2=section['title']
+        if section['id'] in targets and current_h2 not in h2_titles:h2_titles.append(current_h2)
+    payload['writing_basis']=part_reader_brief(new_design,h2_titles,(outline.get('meta') or {}).get('blueprint_context'))
     citation_registry = None
     if job.get('citation_style') == 'inline_footnote':
         from .article_citations import from_context, for_article, POLICY as CITATION_POLICY

@@ -19,7 +19,7 @@ def fingerprint(request):
     return digest(json.dumps(request, ensure_ascii=False, sort_keys=True))
 
 
-def prefix(text, schema):
+def prefix(text, schema, *, preserved_array='sections'):
     """Keep only fully decoded values; never close strings or invent JSON values."""
     decoder = json.JSONDecoder()
     fields = {}
@@ -60,7 +60,7 @@ def prefix(text, schema):
         if text[pos] != ',': raise ContentQualityError('保存構成のフィールド区切りが不正です。')
         pos = skip(pos+1)
     # A useful completed section is required to avoid disguising a full rewrite.
-    sections = fields.get('sections', array_prefix if array_key == 'sections' else [])
+    sections = fields.get(preserved_array, array_prefix if array_key == preserved_array else [])
     if not sections:
         raise ContentQualityError('再利用できる完成節がありません。全文再生成は行いません。')
     missing = {k:copy.deepcopy(v) for k,v in schema['properties'].items() if k not in fields}
@@ -78,10 +78,11 @@ def complete(job_id, artifact, request, context, client):
     if (artifact.get('meta',{}).get('request_sha256') != fingerprint(request)
             or artifact['meta'].get('stop_reason') != 'max_tokens'):
         raise ContentQualityError('未完成構成と現在の制作依頼が一致しません。再送しません。')
-    fixed, key, head, remaining, fragment = prefix(artifact['content_text'], bp.SCHEMA)
-    bp.validate_shape(fixed, {'type':'object','properties':{k:bp.SCHEMA['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
+    expected_schema = bp.schema()
+    fixed, key, head, remaining, fragment = prefix(artifact['content_text'], expected_schema)
+    bp.validate_shape(fixed, {'type':'object','properties':{k:expected_schema['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
     if key:
-        for row in head: bp.validate_shape(row, bp.SCHEMA['properties'][key]['items'])
+        for row in head: bp.validate_shape(row, expected_schema['properties'][key]['items'])
     if remaining['properties']:
         payload = {'completed_fields':fixed,'array_prefix':{key:head} if key else {},
                    'missing_schema':remaining,'discarded_fragment':fragment,'production_context':context,
@@ -95,7 +96,7 @@ def complete(job_id, artifact, request, context, client):
     result = copy.deepcopy(fixed)
     for name,value in tail.items():
         result[name] = copy.deepcopy(head)+value if name==key else value
-    bp.validate_shape(result,bp.SCHEMA)
+    bp.validate_shape(result,expected_schema)
     return result, usage
 
 

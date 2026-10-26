@@ -53,13 +53,37 @@ class RealPlanDeliveryTests(unittest.TestCase):
         self.assertTrue(json.loads(self.store['quality_warnings']['content_text'])['warnings'])
         self.writer.assert_called_once();send.assert_called_once();self.patch.assert_not_called()
 
-    def test_semantic_failure_and_malformed_review_do_not_regenerate_plan(self):
+    def test_unavailable_repair_and_malformed_review_do_not_regenerate_plan(self):
         for kind in ('semantic_failure','malformed'):
             with self.subTest(kind=kind):
-                self.writer.reset_mock();self.store.clear()
+                self.writer.reset_mock();self.patch.reset_mock();self.store.clear()
                 result,send=self.run_plan(kind)
                 self.assertFalse(result['meta']['planning_review_passed'])
-                self.writer.assert_called_once();send.assert_called_once();self.patch.assert_not_called()
+                self.writer.assert_called_once();send.assert_called_once()
+                self.assertEqual(self.patch.call_count,1 if kind=='semantic_failure' else 0)
+
+    def test_valid_review_findings_are_repaired_before_collection_without_full_regeneration(self):
+        fixed=copy.deepcopy(self.value)
+        fixed['reader_decisions'][0]['answer_requirements']=['読者が最初に選ぶための主回答']
+        self.patch.side_effect=None
+        self.patch.return_value=(fixed,{'valid':True,'issues':[]},3,4)
+        result,send=self.run_plan('semantic_failure')
+        self.writer.assert_called_once();send.assert_called_once();self.patch.assert_called_once()
+        self.assertEqual(json.loads(result['content_text'])['reader_decisions'],fixed['reader_decisions'])
+        self.assertTrue(result['meta']['planning_review_passed'])
+        self.assertTrue(result['meta']['planning_local_repaired'])
+        self.assertEqual(json.loads(self.store['research_plan_before_planning_repair']['content_text'])['reader_decisions'],self.value['reader_decisions'])
+
+    def test_unresolved_local_repair_keeps_usable_candidate_without_another_repair_loop(self):
+        fixed=copy.deepcopy(self.value)
+        fixed['reader_decisions'][0]['answer_requirements']=['必要な主回答']
+        self.patch.side_effect=None
+        self.patch.return_value=(fixed,{'valid':False,'issues':[{'id':'overall','reason':'補足に確認事項'}]},3,4)
+        result,send=self.run_plan('semantic_failure')
+        self.writer.assert_called_once();send.assert_called_once();self.patch.assert_called_once()
+        self.assertTrue(result['meta']['ready_for_research'])
+        self.assertFalse(result['meta']['planning_review_passed'])
+        self.assertEqual(json.loads(result['content_text'])['reader_decisions'],fixed['reader_decisions'])
 
     def test_current_success_keeps_true_review_result(self):
         result,send=self.run_plan('pass')

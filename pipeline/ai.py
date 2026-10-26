@@ -102,7 +102,11 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
     Uses streaming to support large max_tokens values (>10min threshold).
     Returns a standard Message object identical to non-streaming create().
     """
+    from .editorial_contract import enrich_request
+    kwargs = enrich_request(kwargs)
     if is_openai_model(kwargs.get("model")):
+        from .initial_authoring import record_request
+        record_request(kwargs)
         from .openai_review import create_review_response
         return create_review_response(**kwargs)
     from .blueprint_transport import prepare, validate

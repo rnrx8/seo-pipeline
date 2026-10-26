@@ -55,6 +55,8 @@ def needs_adjudication(item,question):
          or int(digest(question['id'])[:8],16)%10==0)
 
 def cached_result(job_id,step,request):
+ from .editorial_contract import enrich_request
+ request=enrich_request(request)
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True));old=get_optional_artifact(job_id,step)
  if not old:return None
  meta=old.get('meta',{})
@@ -110,6 +112,8 @@ def structured_review_output_limit(request):
 
 
 def checked_request(job_id,step,request,*,client=None):
+ from .editorial_contract import enrich_request
+ request=enrich_request(request)
  old=cached_result(job_id,step,request)
  if old is not None:
   print('[tiered] Reuse '+step,flush=True)
