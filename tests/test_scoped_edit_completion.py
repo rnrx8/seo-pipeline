@@ -57,7 +57,7 @@ class ScopedEditCompletionTests(unittest.TestCase):
     def completed(self):
         def send(job,name,request,**kwargs):
             return (self.proposal if name.endswith('_repair') else self.verdict(json.loads(request['messages'][0]['content']))),None
-        with patch('pipeline.tiered_research.checked_request',side_effect=send) as sent,patch('pipeline.db.upsert_artifact'):
+        with patch('pipeline.tiered_research.checked_request',side_effect=send) as sent,patch('pipeline.db.upsert_artifact'),patch('pipeline.db.get_optional_artifact',return_value=None),patch('pipeline.tiered_research.cached_result',return_value=None):
             result=finish.complete('job',None,article=self.article,outline=self.outline,report=self.report,context=self.ctx,check_candidate=lambda *a:None)
         self.assertEqual([c.args[1] for c in sent.call_args_list],['tiered_scoped_edit_repair','tiered_scoped_edit_review'])
         return result
@@ -106,7 +106,7 @@ class ScopedEditCompletionTests(unittest.TestCase):
             with self.subTest(kind=kind),self.assertRaises(cq.ContentQualityError):cq._require_audit_strict(bad,cq.snapshot(**c),stage='article',context=c)
 
     def test_mechanical_failure_prevents_buying_review(self):
-        with patch('pipeline.tiered_research.checked_request',return_value=(self.proposal,None)) as sent:
+        with patch('pipeline.tiered_research.checked_request',return_value=(self.proposal,None)) as sent,patch('pipeline.db.get_optional_artifact',return_value=None),patch('pipeline.tiered_research.cached_result',return_value=None):
             with self.assertRaises(cq.ContentQualityError):finish.complete('job',None,article=self.article,outline=self.outline,report=self.report,context=self.ctx,
                 check_candidate=lambda *a:(_ for _ in ()).throw(cq.ContentQualityError('mechanical fail')))
         self.assertEqual(sent.call_count,1)

@@ -19,7 +19,7 @@ def fingerprint(request):
     return digest(json.dumps(request, ensure_ascii=False, sort_keys=True))
 
 
-def prefix(text, schema):
+def prefix(text, schema, *, preserved_array='sections'):
     """Keep only fully decoded values; never close strings or invent JSON values."""
     decoder = json.JSONDecoder()
     fields = {}
@@ -60,7 +60,7 @@ def prefix(text, schema):
         if text[pos] != ',': raise ContentQualityError('保存構成のフィールド区切りが不正です。')
         pos = skip(pos+1)
     # A useful completed section is required to avoid disguising a full rewrite.
-    sections = fields.get('sections', array_prefix if array_key == 'sections' else [])
+    sections = fields.get(preserved_array, array_prefix if array_key == preserved_array else [])
     if not sections:
         raise ContentQualityError('再利用できる完成節がありません。全文再生成は行いません。')
     missing = {k:copy.deepcopy(v) for k,v in schema['properties'].items() if k not in fields}

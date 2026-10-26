@@ -103,8 +103,24 @@ def complete(job_id,client,*,article,outline,report,context,check_candidate):
     promises=bp.obj({i:bp.obj({k:bp.STRING for k in ('title','question','conclusion')}) for i in p['target_section_ids']})
     schema=bp.obj({'article_edits':scoped_repair_output_config(p['target_block_ids'])['format']['schema']['properties']['edits'],'scope_promises':promises})
     model,limit=get_step_config('content_repair')
-    proposal,_=checked_request(job_id,'tiered_scoped_edit_repair',dict(model=model,max_tokens=limit,system=SYSTEM,
-        messages=[{'role':'user','content':json.dumps(p,ensure_ascii=False)}],output_config=bp.model_output_config(schema),output_budget_includes_thinking=True),client=client)
+    request=dict(model=model,max_tokens=limit,system=SYSTEM,
+        messages=[{'role':'user','content':json.dumps(p,ensure_ascii=False)}],output_config=bp.model_output_config(schema),output_budget_includes_thinking=True)
+    from .db import get_optional_artifact
+    from .tiered_research import cached_result
+    # An interrupted response is never sent again. Its complete edits and cost
+    # remain frozen; a separate suffix supplies only the absent fields/IDs.
+    partial=get_optional_artifact(job_id,'tiered_scoped_edit_repair_incomplete')
+    if partial:
+        saved_limit=partial.get('meta',{}).get('max_tokens')
+        if saved_limit not in (limit,max(limit,10000)):fail('未完成応答の出力枠が不明。')
+        request['max_tokens']=saved_limit
+    proposal=cached_result(job_id,'tiered_scoped_edit_repair',request)
+    if proposal is None and partial:
+        from .scoped_edit_suffix import recover
+        proposal=recover(job_id,request,partial,p,client)
+    elif proposal is None:
+        request['max_tokens']=max(limit,10000)
+        proposal,_=checked_request(job_id,'tiered_scoped_edit_repair',request,client=client)
     text,revised,binding=apply(article,outline,report,context,proposal)
     check_candidate(text,revised,binding)
     v,current=view(article,outline,report,context,proposal,text,revised,binding)
