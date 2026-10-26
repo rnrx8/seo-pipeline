@@ -7,6 +7,18 @@ from pipeline.tiered_research import checked_request
 ENV={'ARTICLE_WRITING_FLOW':'sonnet_opus','ARTICLE_REVIEW_PROVIDER':'tiered','ARTICLE_GENERATION_MODEL':'claude-opus-5-5'}
 
 class HybridWritingTests(unittest.TestCase):
+    def test_explicit_draft_model_does_not_change_research_qa_or_repair(self):
+        steps=('search_intent','outline','content_audit','content_repair','review')
+        with patch.dict(os.environ,{**ENV,'ARTICLE_DRAFT_MODEL':''}):
+            baseline={s:ai.get_step_config(s) for s in steps}
+            self.assertEqual(ai.get_step_config('article')[0],'claude-sonnet-5-5')
+        with patch.dict(os.environ,{**ENV,'ARTICLE_DRAFT_MODEL':'claude-opus-5-5'}):
+            self.assertEqual(ai.get_step_config('article')[0],'claude-opus-5-5')
+            self.assertEqual({s:ai.get_step_config(s) for s in steps},baseline)
+            self.assertEqual(ai.get_step_config('content_repair')[0],'claude-opus-5-5')
+        with patch.dict(os.environ,{**ENV,'ARTICLE_DRAFT_MODEL':'unpriced-model'}):
+            with self.assertRaises(ValueError):ai.get_step_config('article')
+
     def test_repair_output_budget_counts_only_targets_and_keeps_small_patch_default(self):
         from pipeline.step_content_audit import repair_output_limit
         count=Mock(return_value=5000)
