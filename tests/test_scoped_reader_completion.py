@@ -54,7 +54,7 @@ class ScopedReaderCompletionTests(unittest.TestCase):
         def send(job, name, request, **kwargs):
             if name.endswith('_repair'):return self.proposal,SimpleNamespace(input_tokens=1,output_tokens=1)
             return self.verdict(json.loads(request['messages'][0]['content'])),SimpleNamespace(input_tokens=1,output_tokens=1)
-        with patch('pipeline.tiered_research.checked_request',side_effect=send) as sent:
+        with patch('pipeline.tiered_research.checked_request',side_effect=send) as sent,patch('pipeline.tiered_research.cached_result',return_value=None):
             result=finish.complete('job',None,report=self.report,context=self.ctx,check_candidate=lambda t:None)
         self.assertEqual([a.args[1] for a in sent.call_args_list],['tiered_reader_finish_repair','tiered_reader_finish_review'])
         return result
@@ -149,10 +149,40 @@ class ScopedReaderCompletionTests(unittest.TestCase):
             with self.subTest(kind=kind),self.assertRaises(cq.ContentQualityError):cq._require_audit_strict(bad,snap,stage='article',context=ctx)
 
     def test_invalid_mechanics_prevent_independent_paid_review(self):
-        with patch('pipeline.tiered_research.checked_request',return_value=(self.proposal,None)) as sent:
+        with patch('pipeline.tiered_research.checked_request',return_value=(self.proposal,None)) as sent,patch('pipeline.tiered_research.cached_result',return_value=None):
             with self.assertRaises(cq.ContentQualityError):finish.complete('job',None,report=self.report,context=self.ctx,
                 check_candidate=lambda t:(_ for _ in ()).throw(cq.ContentQualityError('mechanical fail')))
         self.assertEqual(sent.call_count,1)
+
+    def test_prose_budget_counts_untouched_neighbors_and_shares_the_room(self):
+        text='# 題\n\n## 章\n\n'+'あ'*200+'\n\n'+'い'*70
+        blocks=content_blocks(text);a,b=blocks[-2:]
+        p={'article_blocks':blocks,'target_block_ids':[b['id']]}
+        self.assertEqual(finish.paragraph_limits(text,p),{b['id']:100})
+        p['target_block_ids']=[a['id'],b['id']]
+        self.assertEqual(finish.paragraph_limits(text,p),{a['id']:215,b['id']:85})
+
+    def test_cached_long_proposal_is_reused_then_only_changed_run_is_shortened(self):
+        from pipeline.readability import readability_issues
+        long=copy.deepcopy(self.proposal);long['edits'][0]['new']+='長'*400
+        calls=[]
+        def send(job,name,request,**kwargs):
+            calls.append(name)
+            if name.endswith('_mechanical'):
+                p=json.loads(request['messages'][0]['content'])
+                self.assertEqual(p['target_block_ids'],[self.targets[0]])
+                return {'edits':[self.proposal['edits'][0]]},None
+            self.assertTrue(name.endswith('_review'))
+            return self.verdict(json.loads(request['messages'][0]['content'])),None
+        def check(text):
+            if readability_issues(text):raise cq.ContentQualityError('長い文章')
+        with patch('pipeline.tiered_research.checked_request',side_effect=send),patch('pipeline.tiered_research.cached_result',return_value=long):
+            text,r=finish.complete('job',None,report=self.report,context=self.ctx,check_candidate=check)
+        self.assertEqual(calls,['tiered_reader_finish_mechanical','tiered_reader_finish_review'])
+        self.assertEqual(r['scoped_reader_completion']['mechanical_adjustment']['initial_proposal'],long)
+        ctx={**self.ctx,'text':text};cq._require_audit_strict(r,cq.snapshot(**ctx),stage='article',context=ctx)
+        bad=copy.deepcopy(r);bad['scoped_reader_completion']['mechanical_adjustment']['target_block_ids'].append(self.targets[1])
+        with self.assertRaises(cq.ContentQualityError):cq._require_audit_strict(bad,cq.snapshot(**ctx),stage='article',context=ctx)
 
     def test_normal_route_reuses_saved_failure_and_does_not_restart_full_QA(self):
         t,r=self.completed();saved=[];ctx=self.ctx
@@ -179,7 +209,7 @@ class ScopedReaderCompletionTests(unittest.TestCase):
 
     def test_completion_budget_roles_cannot_repeat_even_in_unlimited_mode(self):
         from pipeline import quality_budget as qb
-        for role in ('reader_finish_repair','reader_finish_review'):
+        for role in ('reader_finish_repair','reader_finish_mechanical','reader_finish_review'):
             self.assertEqual(qb.review_operation('tiered_'+role),('article',role,1))
             meta={'phase':'article','role':role,'call_limit':1,'request_sha256':'new'}
             value={'calls':[{'status':'accounted','cost_usd':.1,'reserved_usd':.1,'review_operation':{**meta,'request_sha256':'previous'}}]}
