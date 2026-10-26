@@ -296,6 +296,15 @@ def _h2_title_matches(actual: str, target: str) -> bool:
     return False
 
 
+class IncompleteArticleResponse(ContentQualityError):
+    """A received, paid partial response; never discard it before recovery."""
+    def __init__(self,message):
+        self.text=message_text(message)
+        self.input_tokens=message.usage.input_tokens
+        self.output_tokens=message.usage.output_tokens
+        super().__init__('本文生成が出力上限で中断されました。保存した続きだけを補完します。')
+
+
 def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = None) -> tuple[str, int, int]:
     """Single API call. Returns (text, input_tokens, output_tokens)."""
     msg = create_with_retry(
@@ -306,6 +315,7 @@ def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = 
         messages=messages,
     )
     if getattr(msg, 'stop_reason', None) == 'max_tokens':
+        if getattr(msg,'content',None) and message_text(msg).strip():raise IncompleteArticleResponse(msg)
         raise ContentQualityError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
     if getattr(msg, 'stop_reason', 'end_turn') != 'end_turn' or not message_text(msg).strip():
         raise ContentQualityError('本文生成が正常終了していません。')
@@ -336,15 +346,29 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     )
     attempt_messages = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + instruction}]
     total_input = total_output = 0
+    prefix=''
     for attempt in range(2):
-        text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
+        truncated=False
+        try:
+            text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
+        except IncompleteArticleResponse as exc:
+            text,ti,to=exc.text,exc.input_tokens,exc.output_tokens
+            truncated=True
         total_input += ti
         total_output += to
-        cleaned = text.replace(f'【PART{part_number}_END】', '').strip()
+        raw=prefix+text
+        cleaned = raw.replace(f'【PART{part_number}_END】', '').strip()
+        # Preserve the exact response before parsing citations or completing a
+        # suffix. An output limit is not a reason to resend the whole part.
+        if job_id:
+            upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_response_{attempt+1}',
+                content_type='text/markdown',content_text=text,
+                meta={'part':part_number,'attempt':attempt+1,'stop_reason':'max_tokens' if truncated else 'end_turn',
+                      'input_tokens':ti,'output_tokens':to,'audited':False})
         if citation_registry is not None:
-            from .article_citations import render
+            from .article_citations import render_draft
             try:
-                cleaned = render(cleaned, citation_registry, footer=False)
+                cleaned = render_draft(cleaned, citation_registry, footer=False)
             except ContentQualityError as exc:
                 if job_id:
                     upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_attempt_{attempt+1}',
@@ -353,6 +377,7 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
                               'issues':[{'key':'citation_identity','reason':str(exc)}]})
                 raise
         issues = validate_delivery(cleaned, required_outline, contract=contract)
+        if truncated:issues.append({'key':'output_truncated','part':part_number})
         issues += scope_issues(cleaned, facts)
         issues += [{'key':'unsupported_guarantee','claim':v} for v in explicit_risk_guarantees(cleaned)]
         if job_id:
@@ -363,6 +388,15 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
         if not issues:
             return cleaned, total_input, total_output
         if attempt == 0:
+            if truncated:
+                prefix=raw
+                attempt_messages += [
+                    {'role':'assistant','content':text},
+                    {'role':'user','content':'出力上限で途切れた直後から、このパートの未執筆部分だけを続けてください。'
+                     '既存の本文や見出しを再出力せず、途切れた文をつなぎ、指定された章の末尾まで書き切ってください。'
+                     '次パートの章は書かず、最後に【PART'+str(part_number)+'_END】と書いてください。'},
+                ]
+                continue
             attempt_messages += [
                 {'role': 'assistant', 'content': text},
                 {'role': 'user', 'content': '以下の欠落・不備を修正し、このパート全体を再出力してください。'
@@ -573,6 +607,21 @@ def _finish_reader_lead(client, text, outline, keyword, job, learned_rules, revi
     return revised, total_input, total_output, meta
 
 
+def _current_service_map(job_id, outline, service_map):
+    """Refresh a derived map from its current sole authority, without AI calls."""
+    from .editorial_blueprint import placement
+    expected=placement(outline)
+    if service_map is not None and service_map!=expected:
+        upsert_artifact(job_id=job_id,step='service_map_before_projection_refresh',
+            content_type='application/json',content_text=json.dumps(service_map,ensure_ascii=False),
+            meta={'publication_approved':False})
+        upsert_artifact(job_id=job_id,step='service_map',content_type='application/json',
+            content_text=json.dumps(expected,ensure_ascii=False),
+            meta={'derived_from_blueprint':True,'model_calls':0})
+        warn('商品・CTA配置を現在の編集設計から再計算して執筆を続けます。')
+    return expected
+
+
 def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     """Generate full article in 3 parts using Claude Opus."""
     print("[article] Generating article (3 parts)...")
@@ -672,11 +721,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         pass
 
     if (outline.get('meta') or {}).get('blueprint_version'):
-        from .editorial_blueprint import placement
-        expected=placement(outline)
-        if service_map is not None and service_map!=expected:
-            raise ContentQualityError('商品・CTA配置が現在の編集設計と一致しません。')
-        service_map=expected
+        service_map=_current_service_map(job_id,outline,service_map)
 
     if cta_prompt:
         cta_prompt=_build_cta_prompt(cta,service_map)
@@ -777,8 +822,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = _re.sub(r'\\\*', '*', article_text)
     article_text = _re.sub(r'\\_', '_', article_text)
     if citation_registry is not None:
-        from .article_citations import render
-        article_text = render(article_text, citation_registry)
+        from .article_citations import render_draft
+        article_text = render_draft(article_text, citation_registry)
 
     # Preserve the writer output separately. Later review steps may update `article`,
     # but diagnostics must retain what the writing model originally produced.
@@ -838,7 +883,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             warn('リードの長さに確認事項があります。本文と仕上げ履歴を保持して生成を続けます。')
 
     if citation_registry is not None:
-        article_text = render(article_text, citation_registry)
+        article_text = render_draft(article_text, citation_registry)
     delivery_issues = validate_delivery(article_text, outline_text, job.get("word_count_setting"), contract=contract)
     if delivery_issues:
         warn(f'記事に確認事項があります: {json.dumps(delivery_issues, ensure_ascii=False)}')

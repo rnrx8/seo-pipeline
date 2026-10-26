@@ -83,8 +83,12 @@ class OutlineNormalizationTests(unittest.TestCase):
              patch.object(step_article,'upsert_artifact',side_effect=lambda **kw:kw) as save:
             with self.assertRaises(ContentQualityError):
                 step_article._write_complete_part(None,[{'role':'user','content':'執筆'}],2000,outline,[('FAQ',4,400)],3,job_id='j')
-        self.assertEqual([c.kwargs['step'] for c in save.call_args_list],['article_part_3_attempt_1','article_part_3_attempt_2'])
-        self.assertTrue(all(not c.kwargs['meta']['valid'] for c in save.call_args_list))
+        attempts=[c for c in save.call_args_list if '_attempt_' in c.kwargs['step']]
+        raw=[c for c in save.call_args_list if '_response_' in c.kwargs['step']]
+        self.assertEqual([c.kwargs['step'] for c in attempts],['article_part_3_attempt_1','article_part_3_attempt_2'])
+        self.assertTrue(all(not c.kwargs['meta']['valid'] for c in attempts))
+        self.assertEqual(len(raw),2)
+        self.assertTrue(all(c.kwargs['content_text']=='## FAQ\n不完全な本文。' for c in raw))
         self.assertEqual(save.call_args.kwargs['content_text'],'## FAQ\n不完全な本文。')
 
     def test_scope_error_is_repaired_in_the_writing_part(self):
@@ -95,5 +99,6 @@ class OutlineNormalizationTests(unittest.TestCase):
             result=step_article._write_complete_part(None,[{'role':'user','content':'執筆'}],2000,'### H2：無料範囲',[('無料範囲',4,30)],1,job_id='j',facts='> 女性は基本機能が無料。男性はメッセージが有料。 [confirmed]')
         self.assertEqual(result[0],fixed)
         self.assertEqual(call.call_count,2)
-        self.assertFalse(save.call_args_list[0].kwargs['meta']['valid'])
-        self.assertTrue(save.call_args_list[1].kwargs['meta']['valid'])
+        attempts=[c for c in save.call_args_list if '_attempt_' in c.kwargs['step']]
+        self.assertFalse(attempts[0].kwargs['meta']['valid'])
+        self.assertTrue(attempts[1].kwargs['meta']['valid'])
