@@ -385,12 +385,17 @@ class AnswerScopeHandoffTests(unittest.TestCase):
         plan=plan_fixture();plan['reader_design']=context
         matrix={'valid':True,'policy_sha256':req.matrix_policy(),'items':[dict(id='q1',verified=True,status='confirmed',
             basis='guidance',answer='方法の違い',publication_conditions=[],claim_limits=[],evidence=[])]}
-        variants=[publication_design(context),bundle_data(plan,matrix,quotes=False,planning=True)['reader_design'],
-                  repair_requirements({'research_plan':plan})['reader_design']]
-        for projected in variants:
+        from pipeline.initial_authoring import model_context
+        canonical=[publication_design(context),bundle_data(plan,matrix,quotes=False,planning=True)['reader_design']]
+        writing=[model_context(canonical[0]),repair_requirements({'research_plan':plan})['reader_design']]
+        for projected in canonical+writing:
             self.assertNotIn('answer_scope_policy',projected)
             self.assertEqual(projected['request'],brief['request'])
+        for projected in canonical:
             self.assertEqual(projected['reader_needs'][0]['tone'],value['selected'][0]['tone'])
+        for projected in writing:
+            self.assertNotIn('tone',projected['reader_needs'][0])
+            self.assertEqual(projected['reader_needs'][0]['desired_state'],value['selected'][0]['desired_state'])
         self.assertEqual(context,original)
         self.assertEqual(context['answer_scope_policy'],rn.ANSWER_SCOPE_POLICY)
 

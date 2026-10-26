@@ -392,6 +392,7 @@ def reserve_claude(payload, input_counter=None):
    raise ContentQualityError('追加調査・修正を含む品質確認の予算上限を超えるため送信前に停止しました。')
   index=len(value['calls'])
   value['calls'].append({'model':model,'provider':'anthropic','category':category,'stage':STAGE.get(),
+    'provider_request_sha256':hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,default=lambda v:v.model_dump(mode='json')).encode()).hexdigest(),
     'reserved_usd':amount,'status':'pending','started_at':time.time(),
     'input_rate_ceiling':ir,'input_rate_basis':rate_basis,**review_metadata()})
  return index

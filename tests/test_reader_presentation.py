@@ -52,7 +52,8 @@ class ReaderPresentationTests(unittest.TestCase):
         self.assertIn(READER_PRESENTATION_POLICY, step_article.SYSTEM_PROMPT)
         self.assertIn('監視や本人確認を実施している事実を、不正利用者の完全排除', step_article.SYSTEM_PROMPT)
         self.assertIn('未確認の数値・条件を断定しない', step_article.SYSTEM_PROMPT)
-        for prompt in (WRITING_POLICY, step_outline.SYSTEM_PROMPT, step_review.SYSTEM_PROMPT, content_quality.AUDIT_SYSTEM):
+        self.assertNotIn(EVIDENCE_POLICY, step_outline.SYSTEM_PROMPT)
+        for prompt in (WRITING_POLICY, step_review.SYSTEM_PROMPT, content_quality.AUDIT_SYSTEM):
             self.assertIn(EVIDENCE_POLICY, prompt)
 
     def test_guarantee_semantics_use_existing_editorial_role_without_extra_call(self):

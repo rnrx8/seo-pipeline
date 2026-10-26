@@ -220,16 +220,10 @@ def validate_structure(text: str, contract: dict[str, Any], *, outline: bool) ->
                     "service_name": name,
                     "preferred_placement": section.get("preferred_placement") or "within_relevant_section",
                 })
-            max_h2s = int(section.get("max_service_introduction_h2s", section.get("max_service_focused_h2s", 1)))
-            service_h2s = coverage.get("service_introduction_h2s") or []
-            if len(service_h2s) > max_h2s:
-                violations.append({
-                    "key": "featured_service_duplicate_h2",
-                    "reason": f"{name}の紹介・推薦を担うH2が重複している",
-                    "service_name": name,
-                    "h2_titles": service_h2s,
-                    "maximum": max_h2s,
-                })
+            # A comparison answer and a later recommendation can both name the
+            # product. Lexical counts cannot establish semantic duplication.
+            # Existing editorial QA owns redundant roles; it must not trigger
+            # deletion or a paid "missing section" repair here.
     return violations
 
 
@@ -366,19 +360,21 @@ def _enrich_service_coverage(outline_text: str, section: dict[str, Any]) -> tupl
 
 
 def deduplicate_service_h2s(text: str, service_name: str, *, outline: bool) -> tuple[str, list[str]]:
-    """Remove redundant service H2 blocks, preferring the naturally worded one."""
-    sections = _service_introduction_h2s(text, service_name, outline=outline)
-    if len(sections) <= 1:
-        return text, []
+    """Remove only byte-identical repeated H2 blocks in legacy prose.
 
-    def score(item: dict[str, Any]) -> tuple[int, int]:
-        title = item["title"]
-        generic = bool(re.search(r"特徴[・と].*(?:料金|活用方法).*(?:始め方|使い方)", title))
-        natural_reason = bool(re.search(r"おすすめ(?:な|の|する)?理由|選ばれる理由", title))
-        return ((4 if natural_reason else 0) - (5 if generic else 0), -int(item["start"]))
-
-    keep = max(sections, key=score)
-    removed = [item for item in sections if item is not keep]
+    Similar titles or matching service names are never deletion evidence.
+    Structured blueprints do not call this legacy cleanup at all.
+    """
+    seen = set()
+    removed = []
+    for item in _extract_h2_sections(text, outline=outline):
+        if not service_name or service_name not in item['title']:
+            continue
+        block = text[item['start']:item['end']].rstrip()
+        if block in seen:
+            removed.append(item)
+        else:
+            seen.add(block)
     working = text
     for item in sorted(removed, key=lambda value: int(value["start"]), reverse=True):
         working = working[:item["start"]].rstrip() + "\n\n" + working[item["end"]:].lstrip()
@@ -386,6 +382,8 @@ def deduplicate_service_h2s(text: str, service_name: str, *, outline: bool) -> t
     removed_titles = [item["title"] for item in removed]
     if outline:
         for title in removed_titles:
+            if title in extract_h2_titles(working, outline=True):
+                continue
             row_pattern = re.compile(rf"^\|\s*{re.escape(title)}\s*\|[^\n]*\n?", re.MULTILINE)
             working = row_pattern.sub("", working)
     return working, removed_titles

@@ -185,7 +185,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     article_text = article_artifact["content_text"]
     actual_count = len(article_text)
     from .generation_context import generation_evidence
-    fact_sheet_text = generation_evidence(job_id, get_artifact(job_id, 'fact_sheet')['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources')))
+    from .initial_authoring import model_evidence, assignment_prompt, brief_from_settings
+    fact_sheet_text = model_evidence(generation_evidence(job_id, get_artifact(job_id, 'fact_sheet')['content_text'], source_evidence(get_artifact(job_id, 'fresh_sources'))))
     outline_text = get_artifact(job_id, 'outline')['content_text']
     job = get_job(job_id)
     try:
@@ -226,7 +227,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         messages=[
             {
                 "role": "user",
-                "content": REVIEW_TEMPLATE.format(
+                "content": assignment_prompt(brief_from_settings(job, {'name': contract.get('featured_service')})) + REVIEW_TEMPLATE.format(
                     article_text=article_text,
                     word_count_instruction=word_count_instruction,
                     content_contract_block=content_contract_block,
