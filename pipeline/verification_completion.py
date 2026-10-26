@@ -121,7 +121,7 @@ def request_for(report, context, edits, source_urls):
     verdict=obj({'status':{'type':'string','enum':['pass','fail']},'reason':STRING})
     schema=obj({'edits':obj({e['id']:obj({k:verdict for k in VERDICTS}) for e in edits}),
                 'resolved_checks':obj({c['key']:verdict for c in failed})})
-    return dict(model=get_step_config('content_audit')[0],max_tokens=2500,system=SYSTEM,
+    return dict(model=get_step_config('content_audit')[0],max_tokens=5000,system=SYSTEM,
         messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
         output_config={'format':{'type':'json_schema','schema':schema}}),current,binding
 
