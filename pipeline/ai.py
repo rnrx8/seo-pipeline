@@ -96,26 +96,33 @@ def validate_model_credentials(job: dict) -> None:
         require_search_config()
 
 
-def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, output_budget_includes_thinking=False, **kwargs):
-    """Call client.messages.create (streaming) with exponential backoff on rate limit errors.
-
-    Uses streaming to support large max_tokens values (>10min threshold).
-    Returns a standard Message object identical to non-streaming create().
-    """
+def prepare_provider_request(request, *, output_budget_includes_thinking=False):
+    """Pure wire normalization shared by sending and saved-input comparison."""
+    import copy
     from .editorial_contract import enrich_request
-    kwargs = enrich_request(kwargs)
+    kwargs = enrich_request(copy.deepcopy(request))
     if is_openai_model(kwargs.get("model")):
-        from .initial_authoring import record_request
-        record_request(kwargs)
-        from .openai_review import create_review_response
-        return create_review_response(**kwargs)
-    from .blueprint_transport import prepare, validate
+        return kwargs,None
+    from .blueprint_transport import prepare
     kwargs, original_blueprint_schema = prepare(kwargs)
     if kwargs.get("model") in ("claude-opus-5-5", "claude-sonnet-5-5"):
         kwargs["output_config"] = {"effort": "medium", **kwargs.get("output_config", {})}
         # Existing budgets were for visible text only; reserve room for thinking.
         if kwargs["model"] == "claude-opus-5-5" and not output_budget_includes_thinking:
             kwargs["max_tokens"] = min(128000, kwargs["max_tokens"] + OPUS_THINKING_ALLOWANCE)
+    return kwargs,original_blueprint_schema
+
+
+def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, output_budget_includes_thinking=False, **kwargs):
+    """Stream a provider request; preserve durable expenditure and saved inputs."""
+    kwargs, original_blueprint_schema=prepare_provider_request(kwargs,
+        output_budget_includes_thinking=output_budget_includes_thinking)
+    if is_openai_model(kwargs.get("model")):
+        from .initial_authoring import record_request
+        record_request(kwargs)
+        from .openai_review import create_review_response
+        return create_review_response(**kwargs)
+    from .blueprint_transport import validate
     if client is None:
         client = anthropic.Anthropic(max_retries=0)
     from .initial_authoring import record_request

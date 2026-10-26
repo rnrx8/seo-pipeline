@@ -251,13 +251,26 @@ def validate(value, ctx):
         omitted[qid]=omission['reason']
     for qid,q in questions.items():
         if q.get('required') or q.get('priority')=='essential':
-            if qid not in assigned:fail('必須論点が編集設計から失われています: '+qid)
+            if qid not in assigned:
+                # A documented omission is an unresolved answer, not broken
+                # structure. The normal delivery policy keeps that distinction;
+                # strict diagnostics and semantic/publication QA still fail it.
+                from .quality_warnings import enabled
+                if qid not in omitted or not enabled():
+                    fail('必須論点が編集設計から失われています: '+qid)
         elif q.get('priority')=='important' and qid not in assigned and qid not in omitted:fail('重要論点の省略理由がありません: '+qid)
     for did,d in decisions.items():
         if d['role']!='supporting' and did not in assigned_decisions:fail('重要な読者判断が構成へ割り当てられていません: '+did)
     validate_progression(value)
     if not all(t.strip() and '\n' not in t for t in value['titles']) or not value['lead_direction'].strip():fail('タイトル・リード方針が不足しています。')
     return value
+
+
+def required_omissions(value, ctx):
+    assigned={q for s in value['sections'] for q in s['research_ids']}
+    essential={q['id'] for q in ctx['topics'] if q.get('required') or q.get('priority')=='essential'}
+    return [copy.deepcopy(o) for o in value['omissions']
+            if o['research_id'] in essential-assigned]
 
 
 def trace(value, ctx):
@@ -336,7 +349,9 @@ def render(value, ctx):
 def metadata(value, ctx):
     return {'blueprint_version':VERSION,'editorial_blueprint':copy.deepcopy(value),
         'blueprint_inputs_sha256':fingerprint(ctx),'blueprint_context':copy.deepcopy(ctx),
-        'reader_trace':trace(value,ctx)}
+        'reader_trace':trace(value,ctx),
+        **({'unresolved_required_omissions':required_omissions(value,ctx)}
+           if required_omissions(value,ctx) else {})}
 
 
 def require_projection(artifact, ctx=None):
