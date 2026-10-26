@@ -340,7 +340,7 @@ class ContentContractTests(unittest.TestCase):
         self.assertNotIn("### H2：既婚者クラブの特徴・料金・始め方", repaired)
         self.assertEqual(validate_structure(repaired, contract, outline=True), [])
 
-    def test_duplicate_service_h2_is_detected_and_generic_block_removed(self):
+    def test_semantic_duplication_is_not_inferred_from_product_names(self):
         contract = build_content_contract(
             keyword="既婚者 アプリ おすすめ",
             intent_text="Primary（メイン意図）: Commercial",
@@ -360,14 +360,14 @@ class ContentContractTests(unittest.TestCase):
 ### H2：まとめ
 """
         violations = validate_structure(outline, contract, outline=True)
-        self.assertIn("featured_service_duplicate_h2", [item["key"] for item in violations])
+        self.assertNotIn("featured_service_duplicate_h2", [item["key"] for item in violations])
         repaired, added = repair_outline(outline, contract, violations)
-        self.assertIn("featured_service_duplicate_h2_removed", added)
+        self.assertNotIn("featured_service_duplicate_h2_removed", added)
         self.assertIn("北海道なら既婚者クラブがおすすめの理由", repaired)
-        self.assertNotIn("既婚者クラブの特徴・料金・始め方", repaired)
+        self.assertIn("既婚者クラブの特徴・料金・始め方", repaired)
         self.assertEqual(validate_structure(repaired, contract, outline=True), [])
 
-    def test_article_duplicate_cleanup_preserves_natural_h2_and_summary(self):
+    def test_distinct_service_sections_are_never_deleted_by_lexical_cleanup(self):
         article = """\
 ## 北海道なら既婚者クラブがおすすめの理由
 地域との相性や主な強みを説明します。
@@ -377,10 +377,10 @@ class ContentContractTests(unittest.TestCase):
 結論です。
 """
         repaired, removed = deduplicate_service_h2s(article, "既婚者クラブ", outline=False)
-        self.assertEqual(removed, ["既婚者クラブの特徴・料金・始め方"])
+        self.assertEqual(removed, [])
         self.assertIn("北海道なら既婚者クラブがおすすめの理由", repaired)
         self.assertIn("## まとめ\n結論です。", repaired)
-        self.assertNotIn("汎用的な重複説明", repaired)
+        self.assertIn("汎用的な重複説明", repaired)
 
     def test_usage_and_pricing_sections_are_not_duplicate_recommendations(self):
         contract = {'featured_service':'サービスA','required_sections':[
@@ -392,13 +392,33 @@ class ContentContractTests(unittest.TestCase):
             self.assertEqual(validate_structure(text,contract,outline=outline),[])
             self.assertEqual(deduplicate_service_h2s(text,'サービスA',outline=outline),(text,[]))
 
-    def test_removing_a_duplicate_intro_preserves_independent_usage_section(self):
+    def test_distinct_introduction_and_usage_blocks_survive_cleanup(self):
         text = ('## サービスAがおすすめの理由\n推薦の根拠。\n'
                 '## サービスAの特徴・料金・始め方\n重複紹介。\n'
                 '## サービスAの始め方：登録から利用まで\n必要な手順と条件。\n')
         fixed,removed=deduplicate_service_h2s(text,'サービスA',outline=False)
-        self.assertEqual(removed,['サービスAの特徴・料金・始め方'])
+        self.assertEqual(removed,[])
+        self.assertEqual(fixed,text)
         self.assertIn('必要な手順と条件。',fixed)
+
+    def test_only_identical_legacy_blocks_can_be_removed(self):
+        for outline in (False, True):
+            heading = '### H2：' if outline else '## '
+            block = heading+'サービスAの特徴\n同じ説明。\n'
+            tail = heading+'まとめ\n結論。\n'
+            fixed, removed = deduplicate_service_h2s(block+block+tail, 'サービスA', outline=outline)
+            self.assertEqual(removed, ['サービスAの特徴'])
+            self.assertEqual(fixed.count('同じ説明。'), 1)
+            self.assertIn(tail, fixed)
+
+    def test_comparison_answer_cannot_delete_separate_recommendation(self):
+        text = ('## サービスAとサービスBはどっちを選ぶ？\n違いと選ぶ結論。\n'
+                '## 話の合う相手を探すならサービスAがおすすめ\n推薦に必要な価値の説明。\n')
+        fixed, removed = deduplicate_service_h2s(text, 'サービスA', outline=False)
+        self.assertEqual(fixed, text)
+        self.assertEqual(removed, [])
+        contract = {'required_sections': [{'key': 'featured_service_coverage', 'service_name': 'サービスA'}]}
+        self.assertNotIn('featured_service_duplicate_h2', [v['key'] for v in validate_structure(text, contract, outline=False)])
 
     def test_legacy_contract_prompt_and_validation_share_introduction_scope(self):
         from pipeline.content_contract import contract_prompt

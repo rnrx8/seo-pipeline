@@ -151,10 +151,31 @@ def validate_shape(value, schema):
 
 
 def canonicalize_research_refs(value, ctx):
-    """Derive accepted claim provenance, never invent claims or evidence."""
+    """Derive provenance from declared ownership, never from wording guesses.
+
+    A motivation branch belongs to a reader need. If a model puts that branch
+    ID in need_ids, map it to its one declared owner. Unknown or ambiguous IDs
+    still fail validation. This does not change answers, prose or acceptance.
+    """
     validate_shape(value,SCHEMA)
     result=copy.deepcopy(value)
+    needs=ctx['reader_design'].get('reader_needs',[])
+    need_ids={n['id'] for n in needs}
+    owners={}
+    for need in needs:
+        for branch in need.get('hypothesis_ids',[]):
+            owners.setdefault(branch,set()).add(need['id'])
     for section in result['sections']:
+        mapped=[]
+        for ref in section['need_ids']:
+            parents=owners.get(ref,set())
+            target=next(iter(parents)) if ref not in need_ids and len(parents)==1 else ref
+            if target not in mapped:mapped.append(target)
+        # A reader decision is already a declared answer to its same-ID need.
+        # Do not ask the model to re-enter that edge consistently in two arrays.
+        for ref in section['decision_ids']:
+            if ref in need_ids and ref not in mapped:mapped.append(ref)
+        section['need_ids']=mapped
         for element in section['answer_elements']:
             for ref in element['claim_ids']:
                 claim=ctx['accepted_claims'].get(ref)

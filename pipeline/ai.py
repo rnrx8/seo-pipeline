@@ -108,6 +108,8 @@ def create_with_retry(client: anthropic.Anthropic, max_retries: int = 5, *, outp
             kwargs["max_tokens"] = min(128000, kwargs["max_tokens"] + OPUS_THINKING_ALLOWANCE)
     if client is None:
         client = anthropic.Anthropic(max_retries=0)
+    from .initial_authoring import record_request
+    record_request(kwargs)
     if tiered_review_enabled():
         from .quality_budget import reserve_claude, settle
         def count_input(payload):

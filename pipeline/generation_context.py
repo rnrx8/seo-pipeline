@@ -3,7 +3,7 @@ import copy
 import json
 
 POLICY_VERSION='generation-evidence-v7-reader-progression'
-POLICY='''以下は調査の合格後に採用された回答・条件と省略項目。回答の対象・期間・適用条件を維持する。
+POLICY='''以下は保存済み調査から執筆に引き継ぐ回答・条件と省略項目。全体QAの合格を意味しない。回答の対象・期間・適用条件を維持する。
 reader_designの背景・感情・商品適合は設計上の仮説であり検証済み事実ではない。reader_decisionsの主回答と前後関係を保持し、問い・必要な回答・伝え方・読後の状態を構成と本文へ反映する。商品資料の主張や心理仮説から新しい事実を追加せず、確認済みdecisionsの範囲で説明する。
 本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
 引用は回答の根拠であり、引用内の別の情報を自由に追加するための資料ではない。
@@ -162,7 +162,9 @@ def repair_requirements(requirements, *, planning=False):
     plan=result.get('research_plan',{})
     plan.pop('scope_reason',None)
     plan.pop('competitor_context',None)
-    if plan.get('reader_design'):plan['reader_design']=publication_design(plan['reader_design'])
+    if plan.get('reader_design'):
+        from .initial_authoring import model_context
+        plan['reader_design']=model_context(publication_design(plan['reader_design']))
     if plan.get('reader_design'):
         result.pop('intent_analysis',None);result.pop('intent_value_context',None)
         result['reader_design']=copy.deepcopy(plan['reader_design'])

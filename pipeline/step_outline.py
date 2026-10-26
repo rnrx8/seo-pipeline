@@ -1,4 +1,5 @@
-from .fresh_sources import WRITING_POLICY
+from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
+from .initial_authoring import metadata as authoring_metadata
 from .outline_policy import current_policy
 from .outline_design import POLICY as OUTLINE_DESIGN_POLICY, assignment_issues, topic_assignments
 from urllib.parse import urlsplit
@@ -408,6 +409,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     service_prompt = ""
     cta_prompt = ""
     extra_instructions = ""
+    service = cta = None
     job = get_job(job_id)
     computed_target = None
     word_count_instruction = "- ユーザーの文字数指定はありません。各章の回答要素から必要な分量を見積もる。競合の取得文字数が不明なら文字数を推測して必須目標にしない。"
@@ -458,6 +460,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     except Exception as e:
         print(f"[outline] Warning: could not load job settings: {e}")
 
+    from .initial_authoring import assignment_prompt, model_context, model_evidence, brief_from_settings
+    editorial_assignment = assignment_prompt(brief_from_settings(job, service, cta))
+    fact = {**fact, 'content_text': model_evidence(fact['content_text'])}
+    if structured_intent:
+        intent = {**intent, 'content_text': model_evidence(intent['content_text'])}
     client = anthropic.Anthropic(api_key=api_key)
     blueprint_context = None
     blueprint_meta = {}
@@ -467,7 +474,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         prompt = (blueprint.POLICY + '\nキーワード: ' + keyword
             + '\nタイトルは自然な日本語で主要語を含む3案、32字程度・最大36字。リードは既存方針を引き継ぐ設計のみ。'
             + '\n分量指定: ' + word_count_instruction
-            + '\n制作資料（事実と設計仮説は区別）:\n' + json.dumps(blueprint_context, ensure_ascii=False)
+            + '\n制作資料（事実と設計仮説は区別）:\n' + json.dumps(model_context(blueprint_context), ensure_ascii=False)
             + structure_prompts + company_prompt + service_prompt + cta_prompt + extra_instructions)
         prompt += '\n制作依頼の記事目的と、計画QAで確認した読者判断・商材適合を構成へ反映する。推薦の方向と主回答の扱いは共通の「比較から選ぶ判断と推薦」に従う。'
         # Carry the plan-reviewed CTA decision; readiness QA checks its rationale.
@@ -477,6 +484,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         prompt = USER_TEMPLATE.format(keyword=keyword,intent_text=intent['content_text'],
             fact_text=fact['content_text'],serp_text=authoring_serp(serp['content_text'],structured_intent=False),
             word_count_instruction=word_count_instruction) + structure_prompts + chains_prompt + company_prompt + service_prompt + cta_prompt + extra_instructions
+    prompt = editorial_assignment + prompt
     request = dict(
         **({'output_config':blueprint.OUTPUT_CONFIG} if structured_intent else {}),
         model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM_PROMPT,
@@ -513,7 +521,12 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
             outline_text = message_text(message)
     if structured_intent:
         try:
-            blueprint_value = blueprint.validate(blueprint.canonicalize_research_refs(json.loads(outline_text), blueprint_context), blueprint_context)
+            raw_value=json.loads(outline_text)
+            blueprint_value = blueprint.validate(blueprint.canonicalize_research_refs(raw_value, blueprint_context), blueprint_context)
+            projected=[{'section_id':before['id'],'model_need_ids':before['need_ids'],'need_ids':after['need_ids']}
+                       for before,after in zip(raw_value['sections'],blueprint_value['sections'])
+                       if before['need_ids']!=after['need_ids']]
+            if projected:blueprint_meta['reference_projection']=projected
             blueprint_meta = {**blueprint_meta, **blueprint.metadata(blueprint_value, blueprint_context)}
             outline_text = blueprint.render(blueprint_value, blueprint_context)
         except (ValueError, TypeError, KeyError) as exc:
@@ -544,6 +557,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         content_text=outline_text,
         meta={
             **blueprint_meta,
+            **authoring_metadata(SYSTEM_PROMPT),
             "model": MODEL,
             "input_tokens": total_input,
             "output_tokens": total_output,

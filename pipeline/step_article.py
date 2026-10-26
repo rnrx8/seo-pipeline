@@ -1,6 +1,7 @@
 from .section_identity import bind_sections
 from .claim_scope import scope_issues
 from .fresh_sources import PUBLICATION_WRITING_POLICY as WRITING_POLICY
+from .initial_authoring import metadata as authoring_metadata
 from .content_quality import ContentQualityError, confirmed_facts, require_audit, intent_review_requirements, snapshot, source_evidence, explicit_risk_guarantees
 import json
 import re as _re
@@ -526,6 +527,8 @@ def _finish_reader_lead(client, text, outline, keyword, job, learned_rules, revi
     if value is None:
         return text, 0, 0, None
     requirements = {k:job[k] for k in ('article_purpose','target_audience','custom_prompt','tone_style','citation_style') if job.get(k)}
+    from .initial_authoring import assignment, brief_from_settings
+    requirements['editorial_assignment'] = job.get('_editorial_assignment', assignment(brief_from_settings(job)))
     requirements['learned_style_rules'] = [r['rule_text'] for r in learned_rules if r.get('rule_text')]
     payload = editing_payload(text, value, outline['meta']['blueprint_context'], keyword, requirements)
     if review_feedback:
@@ -610,6 +613,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     extra_instructions = ""
     service_prompt = ""
     cta_prompt = ""
+    service = cta = None
     job = get_job(job_id)
     # Final review uses these same account rules. Apply them during writing so
     # they do not arrive as new requirements only after a paid draft exists.
@@ -723,12 +727,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             print(f"[article] word_count_setting={word_count_setting!r} → max_tokens per PART = {p1_max}")
 
     from .generation_context import generation_evidence
-    writing_context=generation_evidence(job_id,fact['content_text'],sources)
+    from .initial_authoring import assignment, assignment_prompt, model_evidence, brief_from_settings
+    editorial_brief = brief_from_settings(job, service, cta)
+    job = {**job, '_editorial_assignment': assignment(editorial_brief)}
+    writing_context=model_evidence(generation_evidence(job_id,fact['content_text'],sources))
+    if structured_intent:
+        intent = {**intent, 'content_text': model_evidence(intent['content_text'])}
     citation_registry = None
     if job.get('citation_style') == 'inline_footnote':
         from .article_citations import from_context
         citation_registry = from_context(writing_context)
-    base_user = USER_TEMPLATE.format(
+    base_user = assignment_prompt(editorial_brief) + USER_TEMPLATE.format(
         keyword=keyword,
         intent_text=intent["content_text"],
         outline_text=outline_text,
@@ -812,9 +821,11 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         )
 
     service_name_for_guard = contract.get("featured_service") or ""
-    article_text, duplicate_service_h2s_removed = deduplicate_service_h2s(
-        article_text, service_name_for_guard, outline=False
-    )
+    duplicate_service_h2s_removed = []
+    if blueprint_value is None:
+        article_text, duplicate_service_h2s_removed = deduplicate_service_h2s(
+            article_text, service_name_for_guard, outline=False
+        )
     if duplicate_service_h2s_removed:
         print(f"[article] Removed duplicate service H2s: {duplicate_service_h2s_removed}")
 
@@ -861,6 +872,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_text=article_text,
         meta={
             "model": get_step_config("article")[0],
+            **authoring_metadata(SYSTEM_PROMPT),
             "input_tokens": total_input,
             "output_tokens": total_output,
             "parts": 3,
