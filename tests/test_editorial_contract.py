@@ -1,6 +1,7 @@
 import copy
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from pipeline import editorial_contract as ec, initial_authoring as ia, production_brief as pb, db
 
@@ -261,7 +262,7 @@ class EditorialPreflightTests(unittest.TestCase):
         with ec.use(contract):
             request=ec.enrich_request(request)
             partial={'content_text':text[:cut], 'meta':{'stop_reason':'max_tokens','request_sha256':oc.fingerprint(request)}}
-            with patch.object(tr,'checked_request',return_value=({'omissions':[]},None)):
+            with patch.object(tr,'get_optional_artifact',return_value=None),patch.object(oc,'get_optional_artifact',return_value=None),patch.object(tr,'checked_request',return_value=({'omissions':[]},SimpleNamespace(input_tokens=0,output_tokens=0))):
                 complete,_=oc.complete('j',partial,request,context,None)
         self.assertEqual(complete,value)
         self.assertNotIn('内部の注意',bp.render(complete,context))

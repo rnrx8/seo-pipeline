@@ -23,6 +23,10 @@ class ContentQualityError(ValueError):
     """A bounded quality repair failed; do not retry the entire paid pipeline."""
 
 
+class ResponseIncompleteError(ContentQualityError):
+    """Provider output did not finish; this is not an article-quality verdict."""
+
+
 class ContentPatchValidationError(ContentQualityError):
     """A fully saved patch is invalid and has not been applied."""
 
@@ -58,7 +62,9 @@ def confirmed_facts(text: str) -> str:
 
 def response_text(message) -> str:
     if getattr(message, 'stop_reason', None) != 'end_turn':
-        raise ContentQualityError('品質検査の応答が完了していません。')
+        reason=getattr(message,'stop_reason',None)
+        raise ResponseIncompleteError('モデルの応答が出力上限で中断されました。' if reason=='max_tokens'
+                                      else 'モデルの応答が正常終了していません。')
     return '\n'.join(b.text for b in message.content
                      if getattr(b, 'type', 'text') == 'text' and hasattr(b, 'text'))
 

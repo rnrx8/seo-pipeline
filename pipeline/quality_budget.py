@@ -61,7 +61,7 @@ def review_operation(step):
  if step in ('tiered_reader_finish_repair','tiered_reader_finish_mechanical','tiered_reader_finish_review'):return 'article',step.removeprefix('tiered_'),1
  if step in ('tiered_editorial_finish_repair','tiered_editorial_finish_review','tiered_editorial_finish_mechanical','tiered_editorial_finish_titles','tiered_editorial_finish_recheck'):return 'article',step.removeprefix('tiered_'),1
  if step=='outline_journey_reference_recheck':return 'outline','journey_reference_recheck',1
- if step=='outline_suffix_completion':return 'outline','suffix_completion',1
+ if step=='outline_suffix_completion' or (step.startswith('outline_suffix_completion_') and step.removeprefix('outline_suffix_completion_').isdigit()):return 'outline','suffix_completion',1
  if step=='tiered_prose_finish_repair':return 'article','prose_finish_repair',1
  if step=='tiered_prose_finish_review':return 'article','prose_finish_review',1
  if step=='tiered_audit_research':return 'outline','audit',2
