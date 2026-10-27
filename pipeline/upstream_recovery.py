@@ -73,6 +73,11 @@ def execute(job_id,keyword,key,state,api_key):
         for finding in report['editorial_findings']:
             if finding.get('stage_to_fix')=='research':finding['stage_to_fix']='outline'
         mapped=r.outline_report(article,outline,report)
+        if not any(route['stage']=='outline' for route in state['routing_receipt']['routes']):
+            # Updating factual instructions is not permission to reparent,
+            # reorder or expand chapters. Keep the existing article design.
+            mapped['structural_issues']=[]
+            mapped['blueprint_issues'][0]['repair_kind']='editorial'
         source_ids={q for route in state['routing_receipt']['routes'] if route['stage']=='research'
                     for q in route['research_ids']}
         # Rechecked facts can affect any section using them, not just the quoted

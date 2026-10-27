@@ -113,3 +113,14 @@ class DependencyRecoveryTests(unittest.TestCase):
         before=u.immutable_signature('job')
         self.store['production_brief']['meta']['editorial_contract']['assignment']['product']='B'
         self.assertNotEqual(before,u.immutable_signature('job'))
+
+    def test_factual_refresh_does_not_authorize_heading_restructuring(self):
+        report=copy.deepcopy(self.report);report['editorial_findings'][0]['stage_to_fix']='research'
+        state={'round':1,'routed_report':report,
+            'routing_receipt':{'routes':[{'stage':'research','research_ids':['q1']}]}}
+        with patch('pipeline.step_research_guard.repair_outline',return_value='scoped repair') as repair:
+            self.assertEqual(u.execute('job','kw','outline',state,None),'scoped repair')
+        mapped=repair.call_args.args[2]
+        self.assertEqual(mapped['structural_issues'],[])
+        self.assertEqual(mapped['blueprint_issues'][0]['repair_kind'],'editorial')
+        self.assertEqual(mapped['material_refresh_question_ids'],['q1'])
