@@ -1012,6 +1012,19 @@ def _require_matrix_strict(job_id):
     return matrix
 
 
+def require_authoring_matrix(job_id):
+    """Read current reviewed material without declaring research complete.
+
+    Both initial and recovery writers consume the same claim projection. A
+    failed coverage verdict cannot hide supported sibling claims; pending,
+    stale or mismatched material cannot acquire publication permission here.
+    """
+    matrix=json.loads(get_artifact(job_id,'research_matrix')['content_text'])
+    if not matrix_ready_for_draft(job_id,matrix):
+        raise ContentQualityError('執筆資料の調査確認が進行中、または元資料・質問との対応が変更されています。')
+    return matrix
+
+
 def require_matrix(job_id):
     from .quality_warnings import enabled, warn
     try:

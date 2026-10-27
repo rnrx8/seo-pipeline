@@ -17,10 +17,10 @@ def repair_outline(job_id: str, keyword: str, report: dict, client=None) -> dict
     from .ai import create_with_retry, get_step_config, message_text, tiered_review_enabled
     from .content_edits import REPAIR_OUTPUT_CONFIG, apply_block_edits, content_blocks, scoped_repair_output_config
     from .generation_context import generation_evidence
-    from .research_requirements import require_matrix
+    from .research_requirements import require_authoring_matrix
     from .outline_policy import require_current_outline
     require_current_outline(get_artifact(job_id, 'outline'))
-    require_matrix(job_id)
+    require_authoring_matrix(job_id)
     artifact = get_artifact(job_id, 'outline')
     from .outline_repair_progress import prepare, completed
     # Legacy direct callers may not supply valid; the native guard always does.
@@ -109,10 +109,10 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
 
 def _run_legacy(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from . import step_outline, step_structure_guard
-    from .research_requirements import require_matrix
+    from .research_requirements import require_authoring_matrix
     from .outline_policy import require_current_outline
     require_current_outline(get_artifact(job_id, 'outline'))
-    require_matrix(job_id)
+    require_authoring_matrix(job_id)
     client = anthropic.Anthropic(api_key=api_key)
     upsert_artifact(job_id=job_id, step='research_validation', content_type='application/json',
                     content_text=json.dumps({'valid': False, 'status': 'running'}), meta={'valid': False})
@@ -125,7 +125,7 @@ def _run_legacy(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         if (outline_artifact.get('meta') or {}).get('blueprint_version'):
             from .editorial_blueprint import require_projection,context
             from .research_requirements import load_plan
-            require_projection(outline_artifact,context(load_plan(job_id),require_matrix(job_id)))
+            require_projection(outline_artifact,context(load_plan(job_id),require_authoring_matrix(job_id)))
             outline,normalized=outline_artifact['content_text'],False
         else:
             outline, normalized = step_outline.ensure_complete_volume_design(outline_artifact['content_text'], planning_setting(job, outline_artifact),

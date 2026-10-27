@@ -20,8 +20,8 @@ class PartReaderBriefTests(unittest.TestCase):
         original=copy.deepcopy(value)
         brief=part_reader_brief(value,[first['title']])
         rows=json.loads(brief.split('\n')[-1])
-        self.assertEqual([r['section_id'] for r in rows],['s01','s04'])
-        self.assertEqual([r['reader_feeling'] for r in rows],['最初の章固有の不安','具体例での戸惑い'])
+        self.assertEqual([r['section_id'] for r in rows],['s01','s04','s05'])
+        self.assertEqual([r['reader_feeling'] for r in rows],['最初の章固有の不安','具体例での戸惑い',''])
         self.assertNotIn('別の章固有の焦り',brief)
         self.assertEqual(value,original)
 
@@ -59,7 +59,7 @@ class PartReaderBriefTests(unittest.TestCase):
         child['answer_elements']=[{'instruction':'子の回答','claim_ids':[unit['id']]}]
         value['sections'].insert(1,child)
         rows=json.loads(part_reader_brief(value,[first['title']],ctx).split('\n')[-1])
-        self.assertEqual([r['section_id'] for r in rows],[first['id']])
+        self.assertEqual([r['section_id'] for r in rows],[first['id'],'s10'])
         self.assertIn(unit,rows[0]['accepted_claims'])
         self.assertNotIn('子節固有の適用条件',part_reader_brief(value,[value['sections'][-1]['title']],ctx))
 
@@ -68,5 +68,24 @@ class PartReaderBriefTests(unittest.TestCase):
         n=ctx['reader_design']['reader_needs'][0];n['desired_state']='家族と落ち着いて過ごす時間'
         ctx['reader_design']['reader_needs'].append({'id':'unrelated','desired_state':'別の章の目的'})
         rows=json.loads(part_reader_brief(value,[first['title']],ctx).split('\n')[-1])
-        self.assertEqual(rows[0]['reader_goals'],[{'need_id':n['id'],'desired_state':'家族と落ち着いて過ごす時間'}])
+        self.assertEqual(rows[0]['reader_needs'][0]['id'],n['id'])
+        self.assertEqual(rows[0]['reader_needs'][0]['desired_state'],'家族と落ち着いて過ごす時間')
         self.assertNotIn('別の章の目的',json.dumps(rows,ensure_ascii=False))
+
+    def test_writer_and_reviewer_share_causal_motivation_and_child_scope(self):
+        from pipeline.article_design import section_reader_basis
+        from pipeline.reader_qa import packets
+        from test_article_progression import fixture
+        saved,design,text,_,_=fixture()
+        need=design['reader_needs'][0]
+        need['motivation_context']=[{'context':'同じ困り事が繰り返される',
+            'motivation_links':[{'from':'話しかける','question':'なぜためらうか','to':'反応が薄くさみしい'}],
+            'root_desire':'気持ちを受け止めてもらいたい'}]
+        bases={s['id']:section_reader_basis(s,design['sections'],design['reader_needs']) for s in design['sections']}
+        for packet in packets(text,saved['content_text'],design):
+            for case in packet['cases']:
+                self.assertEqual(case['reader_basis'],bases[case['id']])
+        child=next(b for b in bases.values() if b['progression_scope']=='inherited_context_only')
+        self.assertEqual(child['reader_feeling'],'')
+        self.assertTrue(child['parent_context'])
+        self.assertEqual(bases[design['sections'][0]['id']]['reader_needs'][0]['motivation_context'],need['motivation_context'])

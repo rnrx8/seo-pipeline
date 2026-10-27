@@ -443,7 +443,7 @@ class ScopedReviewTests(unittest.TestCase):
             stack.enter_context(patch.object(guard,'get_artifact',side_effect=lambda j,s:copy.deepcopy(artifacts[s])))
             stack.enter_context(patch.object(guard,'upsert_artifact',side_effect=write))
             stack.enter_context(patch.object(guard,'intent_review_requirements',return_value=self.req))
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value={}))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value={}))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value={'items':[]}))
             stack.enter_context(patch('pipeline.step_outline.ensure_complete_volume_design',side_effect=lambda t,w,**kw:(t,False)))
             stack.enter_context(patch('pipeline.step_structure_guard.validate_structure',return_value=[]))

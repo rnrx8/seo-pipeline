@@ -227,7 +227,7 @@ class BlueprintTests(unittest.TestCase):
             stack.enter_context(patch.object(step_outline,'get_job',return_value={}))
             stack.enter_context(patch.object(step_outline.anthropic,'Anthropic'))
             stack.enter_context(patch('pipeline.outline_completion.get_optional_artifact',return_value=None))
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.generation_context.authoring_intent',return_value='reader design'))
@@ -251,7 +251,7 @@ class BlueprintTests(unittest.TestCase):
         report={'checks':[{'key':'coverage','status':'fail','reason':'結論を具体化'}],
             'blueprint_issues':[{'repair_kind':'editorial','section_ids':['s01']}]}
         with ExitStack() as stack:
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.db.get_artifact',return_value={'content_text':'{"required_sections":[]}'}))
@@ -265,7 +265,7 @@ class BlueprintTests(unittest.TestCase):
 
     def test_source_gap_repair_does_not_send_model_request(self):
         plan,_,matrix,ctx,v=fixture()
-        with patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.ai.create_with_retry') as send:
+        with patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.ai.create_with_retry') as send:
             with self.assertRaises(cq.ContentQualityError):bp.repair('job','条件',{'checks':[],'evidence_pending':True},artifact(v,ctx),None)
         send.assert_not_called()
 
@@ -290,7 +290,7 @@ class BlueprintTests(unittest.TestCase):
         from pipeline import step_service_map,step_cta_inject
         plan,pages,matrix,ctx,v=fixture();a=artifact(v,ctx)
         inputs={'outline':a,'content_contract':{'content_text':'{"required_sections":[]}'},'fact_sheet':{'content_text':req.accepted_facts(matrix,plan)},'fresh_sources':{'content_text':json.dumps(pages)}}
-        with patch.object(step_service_map,'get_job',return_value={}),patch.object(step_service_map,'get_artifact',side_effect=lambda j,k:inputs[k]),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch.object(step_service_map,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(step_service_map,'create_with_retry') as send:
+        with patch.object(step_service_map,'get_job',return_value={}),patch.object(step_service_map,'get_artifact',side_effect=lambda j,k:inputs[k]),patch('pipeline.research_requirements.load_plan',return_value=plan),patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix),patch.object(step_service_map,'upsert_artifact',side_effect=lambda **kw:kw),patch.object(step_service_map,'create_with_retry') as send:
             sm=step_service_map.run('job','条件')
         send.assert_not_called();self.assertEqual(json.loads(sm['content_text'])['cta_after_h2'],[])
         article={'content_text':'## 比較\n選び方\n## まとめ\n要点','meta':{}}
@@ -316,7 +316,7 @@ class BlueprintTests(unittest.TestCase):
         class Captured(Exception):pass
         with ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'sonnet','QUALITY_RESEARCH_ROUTING':'legacy'}))
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict'))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch.object(guard,'get_artifact',side_effect=lambda j,k:artifacts[k]))
@@ -338,7 +338,7 @@ class BlueprintTests(unittest.TestCase):
             # An invalid CURRENT research matrix must still block even in a
             # warn-and-continue context. Old editorial diagnostics cannot grant
             # publication approval, or trigger another prebody model QA.
-            with patch('pipeline.research_requirements.require_matrix',side_effect=cq.ContentQualityError('unverified current facts')),patch('pipeline.quality_warnings.enabled',return_value=True):
+            with patch('pipeline.research_requirements.require_authoring_matrix',side_effect=cq.ContentQualityError('unverified current facts')),patch('pipeline.quality_warnings.enabled',return_value=True):
                 with self.assertRaises(cq.ContentQualityError):step_article.run('job','条件')
             self.assertEqual(writer.call_count,1)
             sent=json.dumps(writer.call_args.args[1:],ensure_ascii=False)+json.dumps(writer.call_args.kwargs,ensure_ascii=False)

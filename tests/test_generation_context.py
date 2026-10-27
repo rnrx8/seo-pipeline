@@ -100,20 +100,30 @@ class GenerationContextTests(unittest.TestCase):
         self.assertNotIn('review-bookkeeping.example',data)
         self.assertIn('2025年1月',data)
 
-    def test_invalid_or_missing_question_cannot_become_writing_context(self):
+    def test_incomplete_review_projects_known_answers_without_promoting_coverage(self):
         plan,pages,matrix=self.data()
-        for change in ({'valid':False},{'items':[]}):
-            with self.assertRaises(ContentQualityError):decision_bundle(plan,{**matrix,**change},quotes=True)
+        matrix['valid']=False
+        original=copy.deepcopy(matrix)
+        data=json.loads(decision_bundle(plan,matrix,quotes=True).rsplit('\n',1)[1])
+        self.assertEqual(data['decisions'][0]['answer'],matrix['items'][0]['answer'])
         matrix['items'][0]['verified']=False
-        with self.assertRaises(ContentQualityError):decision_bundle(plan,matrix,quotes=True)
+        data=json.loads(decision_bundle(plan,matrix,quotes=True).rsplit('\n',1)[1])
+        self.assertEqual(data['decisions'],[])
+        self.assertFalse(matrix['valid'])
+        self.assertEqual(original['items'][0]['answer'],matrix['items'][0]['answer'])
+
+    def test_missing_question_cannot_become_writing_context(self):
+        plan,pages,matrix=self.data()
+        for change in ({'items':[]},{'items':[None]}):
+            with self.assertRaises(ContentQualityError):decision_bundle(plan,{**matrix,**change},quotes=True)
 
     def test_all_providers_require_validated_projected_evidence(self):
-        with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'}),patch('pipeline.research_requirements.require_matrix',side_effect=ContentQualityError('stale')) as check:
+        with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':'tiered','QUALITY_RESEARCH_ROUTING':'focused'}),patch('pipeline.research_requirements.require_authoring_matrix',side_effect=ContentQualityError('stale')) as check:
             with self.assertRaises(ContentQualityError):generation_evidence('job','facts','sources')
             check.assert_called_once_with('job')
         plan,_,matrix=self.data()
         for provider in ('astra','sonnet','tiered'):
-            with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
+            with patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider}),patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix),patch('pipeline.research_requirements.load_plan',return_value=plan):
                 from pipeline.generation_context import POLICY_VERSION
                 self.assertIn(POLICY_VERSION,generation_evidence('job','facts','sources'))
 
@@ -161,7 +171,7 @@ class GenerationContextTests(unittest.TestCase):
                 raise Captured()
             with self.subTest(stage=module.__name__,provider=provider),ExitStack() as stack:
                 stack.enter_context(patch.dict(os.environ,{'ARTICLE_REVIEW_PROVIDER':provider,'QUALITY_RESEARCH_ROUTING':'focused'}))
-                stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+                stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
                 stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
                 stack.enter_context(patch.object(module,'get_artifact',side_effect=lambda j,k:artifacts[k]))
                 stack.enter_context(patch.object(module,'get_job',return_value={'word_count_setting':'5,000字', **({'tenant_id':'tenant'} if module==step_article else {})}))

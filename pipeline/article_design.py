@@ -5,7 +5,7 @@ from .editorial_blueprint import require_projection,fingerprint
 from .content_edits import content_blocks
 from .section_identity import bind_sections
 
-VERSION='article-reader-design-v5-chapter-needs'
+VERSION='article-reader-design-v6-shared-chapter-basis'
 REVIEW_POLICY='''本文のdecision_reviewsでは、article_designの読者判断ごとに必要回答の実現を個別に確認する。
 構成・reader_correspondenceは設計と位置対応であり、実際の回答の証明ではない。本文の具体的記述をreasonに示し、比較・選び分け・手順・判断に必要な説明が実在するか確認する。lead_directionは設計指示であり、実際のリードの主題・対象・読む動機を照合する資料。原設計の弱さをそのまま合格基準にせず、共通の対象・選ぶ結論・章の約束の確認も行う。設計した感情の文言そのものや、毎章の共感・CTA文は要求しない。章の役割に応じた理解・判断・説明を確認し、商材への誘導があること自体を不合格にしない。
 不足はmissing_requirementsと、補うべき実在する段落IDのaffected_blocksへ記録する。全体coverageがpassでも主要な必要回答の不足を相殺しない。'''
@@ -29,6 +29,32 @@ def design_context(artifact):
         'sections':[{k:copy.deepcopy(s[k]) for k in fields} for s in value['sections']]}
 
 
+def section_reader_basis(section, sections, needs):
+    """One chapter-local reader brief shared by writing and reader review.
+
+    Preserve causal motivation, not only the terminal desired_state. A child
+    without its own progression inherits context, never an invented feeling.
+    """
+    by_id={s['id']:s for s in sections}
+    before=(section.get('reader_progression') or {}).get('before',{})
+    after=(section.get('reader_progression') or {}).get('after',{})
+    parent=by_id.get(section.get('parent_id'))
+    fields=('id','question','reader_situation','background_emotion','desired_state',
+            'barrier','answer_requirements','after_reading','motivation_context')
+    return {'section_id':section['id'],'heading':section['title'],
+        'question':section['question'],'answer':section['conclusion'],
+        'open_questions':copy.deepcopy(before.get('open_questions',[])),
+        'reader_situation':before.get('understanding',''),
+        'reader_feeling':before.get('emotion',''),
+        'answer_elements':[e['instruction'] for e in section['answer_elements']],
+        'outcome':{k:copy.deepcopy(v) for k,v in after.items() if v},
+        'reader_needs':[{k:copy.deepcopy(n[k]) for k in fields if k in n}
+                        for n in needs if n['id'] in section['need_ids']],
+        'parent_context':({k:copy.deepcopy(parent[k]) for k in
+                           ('id','question','conclusion','reader_progression')} if parent else None),
+        'progression_scope':'own' if section.get('reader_progression') else 'inherited_context_only'}
+
+
 def part_reader_brief(blueprint, h2_titles, context=None):
     """Bring this part's own reader states beside its final writing instruction.
 
@@ -41,16 +67,8 @@ def part_reader_brief(blueprint, h2_titles, context=None):
     sections=blueprint['sections']
     for index,section in enumerate(sections):
         if section['level']==2:selected=section['title'] in titles
-        progression=section.get('reader_progression')
-        if not selected or not progression:continue
-        before=progression['before'];after=progression['after']
-        row={'section_id':section['id'],'heading':section['title'],
-             'question':section['question'],'answer':section['conclusion'],
-             'open_questions':before['open_questions'],
-             'reader_situation':before['understanding'],
-             'reader_feeling':before['emotion'],
-             'answer_elements':[e['instruction'] for e in section['answer_elements']],
-             'outcome':{k:v for k,v in after.items() if v}}
+        if not selected:continue
+        row=section_reader_basis(section,sections,(context or {}).get('reader_design',{}).get('reader_needs',[]))
         if context:
             # The nearby conclusion is an editorial proposal, never a new fact.
             # Keep the actual claim's type/scope beside it, including claims in
@@ -58,8 +76,6 @@ def part_reader_brief(blueprint, h2_titles, context=None):
             end=next((j for j in range(index+1,len(sections)) if sections[j]['level']<=section['level']),len(sections))
             refs=list(dict.fromkeys(cid for s in sections[index:end] for e in s['answer_elements'] for cid in e['claim_ids']))
             row['accepted_claims']=[copy.deepcopy(context['accepted_claims'][cid]) for cid in refs]
-            row['reader_goals']=[{'need_id':n['id'],'desired_state':n['desired_state']} for n in context['reader_design'].get('reader_needs',[])
-                                 if n['id'] in section['need_ids'] and n.get('desired_state')]
         rows.append(row)
     if not rows:return ''
     return ('\n\n【今回のPARTで実現する読者への回答】\n'
@@ -68,7 +84,8 @@ def part_reader_brief(blueprint, h2_titles, context=None):
         'answerや具体策へつなぐ。具体策の提示だけで気持ちまで受け止めた扱いにしない。'
         '仮説は読者全員の気持ちと断定せず、分析用の語句を転記しない。'
         'reader_feelingが空の章に感情を作り足さず、同じ共感文や固定位置を全章に課さない。\n'
-        +('accepted_claimsは採用した主張、answer/answer_elementsは編集上の提案。主張の種別・条件・claim_limitsを保ち、冒頭やまとめの要約でも推論を集計結果や実証事実へ変えない。reader_goalsは本人が望む体験であり、章の判断がその体験へどう役立つかを考える素材。全節への感情の追加指示ではない。\n' if context else '')
+        +'parent_contextは前提理解用。progression_scope=inherited_context_onlyの節に、親の共感を繰り返したり新たな感情を作り足さない。見出し直下は、その問いに対する具体的な答えから始める。\n'
+        +('accepted_claimsは採用した主張、answer/answer_elementsは編集上の提案。主張の種別・条件・claim_limitsを保ち、冒頭やまとめの要約でも推論を集計結果や実証事実へ変えない。reader_needsは本人の事情から望む体験までの仮説。その因果関係と章の役割を理解して言葉を選び、分析の語句を転記しない。全節への感情の追加指示ではない。\n' if context else '')
         +json.dumps(rows,ensure_ascii=False,separators=(',',':')))
 
 

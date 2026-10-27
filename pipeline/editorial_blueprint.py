@@ -217,7 +217,7 @@ def canonicalize_research_refs(value, ctx):
                     section['research_ids'].append(claim['research_id'])
     return result
 
-def validate(value, ctx):
+def validate(value, ctx, *, require_answers=True):
     """Structural referential integrity only; semantic acceptance belongs to review."""
     validate_shape(value,schema(value))
     checked_focus(value['reader_focus'],ctx['reader_design'])
@@ -257,7 +257,7 @@ def validate(value, ctx):
         qid=omission['research_id']
         if qid not in questions or qid in omitted or not omission['reason'].strip():fail('省略論点のID・理由が不正です。')
         omitted[qid]=omission['reason']
-    for qid,q in questions.items():
+    for qid,q in (questions.items() if require_answers else ()):
         if q.get('required') or q.get('priority')=='essential':
             if qid not in assigned:
                 # A documented omission is an unresolved answer, not broken
@@ -270,11 +270,11 @@ def validate(value, ctx):
         elif q.get('priority')=='important' and qid not in assigned and qid not in omitted:
             from .quality_warnings import warn
             warn('重要論点の省略理由がありません: '+qid)
-    for did,d in decisions.items():
+    for did,d in (decisions.items() if require_answers else ()):
         if d['role']!='supporting' and did not in assigned_decisions:
             from .quality_warnings import warn
             warn('重要な読者判断が構成へ割り当てられていません: '+did)
-    validate_progression(value)
+    validate_progression(value,require_outcomes=require_answers)
     if not all(t.strip() and '\n' not in t for t in value['titles']) or not value['lead_direction'].strip():fail('タイトル・リード方針が不足しています。')
     return value
 
@@ -378,7 +378,10 @@ def require_projection(artifact, ctx=None):
         message='編集設計後に読者設計・調査回答が変更されています。執筆には現在の確認済み回答だけを使用します。'
         if not enabled():fail(message)
         warn(message)
-    validate(value,saved)
+    # Reading a saved, incomplete design for review/repair is not acceptance.
+    # Always check shape, references, rendered text and trace; let the explicit
+    # answer review and current full article QA decide whether it is complete.
+    validate(value,saved,require_answers=False)
     if artifact['content_text']!=render(value,saved) or meta.get('reader_trace')!=trace(value,saved):fail('編集設計と表示用構成・対応表が一致しません。')
     return value
 
@@ -492,7 +495,7 @@ def apply_edits(value, response, ctx, *, structural, targets, allow_lead=False, 
         if set(by_id)-{s['id'] for s in value['sections']}:fail('新しい節の挿入位置がありません。')
         candidate['sections']=[by_id[s['id']] for s in value['sections'] if s['id'] in by_id]
     if candidate==value:fail('編集設計に変更がありません。')
-    return validate(canonicalize_research_refs(candidate,ctx),ctx)
+    return validate(canonicalize_research_refs(candidate,ctx),ctx,require_answers=False)
 
 
 def repair_schema(*, allow_lead=False, allow_omissions=False, allow_titles=False, separated=None):
@@ -621,9 +624,13 @@ def repair_targets(artifact, report):
 def repair(job_id, keyword, report, artifact, client, *, repair_progress=None):
     from .ai import create_with_retry,get_step_config,message_text,tiered_review_enabled
     from .db import upsert_artifact,get_artifact,get_job
-    from .research_requirements import load_plan,require_matrix
+    from .research_requirements import load_plan,require_authoring_matrix
     from .step_structure_guard import validate_structure
-    value=require_projection(artifact);ctx=context(load_plan(job_id),require_matrix(job_id));require_projection(artifact,ctx)
+    value=require_projection(artifact);ctx=context(load_plan(job_id),require_authoring_matrix(job_id))
+    if report.get('material_refresh_question_ids'):
+        from .upstream_recovery import require_material_refresh
+        require_material_refresh(job_id,artifact,report['material_refresh_question_ids'])
+    else:require_projection(artifact,ctx)
     if report.get('evidence_pending') or any(i['repair_kind']=='source' for i in report.get('blueprint_issues',[])):
         fail('資料不足を構成の書換えで解決できません。確認結果を保持します。')
     job=get_job(job_id)
@@ -702,7 +709,7 @@ def placement(artifact):
         'blueprint_sha256':fingerprint(value)}
 
 
-def validate_progression(value):
+def validate_progression(value, *, require_outcomes=True):
     """Check shape and link integrity; explanatory/marketing merit is reviewed."""
     sections=value['sections'];positions={s['id']:i for i,s in enumerate(sections)}
     def single_line(text):
@@ -710,7 +717,7 @@ def validate_progression(value):
     for s in sections:
         progression=s['reader_progression']
         if progression is None:
-            if s['level']==2:
+            if s['level']==2 and require_outcomes:
                 from .quality_warnings import warn
                 warn('章全体の読者の変化が未設計です: '+s['id'])
             continue
@@ -721,10 +728,10 @@ def validate_progression(value):
                 else:
                     if len(set(val))!=len(val) or any(not item.strip() for item in val):fail('解消する疑問・未解決の問いが空または重複しています。')
                     for item in val:single_line(item)
-        if s['level']==2 and not (before['understanding'].strip() or before['open_questions']):
+        if require_outcomes and s['level']==2 and not (before['understanding'].strip() or before['open_questions']):
             from .quality_warnings import warn
             warn('章を読む前の理解・問いが不足しています: '+s['id'])
-        if not after['resolved_questions'] or not any(after[k].strip() for k in ('understanding','decision','action','emotion')):
+        if require_outcomes and (not after['resolved_questions'] or not any(after[k].strip() for k in ('understanding','decision','action','emotion'))):
             from .quality_warnings import warn
             warn('この章が解消する疑問・読後の変化が不足しています: '+s['id'])
         marketing=progression['marketing']

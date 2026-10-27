@@ -124,7 +124,7 @@ class ReaderValueRevisionTests(unittest.TestCase):
         changed=bp.LEAD_DIRECTIONS['decision_difficulty']
         patch_value={'edits':[],'delete_ids':[],'section_order':[],'lead_direction':changed,'reader_focus':copy.deepcopy(value['reader_focus'])}
         with ExitStack() as stack:
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.db.get_job',return_value={}))
             stack.enter_context(patch('pipeline.db.get_artifact',return_value={'content_text':'{"required_sections":[]}'}))

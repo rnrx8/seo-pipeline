@@ -21,7 +21,7 @@ def digest(value):
 
 
 def packets(text, outline, design):
-    from .article_design import correspondence
+    from .article_design import correspondence, section_reader_basis
     from .content_edits import content_blocks
     mapping = correspondence(text, outline, design)
     sections = design.get('sections', [])
@@ -55,6 +55,7 @@ def packets(text, outline, design):
         descendants = [s for s in sections if s['id'] != sid and
                        set(rows[s['id']]['block_ids']) & allowed]
         case = {'id': sid, 'section': copy.deepcopy(section),
+                'reader_basis':section_reader_basis(section,sections,list(needs.values())),
                 'section_own_text': own(sid)['own_text'],
                 'article_blocks': [b for b in blocks if b['id'] in allowed],
                 'descendant_designs': copy.deepcopy(descendants),

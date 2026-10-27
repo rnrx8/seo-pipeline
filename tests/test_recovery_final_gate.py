@@ -24,7 +24,7 @@ class RecoveryFinalGateTests(unittest.TestCase):
             stack.enter_context(patch.object(final, 'final_review_requirements', return_value={}))
             stack.enter_context(patch.object(final, 'snapshot', return_value='current'))
             stack.enter_context(patch.object(final, 'upsert_artifact', side_effect=lambda **kw: records.update({kw['step']: kw}) or kw))
-            strict_matrix = stack.enter_context(patch('pipeline.research_requirements._require_matrix_strict',
+            strict_matrix = stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',
                 side_effect=cq.ContentQualityError('資料が変わった') if matrix_error else None, return_value={}))
             strict_audit = stack.enter_context(patch('pipeline.content_quality._require_audit_strict',
                 side_effect=cq.ContentQualityError('QAが未合格') if audit_error else None))

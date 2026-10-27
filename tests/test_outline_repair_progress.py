@@ -100,7 +100,7 @@ class OutlineRepairProgressTests(unittest.TestCase):
             st.enter_context(patch.object(guard, 'intent_review_requirements', return_value={}))
             st.enter_context(patch.object(guard, 'assignment_issues', return_value=[]))
             st.enter_context(patch.object(guard, 'source_evidence', return_value='sources'))
-            st.enter_context(patch('pipeline.research_requirements.require_matrix', return_value={}))
+            st.enter_context(patch('pipeline.research_requirements.require_authoring_matrix', return_value={}))
             st.enter_context(patch('pipeline.research_requirements.load_plan', return_value={}))
             st.enter_context(patch('pipeline.step_outline.ensure_complete_volume_design', side_effect=lambda t,*a,**k:(t,False)))
             st.enter_context(patch('pipeline.step_structure_guard.validate_structure', return_value=[]))

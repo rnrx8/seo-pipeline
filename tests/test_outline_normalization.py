@@ -6,6 +6,10 @@ from pipeline import step_article
 from pipeline.content_quality import ContentQualityError
 
 class OutlineNormalizationTests(unittest.TestCase):
+    def setUp(self):
+        saved=patch.object(step_article,'get_artifact',side_effect=KeyError('No saved response'))
+        saved.start();self.addCleanup(saved.stop)
+
     def test_writer_reuses_exact_outline_but_preserves_missing_or_changed_context(self):
         outline='### H2：FAQ\n#### H3：年齢層は？\n固有の対象条件を維持する。'
         article='## FAQ\n概要です。\n### 年齢層は？\n対象条件を説明します。'

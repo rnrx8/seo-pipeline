@@ -119,6 +119,34 @@ class PartialResearchDeliveryTests(unittest.TestCase):
         self.assertEqual(value['decisions'],[]);self.assertEqual(value['sources'],{})
         self.assertEqual(self.store['research_matrix'],original)
 
+    def test_initial_and_strict_recovery_writers_receive_identical_supported_claims(self):
+        from pipeline.generation_context import generation_evidence
+        item=self.matrix['items'][0]
+        unknown=copy.deepcopy(item['claims'][0])
+        unknown.update(text='未確認の地域検索',operation='地域検索',disposition='withhold',evidence_indices=[])
+        item['claims'].append(unknown);item['additional_sources_needed']=True
+        req.validate_matrix(self.matrix,self.plan,self.pages)
+        self.store['fact_sheet']['content_text']=req.accepted_facts(self.matrix,self.plan)
+        self.matrix['facts_sha256']=digest(self.store['fact_sheet']['content_text']);self.put_matrix()
+        original=copy.deepcopy(self.store)
+        normal=warnings.scoped(lambda j:generation_evidence(j,'',''),'article')('job')
+        with warnings.strict_checks():recovery=generation_evidence('job','','')
+        self.assertEqual(normal,recovery)
+        self.assertIn('q1.c01',recovery);self.assertIn('q1.c02',recovery)
+        self.assertNotIn('未確認の地域検索',recovery)
+        self.assertEqual(self.store['research_matrix'],original['research_matrix'])
+        with self.assertRaises(ContentQualityError):req._require_matrix_strict('job')
+
+    def test_authoring_data_never_reuses_pending_stale_or_mismatched_material(self):
+        for change in ({'status':'running'},{'attempts_sha256':'changed'},
+                       {'facts_sha256':'changed'},{'sources_sha256':'changed'},
+                       {'policy_sha256':'changed'},{'items':[]}):
+            with self.subTest(change=change):
+                original=copy.deepcopy(self.matrix)
+                self.matrix.update(change);self.put_matrix()
+                with self.assertRaises(ContentQualityError):req.require_authoring_matrix('job')
+                self.matrix=original;self.put_matrix()
+
     def test_resume_reuses_completed_failed_review_without_research_or_plan_resend(self):
         keys = ['research_plan', 'fact_sheet', 'research_completeness', 'outline', 'article']
         load = lambda j, k: self.store.get(k)

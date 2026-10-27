@@ -15,6 +15,8 @@ class GenerationStopAuditTests(unittest.TestCase):
     def setUp(self):
         self.network=patch('socket.socket.connect',side_effect=AssertionError('offline only'))
         self.network.start();self.addCleanup(self.network.stop)
+        saved=patch.object(writer,'get_artifact',side_effect=KeyError('No saved response'))
+        saved.start();self.addCleanup(saved.stop)
 
     def test_coverage_and_reader_progression_remain_findings_not_generation_gates(self):
         *_,ctx,value=fixture()
@@ -35,7 +37,8 @@ class GenerationStopAuditTests(unittest.TestCase):
                 self.assertTrue(warning.called)
                 self.assertEqual(saved['meta']['editorial_blueprint'],v)
                 self.assertNotIn('publication_approved',saved['meta'])
-                with self.assertRaises(ContentQualityError):bp.require_projection(saved)
+                self.assertEqual(bp.require_projection(saved),v)
+                with self.assertRaises(ContentQualityError):bp.validate(v,ctx)
 
     def test_unknown_claims_and_corrupted_projections_are_not_accepted_as_evidence(self):
         *_,ctx,value=fixture()

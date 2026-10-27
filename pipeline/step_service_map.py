@@ -149,8 +149,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     require_current_outline(outline)
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import placement,require_projection,context
-        from .research_requirements import load_plan,require_matrix
-        require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
+        from .research_requirements import load_plan,require_authoring_matrix
+        require_projection(outline,context(load_plan(job_id),require_authoring_matrix(job_id)))
         from .draft_readiness import evaluate
         evaluate(job_id,keyword,outline=outline,load=get_artifact,job=get_job(job_id))
         return upsert_artifact(job_id=job_id,step='service_map',content_type='application/json',

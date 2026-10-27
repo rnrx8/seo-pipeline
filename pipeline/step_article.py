@@ -347,24 +347,46 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     attempt_messages = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + instruction}]
     total_input = total_output = 0
     prefix=''
-    for attempt in range(2):
+    for attempt in range(4):
         truncated=False
-        try:
-            text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
-        except IncompleteArticleResponse as exc:
-            text,ti,to=exc.text,exc.input_tokens,exc.output_tokens
-            truncated=True
+        from .editorial_contract import CURRENT
+        from .content_quality import digest
+        request_hash=digest(json.dumps([get_step_config('article')[0],SYSTEM_PROMPT,attempt_messages,
+            max_tokens,CURRENT.get(),required_outline,facts,contract,citation_registry],ensure_ascii=False,sort_keys=True))
+        cached=None
+        if job_id:
+            try:cached=get_artifact(job_id,f'article_part_{part_number}_response_{attempt+1}')
+            except (KeyError,ValueError):pass
+            if (not cached or (cached.get('meta') or {}).get('request_sha256')!=request_hash
+                    or (cached.get('meta') or {}).get('result_sha256')!=digest(cached['content_text'])):
+                try:cached=get_artifact(job_id,f'article_part_{part_number}_receipt_{request_hash[:16]}_{attempt+1}')
+                except (KeyError,ValueError):cached=None
+        meta=(cached or {}).get('meta') or {}
+        reusable=(cached and meta.get('request_sha256')==request_hash
+                  and meta.get('result_sha256')==digest(cached['content_text'])
+                  and meta.get('stop_reason') in ('max_tokens','end_turn'))
+        if reusable:
+            text,ti,to=cached['content_text'],0,0
+            truncated=meta['stop_reason']=='max_tokens'
+        else:
+            try:
+                text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
+            except IncompleteArticleResponse as exc:
+                text,ti,to=exc.text,exc.input_tokens,exc.output_tokens
+                truncated=True
         total_input += ti
         total_output += to
         raw=prefix+text
         cleaned = raw.replace(f'【PART{part_number}_END】', '').strip()
         # Preserve the exact response before parsing citations or completing a
         # suffix. An output limit is not a reason to resend the whole part.
-        if job_id:
-            upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_response_{attempt+1}',
-                content_type='text/markdown',content_text=text,
-                meta={'part':part_number,'attempt':attempt+1,'stop_reason':'max_tokens' if truncated else 'end_turn',
-                      'input_tokens':ti,'output_tokens':to,'audited':False})
+        if job_id and not reusable:
+            receipt={'content_type':'text/markdown','content_text':text,
+                'meta':{'part':part_number,'attempt':attempt+1,'stop_reason':'max_tokens' if truncated else 'end_turn',
+                      'input_tokens':ti,'output_tokens':to,'audited':False,
+                      'request_sha256':request_hash,'result_sha256':digest(text)}}
+            upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_receipt_{request_hash[:16]}_{attempt+1}',**receipt)
+            upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_response_{attempt+1}',**receipt)
         if citation_registry is not None:
             from .article_citations import render_draft
             try:
@@ -387,8 +409,8 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
                                   'issues':issues,'required_outline':required_outline,'audited':False})
         if not issues:
             return cleaned, total_input, total_output
-        if attempt == 0:
-            if truncated:
+        if truncated:
+            if attempt<3 and text.strip() and not (prefix and prefix.endswith(text)):
                 prefix=raw
                 attempt_messages += [
                     {'role':'assistant','content':text},
@@ -397,12 +419,16 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
                      '次パートの章は書かず、最後に【PART'+str(part_number)+'_END】と書いてください。'},
                 ]
                 continue
+            break
+        if attempt == 0:
             attempt_messages += [
                 {'role': 'assistant', 'content': text},
                 {'role': 'user', 'content': '以下の欠落・不備を修正し、このパート全体を再出力してください。'
                  '省略せず、内部メモを消すだけでなく未執筆の解説を補完する。'
                  '不明な事実を捏造せず、確認済み情報で説明する。\n' + json.dumps(issues, ensure_ascii=False)},
             ]
+            continue
+        break
     warn(f'Part {part_number} が未完成です: {json.dumps(issues, ensure_ascii=False)}')
     return cleaned, total_input, total_output
 
@@ -648,12 +674,13 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     except Exception:
         pass
 
-    # 検索意図chains（具体化ワードの受け口）。無くてもパイプラインは継続。
+    # Structured reader needs already contain the selected causal motivation.
+    # Do not overlay the older whole-article phrase list on every chapter.
     chains_prompt = ""
     try:
         chains_artifact = get_artifact(job_id, "intent_chains")
         chains = json.loads(chains_artifact["content_text"]).get("chains", [])
-        chains_prompt = _build_chains_prompt(chains)
+        chains_prompt = '' if structured_intent else _build_chains_prompt(chains)
         if chains_prompt:
             print(f"[article] Loaded {len(chains)} intent chains for concrete phrases")
     except Exception:
@@ -672,8 +699,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     from .step_review import _build_learned_rules_block
     learned_rules = assignment_rules(job)
     structure_prompts += _build_learned_rules_block(learned_rules)
-    from .research_requirements import require_matrix
-    matrix = require_matrix(job_id)
+    from .research_requirements import require_authoring_matrix
+    matrix = require_authoring_matrix(job_id)
     from .quality_context import compact_enabled
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .draft_readiness import evaluate
@@ -702,7 +729,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     if (outline.get('meta') or {}).get('blueprint_version'):
         from .editorial_blueprint import require_projection, context
         from .research_requirements import load_plan
-        blueprint_value=require_projection(outline,context(load_plan(job_id),require_matrix(job_id)))
+        blueprint_value=require_projection(outline,context(load_plan(job_id),require_authoring_matrix(job_id)))
         outline_text=outline['content_text']
         volume_sections=[(s['title'],s['budget']['importance'],s['budget']['chars']) for s in blueprint_value['sections'] if s['level']==2]
     else:

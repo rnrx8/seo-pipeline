@@ -26,6 +26,6 @@ class OutlinePolicyTests(unittest.TestCase):
                  patch.object(guard,'upsert_artifact') as save, \
                  patch.object(guard,'audit') as audit, \
                  patch.object(guard.anthropic,'Anthropic') as client, \
-                 patch('pipeline.research_requirements.require_matrix') as matrix:
+                 patch('pipeline.research_requirements.require_authoring_matrix') as matrix:
                 with self.assertRaises(ContentQualityError): method(*args)
                 save.assert_not_called();audit.assert_not_called();client.assert_not_called();matrix.assert_not_called()

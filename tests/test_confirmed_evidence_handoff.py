@@ -171,7 +171,8 @@ class ConfirmedEvidenceHandoffTests(unittest.TestCase):
     def test_partial_evidence_does_not_clear_strict_completeness(self):
         plan, pages, matrix, _ = self.mixed()
         self.assertTrue(req.validate_matrix(matrix, plan, pages))
-        with self.assertRaises(ContentQualityError): gc.bundle_data(plan, matrix, quotes=True)
+        self.assertTrue(gc.bundle_data(plan, matrix, quotes=True)['decisions'])
+        self.assertFalse(matrix['valid'])
         self.assertFalse(matrix['items'][0]['verified'])
 
     def test_bad_quote_conflict_or_unseen_evidence_stays_out_of_the_partial_view(self):

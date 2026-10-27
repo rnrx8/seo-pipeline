@@ -1,5 +1,6 @@
 """Mandatory semantic audit, bounded corrections, and re-audit of the final text."""
 import json
+import copy
 import re
 import math
 from .step_cta_inject import cta_placement_issues
@@ -210,7 +211,7 @@ article_blocksにあるIDだけを使い、直す段落全体をnewに返す。�
         request['output_budget_includes_thinking'] = True
     return request, packet
 
-def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
+def run(job_id: str, keyword: str, api_key: str | None = None, *, repair_report=None) -> dict:
     job = get_job(job_id)
     artifact = get_artifact(job_id, 'article')
     text = artifact['content_text']
@@ -257,6 +258,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             artifact=upsert_artifact(job_id=job_id,step='article',content_type='text/markdown',content_text=text,
                 meta={**(artifact.get('meta') or {}),'section_map':section_map,'content_audited':False,'content_audit_snapshot':None})
     checkpoint = failed_audit_checkpoint(job_id, snapshot(text, facts, outline, contract, requirements, sources))
+    if repair_report is not None:
+        # Only the dependency router may change the work destination. Keep the
+        # original failures, all role verdicts and exact article snapshot.
+        if (not checkpoint or repair_report.get('snapshot')!=checkpoint['snapshot']
+                or any(repair_report.get(k)!=checkpoint.get(k) for k in ('checks','phases','valid','attempt'))):
+            raise ContentQualityError('修正先の判定と保存済み本文QAが一致しません。')
+        before=checkpoint.get('editorial_findings',[]);after=repair_report.get('editorial_findings',[])
+        keep=lambda f:{k:v for k,v in f.items() if k not in ('stage_to_fix','research_ids')}
+        if len(before)!=len(after) or any(keep(a)!=keep(b) for a,b in zip(before,after)):
+            raise ContentQualityError('修正先の判定で元の指摘が変更されています。')
+        checkpoint=copy.deepcopy(repair_report)
     first_attempt = checkpoint['attempt'] - 1 if checkpoint else 0
     attempt_limit = 2
     from .editorial_recovery import AUDIT_RECOVERY

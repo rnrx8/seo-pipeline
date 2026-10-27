@@ -259,7 +259,7 @@ class Stage5AuthoringTests(unittest.TestCase):
             stack.enter_context(patch.object(step_article,'get_cta_by_id',return_value=cta))
             stack.enter_context(patch.object(step_article,'upsert_artifact',side_effect=save))
             stack.enter_context(patch.object(step_article,'intent_review_requirements',return_value=copy.deepcopy(base_req)))
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.generation_context.authoring_intent',return_value='reader design'))
             stack.enter_context(patch.object(step_article.anthropic,'Anthropic'))

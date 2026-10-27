@@ -2,7 +2,7 @@
 import copy
 import json
 
-POLICY_VERSION='generation-evidence-v8-verified-claim-handoff'
+POLICY_VERSION='generation-evidence-v9-independent-claim-projection'
 POLICY='''以下は保存済み調査から執筆に引き継ぐ回答・条件と省略項目。全体QAの合格を意味しない。回答の対象・期間・適用条件を維持する。
 reader_designの背景・感情・商品適合は設計上の仮説であり検証済み事実ではない。reader_decisionsの主回答と前後関係を保持し、問い・必要な回答・伝え方・読後の状態を構成と本文へ反映する。商品資料の主張や心理仮説から新しい事実を追加せず、確認済みdecisionsの範囲で説明する。
 本人の体験・意見は発信者の報告としての限定を保ち、一般的な成功率や効果へ広げない。一般的ハウツーは助言の範囲を保ち、法的判断・安全保証・商業的条件へ変換しない。
@@ -84,21 +84,22 @@ def bundle_data(plan, matrix, *, quotes, planning=False):
         if not enabled(): raise ContentQualityError('旧方針の調査回答は執筆資料に使えません。採用経緯と回答を分離して再確認してください。')
         warn('調査回答の方針が一致していません。未確認の回答は使用しません。')
     if matrix.get('valid') is not True:
-        if not enabled(): raise ContentQualityError('未合格の調査を執筆用資料へ変換できません。')
-        warn('調査に不足があります。確認済みの回答だけを使用します。')
+        # Completeness is a review verdict, not permission to read an already
+        # validated claim. Recovery and first-draft writers need the same facts.
+        if enabled():warn('調査に不足があります。確認済みの回答だけを使用します。')
     questions={q['id']:q for q in plan['items']}
     items = matrix.get('items', [])
     if not isinstance(items, list):
         raise ContentQualityError('調査回答の形式が不正です。')
-    if len(items)!=len(questions) or {i['id'] for i in items}!=set(questions):
-        if not enabled(): raise ContentQualityError('執筆資料の質問と回答が一致しません。')
+    if (len(items)!=len(questions) or any(not isinstance(i,dict) or not isinstance(i.get('id'),str) for i in items)
+            or {i['id'] for i in items}!=set(questions)):
+        if not enabled():raise ContentQualityError('執筆資料の質問と回答が一致しません。')
         warn('質問と回答に不一致があります。不明な回答は使用しません。')
+        items=[]
     rows=[];sources={};ref_ids={};constraints={}
     for item in items:
         projection=publication_view(item) if policy_matches and item['id'] in questions else None
-        if not projection or (not item.get('verified') and not enabled()):
-            if not enabled(): raise ContentQualityError('未確認の回答を執筆用資料へ渡せません。')
-            continue
+        if not projection:continue
         item=projection
         row={k:copy.deepcopy(v) for k,v in questions[item['id']].items()
              if k not in {'priority_reason','source_requirement'}}
@@ -152,9 +153,9 @@ def decision_bundle(plan, matrix, *, quotes, planning=False):
 
 
 def generation_evidence(job_id, facts, sources, *, quotes=True, planning=False):
-    from .research_requirements import require_matrix,load_plan
+    from .research_requirements import require_authoring_matrix,load_plan
     # Every writing route uses the same validated evidence boundary.
-    current=require_matrix(job_id)
+    current=require_authoring_matrix(job_id)
     return decision_bundle(load_plan(job_id),current,quotes=quotes,planning=planning)
 
 

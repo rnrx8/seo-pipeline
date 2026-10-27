@@ -226,7 +226,7 @@ class BlueprintProvenanceTests(unittest.TestCase):
         artifacts={'serp':{'content_text':'{}'},'search_intent':{'content_text':'intent','meta':{'reader_needs_version':'new'}}}
         with patch.object(step_outline,'get_artifact',side_effect=lambda j,s:artifacts[s]), \
              patch('pipeline.generation_context.authoring_intent',return_value='intent'), \
-             patch.object(req,'_require_matrix_strict',side_effect=req.ContentQualityError('invalid')), \
+             patch.object(req,'require_authoring_matrix',side_effect=req.ContentQualityError('invalid')), \
              patch.object(step_outline,'create_with_retry') as send:
             with self.assertRaises(req.ContentQualityError):step_outline.run('j','kw')
         send.assert_not_called()

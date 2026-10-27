@@ -41,8 +41,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
     candidate_services = None
     plan = None
     if fact.get('meta',{}).get('canonical_research_answers'):
-        from .research_requirements import require_matrix,load_plan
-        require_matrix(job_id)
+        from .research_requirements import require_authoring_matrix,load_plan
+        require_authoring_matrix(job_id)
         plan = load_plan(job_id)
         candidate_services = plan['candidate_services']
 

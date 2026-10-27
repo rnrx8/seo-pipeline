@@ -318,6 +318,17 @@ def _run(job_id, keyword, api_key=None):
     from . import step_content_audit
     from .content_quality import _require_audit_strict, snapshot
     previous = get_optional_artifact(job_id, 'editorial_recovery')
+    from . import upstream_recovery
+    if previous and json.loads(previous['content_text']).get('version')==upstream_recovery.VERSION:
+        return upstream_recovery.run(job_id,keyword,api_key,state=json.loads(previous['content_text']))
+    from .editorial_contract import CURRENT,VERSION as ASSIGNMENT_VERSION
+    assignment=CURRENT.get() if not previous else None
+    if not previous and not assignment:
+        brief=get_optional_artifact(job_id,'production_brief')
+        assignment=((brief or {}).get('meta') or {}).get('editorial_contract')
+    if assignment:
+        if assignment.get('version')==ASSIGNMENT_VERSION:
+            return upstream_recovery.run(job_id,keyword,api_key)
     if previous:
         state = json.loads(previous['content_text'])
         if state.get('status') != 'completed':

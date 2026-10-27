@@ -82,6 +82,7 @@ class ArticleCitationTests(unittest.TestCase):
         registry=citations.build(self.sources())
         raw='# 記事\n\n## 比較\n\n情報。[[cite:unknown]]【PART1_END】'
         with patch.object(article,'_call',return_value=(raw,10,10)) as send, \
+             patch.object(article,'get_artifact',side_effect=KeyError('No saved response')), \
              patch.object(article,'upsert_artifact') as save:
             with self.assertRaises(ContentQualityError):
                 article._write_complete_part(None,[{'role':'user','content':'依頼'}],1000,'### H2：比較',

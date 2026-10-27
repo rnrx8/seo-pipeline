@@ -56,6 +56,8 @@ def total_remaining(value):
 
 
 def review_operation(step):
+ if step.startswith('tiered_article_upstream_routing_'):return 'article',step.removeprefix('tiered_'),1
+ if step.startswith('tiered_article_upstream_sources_'):return 'article',step.removeprefix('tiered_'),2
  if step in ('tiered_scoped_edit_repair','tiered_scoped_edit_suffix','tiered_scoped_edit_correction','tiered_scoped_edit_recheck','tiered_scoped_edit_review'):return 'article',step.removeprefix('tiered_'),1
  if step=='tiered_article_prose_preflight':return 'article','prose_preflight',1
  if step in ('tiered_reader_finish_repair','tiered_reader_finish_mechanical','tiered_reader_finish_review'):return 'article',step.removeprefix('tiered_'),1

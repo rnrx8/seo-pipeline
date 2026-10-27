@@ -12,7 +12,7 @@ class DraftReadinessError(ContentQualityError):
 
 
 def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
-    from .research_requirements import load_plan, require_matrix
+    from .research_requirements import load_plan, require_authoring_matrix
     from .quality_warnings import enabled, warn
     from .editorial_blueprint import context, require_projection, budget_issues, fingerprint
     from .outline_policy import require_current_outline
@@ -27,9 +27,9 @@ def _evaluate(job_id, keyword, *, outline=None, load=None, job=None):
     job=job if job is not None else get_job(job_id)
     # There is one current-input rule for guard, writer, service map and resume.
     # Do not import old model pass/fail reports into this mechanical decision.
-    # Research QA is advisory in the generation flow. require_matrix still
+    # Research QA is advisory in the generation flow. require_authoring_matrix still
     # filters stale/unverified answers out of the writer's evidence bundle.
-    matrix=require_matrix(job_id)
+    matrix=require_authoring_matrix(job_id)
     plan=load_plan(job_id)
     saved=load(job_id,'outline')
     if outline is not None and saved!=outline:

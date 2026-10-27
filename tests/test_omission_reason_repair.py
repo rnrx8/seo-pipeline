@@ -23,7 +23,7 @@ class OmissionReasonRepairTests(unittest.TestCase):
         report={'checks':[{'key':'evidence_support','status':'fail','reason':'省略理由の未確認という説明が原文と矛盾',
                           'affected_blocks':[{'id':location}]}]}
         with ExitStack() as stack:
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=matrix))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=matrix))
             stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=plan))
             stack.enter_context(patch('pipeline.db.get_artifact',return_value={'content_text':'{"required_sections":[]}'}))
             stack.enter_context(patch('pipeline.db.get_job',return_value={}))

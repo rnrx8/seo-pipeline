@@ -34,9 +34,15 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         except (ValueError, TypeError):
             violations.append({'key': 'editorial_recovery_pending', 'reason': '上流修正と全文QAが未完了です。'})
     violations += validate_delivery(article['content_text'], outline, job.get('word_count_setting'), contract=contract, section_map=(article.get('meta') or {}).get('section_map'))
+    research_status=None
     try:
-        from .research_requirements import _require_matrix_strict
-        _require_matrix_strict(job_id)
+        from .research_requirements import require_authoring_matrix
+        matrix=require_authoring_matrix(job_id)
+        # Research-list completeness remains visible, but article acceptance is
+        # determined below by current full evidence/coverage/reader QA. An
+        # unused unknown sibling does not revoke supported published claims.
+        research_status={'all_questions_complete':matrix.get('valid') is True,
+                         'acceptance_basis':'current_material_and_full_article_audit'}
     except Exception as exc:
         violations.append({'key':'research_not_ready','reason':str(exc)[:200]})
     try:
@@ -60,6 +66,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         "stage": "final_article",
         "valid": not violations,
         "violations": violations,
+        "research_status":research_status,
         "h2s": extract_h2_titles(article["content_text"], outline=False),
     }
     artifact = upsert_artifact(

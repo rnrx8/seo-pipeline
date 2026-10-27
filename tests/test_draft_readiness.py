@@ -17,7 +17,7 @@ class DraftReadinessTests(unittest.TestCase):
                     'fact_sheet':{'content_text':'checked facts'},'fresh_sources':{'content_text':json.dumps(pages)}}
         self.stack=ExitStack();self.addCleanup(self.stack.close)
         self.stack.enter_context(patch('pipeline.research_requirements.load_plan',return_value=self.plan))
-        self.stack.enter_context(patch('pipeline.research_requirements.require_matrix',return_value=self.matrix))
+        self.stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix',return_value=self.matrix))
 
     def evaluate(self):
         return ready.evaluate('job','条件',load=lambda j,k:self.store.get(k),job={})
@@ -36,7 +36,7 @@ class DraftReadinessTests(unittest.TestCase):
         def checked(*a):
             self.assertTrue(warnings.enabled())
             return matrix
-        with patch('pipeline.research_requirements.require_matrix',side_effect=checked),patch.object(warnings,'warn'):
+        with patch('pipeline.research_requirements.require_authoring_matrix',side_effect=checked),patch.object(warnings,'warn'):
             report=warnings.scoped(lambda *a:self.evaluate(),'research_validation')('job')
         self.assertTrue(report['ready_for_draft']);self.assertFalse(report['publication_approved'])
         self.assertFalse(report['checks']['research_current']);self.assertFalse(warnings.enabled())

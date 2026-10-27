@@ -17,7 +17,7 @@ class OutlineRepairTests(unittest.TestCase):
         response = SimpleNamespace(content=[SimpleNamespace(type='text', text=json.dumps(
             {'edits': [{'id': 'block-0002', 'new': replacement}]}, ensure_ascii=False))])
         with ExitStack() as stack:
-            stack.enter_context(patch('pipeline.research_requirements.require_matrix', return_value={}))
+            stack.enter_context(patch('pipeline.research_requirements.require_authoring_matrix', return_value={}))
             stack.enter_context(patch('pipeline.generation_context.generation_evidence', return_value='初回だけ無料'))
             stack.enter_context(patch('pipeline.ai.tiered_review_enabled', return_value=False))
             send = stack.enter_context(patch('pipeline.ai.create_with_retry', return_value=response))

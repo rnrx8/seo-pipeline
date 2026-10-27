@@ -23,7 +23,7 @@ class Block(SimpleNamespace):
 
 class SourceFreshnessTests(unittest.TestCase):
     def setUp(self):
-        for target, value in [('require_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
+        for target, value in [('require_authoring_matrix', {}), ('load_plan', {'items':[]}), ('verify', {})]:
             patcher=patch('pipeline.research_requirements.'+target, return_value=value)
             patcher.start(); self.addCleanup(patcher.stop)
 

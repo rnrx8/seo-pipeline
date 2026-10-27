@@ -23,7 +23,8 @@ class DocumentedOmissionTests(unittest.TestCase):
             saved=artifact(value,ctx)
             self.assertEqual(bp.require_projection(saved),value)
         self.assertEqual(saved['meta']['unresolved_required_omissions'],value['omissions'])
-        with self.assertRaises(ContentQualityError):bp.require_projection(saved)
+        self.assertEqual(bp.require_projection(saved),value)
+        with self.assertRaises(ContentQualityError):bp.validate(value,ctx)
         self.assertNotIn('publication_approved',saved['meta'])
 
     def test_unrecorded_omission_and_broken_references_still_reject_in_delivery(self):
