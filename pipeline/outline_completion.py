@@ -19,7 +19,7 @@ def fingerprint(request):
     return digest(json.dumps(request, ensure_ascii=False, sort_keys=True))
 
 
-def prefix(text, schema, *, preserved_array='sections'):
+def prefix(text, schema, *, preserved_array='sections', require_sections=True):
     """Keep only fully decoded values; never close strings or invent JSON values."""
     decoder = json.JSONDecoder()
     fields = {}
@@ -61,7 +61,7 @@ def prefix(text, schema, *, preserved_array='sections'):
         pos = skip(pos+1)
     # A useful completed section is required to avoid disguising a full rewrite.
     sections = fields.get(preserved_array, array_prefix if array_key == preserved_array else [])
-    if not sections:
+    if require_sections and not sections:
         raise ContentQualityError('再利用できる完成節がありません。全文再生成は行いません。')
     missing = {k:copy.deepcopy(v) for k,v in schema['properties'].items() if k not in fields}
     if array_key:
@@ -71,9 +71,30 @@ def prefix(text, schema, *, preserved_array='sections'):
     return fields, array_key, array_prefix, {'type':'object','properties':missing,'required':list(missing),'additionalProperties':False}, text[pos:][-2000:]
 
 
+def advance(fixed, key, head, remaining, text):
+    """Merge only complete suffix values; progress must be strictly monotonic."""
+    from .editorial_blueprint import validate_shape
+    fields, next_key, next_head, rest, fragment = prefix(text, remaining, require_sections=False)
+    for name,value in fields.items(): validate_shape(value,remaining['properties'][name])
+    if next_key:
+        for row in next_head: validate_shape(row,remaining['properties'][next_key]['items'])
+    if not fields and not next_head:
+        raise ContentQualityError('構成の補完応答に再利用できる完成要素がありません。同じ要求は再送しません。')
+    result=copy.deepcopy(fixed)
+    for name,value in fields.items():
+        result[name]=copy.deepcopy(head)+value if name==key else copy.deepcopy(value)
+    if next_key==key: next_head=copy.deepcopy(head)+next_head
+    sections=result.get('sections',next_head if next_key=='sections' else [])
+    ids=[s['id'] for s in sections]
+    if len(ids)!=len(set(ids)):
+        raise ContentQualityError('構成の補完が完成済みの節IDを再出力しています。上書き・再送しません。')
+    return result,next_key,next_head,rest,fragment
+
+
 def complete(job_id, artifact, request, context, client):
     from . import editorial_blueprint as bp
-    from .tiered_research import checked_request
+    from .tiered_research import checked_request, cached_result
+    from .editorial_contract import enrich_request
     from types import SimpleNamespace
     if (artifact.get('meta',{}).get('request_sha256') != fingerprint(request)
             or artifact['meta'].get('stop_reason') != 'max_tokens'):
@@ -83,21 +104,43 @@ def complete(job_id, artifact, request, context, client):
     bp.validate_shape(fixed, {'type':'object','properties':{k:expected_schema['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
     if key:
         for row in head: bp.validate_shape(row, expected_schema['properties'][key]['items'])
-    if remaining['properties']:
+    inputs=outputs=0
+    chunk=1
+    while remaining['properties']:
         payload = {'completed_fields':fixed,'array_prefix':{key:head} if key else {},
                    'missing_schema':remaining,'discarded_fragment':fragment,'production_context':context,
                    'original_request_sha256':fingerprint(request),'partial_sha256':digest(artifact['content_text'])}
-        completion_request = dict(model=request['model'],max_tokens=8000,system=POLICY,
+        completion_request = dict(model=request['model'],max_tokens=8000 if chunk==1 else max(8000,min(16000,request['max_tokens'])),system=POLICY,
             output_config=bp.model_output_config(remaining),
             messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
-        tail, usage = checked_request(job_id,'outline_suffix_completion',completion_request,client=client)
+        completion_request=enrich_request(completion_request)
+        step='outline_suffix_completion'+(f'_{chunk}' if chunk>1 else '')
+        tail=cached_result(job_id,step,completion_request)
+        partial=get_optional_artifact(job_id,step+'_incomplete') if tail is None else None
+        if tail is None and partial is None:
+            try:
+                tail,usage=checked_request(job_id,step,completion_request,client=client)
+            except ContentQualityError:
+                partial=get_optional_artifact(job_id,step+'_incomplete')
+                if not partial:raise
+            else:
+                inputs+=usage.input_tokens;outputs+=usage.output_tokens
+        if partial is not None:
+            meta=partial.get('meta',{})
+            if meta.get('request_sha256')!=fingerprint(completion_request) or meta.get('stop_reason')!='max_tokens':
+                raise ContentQualityError('保存済みの構成補完と現在の不足範囲が一致しません。再送しません。')
+            fixed,key,head,remaining,fragment=advance(fixed,key,head,remaining,partial['content_text'])
+            inputs+=meta.get('input_tokens',0);outputs+=meta.get('output_tokens',0)
+            chunk+=1
+            continue
         bp.validate_shape(tail, remaining)
-    else: tail={};usage=SimpleNamespace(input_tokens=0,output_tokens=0)
+        break
+    else: tail={}
     result = copy.deepcopy(fixed)
     for name,value in tail.items():
         result[name] = copy.deepcopy(head)+value if name==key else value
     bp.validate_shape(result,expected_schema)
-    return result, usage
+    return result, SimpleNamespace(input_tokens=inputs,output_tokens=outputs)
 
 
 def saved(job_id, request):

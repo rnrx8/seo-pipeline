@@ -27,10 +27,29 @@ class ProsePreflightTests(unittest.TestCase):
         self.assertFalse(receipt['semantic_quality_verified']);self.assertNotIn('valid',receipt)
         self.assertFalse(save.call_args.kwargs['meta']['audited'])
 
-    def test_invalid_edit_or_remaining_overflow_never_buys_semantic_review(self):
+    def test_rejected_optional_edit_preserves_manuscript_for_full_QA(self):
         text='# 題\n\n## 章\n\n'+'あ'*340;bid=content_blocks(text)[-1]['id']
         with patch('pipeline.tiered_research.checked_request',return_value=({'edits':[{'id':bid,'new':'新しい保証100%です。'}]},None)),patch('pipeline.db.upsert_artifact') as save:
-            with self.assertRaises(cq.ContentQualityError):p.complete('j',None,text=text,check_candidate=lambda t:None)
+            result=p.complete('j',None,text=text,check_candidate=lambda t:None)
+        self.assertEqual(result,text)
+        receipt=json.loads(save.call_args.kwargs['content_text'])
+        self.assertEqual(receipt['status'],'rejected')
+        self.assertEqual(receipt['next_action'],'ordinary_full_article_qa')
+        self.assertFalse(receipt['semantic_quality_verified'])
+        self.assertNotIn('valid',receipt)
+
+    def test_rejected_mechanical_candidate_keeps_original_for_full_QA(self):
+        text='# 題\n\n## 章\n\n'+'あ'*340;bid=content_blocks(text)[-1]['id']
+        with patch('pipeline.tiered_research.checked_request',return_value=({'edits':[{'id':bid,'new':'あ'*320}]},None)) as send,patch('pipeline.db.upsert_artifact') as save:
+            result=p.complete('j',None,text=text,check_candidate=lambda t:(_ for _ in ()).throw(cq.ContentQualityError('remaining overflow')))
+        self.assertEqual(result,text);self.assertEqual(send.call_count,1)
+        self.assertEqual(json.loads(save.call_args.kwargs['content_text'])['rejection_reason'],'remaining overflow')
+
+    def test_provider_failure_is_not_swallowed_as_a_rejected_proposal(self):
+        text='# 題\n\n## 章\n\n'+'あ'*340
+        with patch('pipeline.tiered_research.checked_request',side_effect=cq.ContentQualityError('credit balance exhausted')),patch('pipeline.db.upsert_artifact') as save:
+            with self.assertRaisesRegex(cq.ContentQualityError,'credit balance exhausted'):
+                p.complete('j',None,text=text,check_candidate=lambda t:None)
         save.assert_not_called()
 
     def test_shortening_rhetorical_words_is_not_a_change_in_factual_conditions(self):

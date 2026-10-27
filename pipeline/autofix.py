@@ -17,6 +17,8 @@ _RULES = [
     # Billing errors can be wrapped in ContentQualityError at the audit boundary.
     (re.compile(r"OpenAI APIの利用残高がありません|credit balance|billing|insufficient_quota|exceeded.*quota", re.I),
      False, "operational", "APIクレジット不足"),
+    (re.compile(r"ResponseIncompleteError"),
+     False, "operational", "AI応答の中断・出力上限"),
     (re.compile(r"ContentQualityError"),
      False, "operational", "記事の根拠・比較内容が品質基準を満たしていません"),
     (re.compile(r"SerpQualityError|SerpConfigurationError"),

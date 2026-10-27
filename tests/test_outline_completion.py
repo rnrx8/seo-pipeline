@@ -7,6 +7,10 @@ from test_editorial_blueprint import fixture
 
 
 class OutlineSuffixTests(unittest.TestCase):
+    def setUp(self):
+        for name in ('pipeline.outline_completion.get_optional_artifact','pipeline.tiered_research.get_optional_artifact'):
+            p=patch(name,return_value=None);p.start();self.addCleanup(p.stop)
+
     def setup_value(self):
         *_,ctx,value=fixture()
         request=dict(model='claude-opus-5-5',max_tokens=16000,system='design',messages=[{'role':'user','content':'current materials'}])
@@ -73,3 +77,47 @@ class OutlineSuffixTests(unittest.TestCase):
         binding['partial_sha256']='different'
         with patch.object(oc,'get_optional_artifact',side_effect=[artifact,{'content_text':json.dumps(binding)}]):
             with self.assertRaises(ContentQualityError):oc.saved('j',request)
+
+    def test_truncated_suffix_reuses_complete_values_then_requests_only_the_remainder(self):
+        ctx,value,request,artifact=self.setup_value()
+        # Main response contains its first complete section; suffix 1 contains
+        # the next complete section but its following field was interrupted.
+        second=copy.deepcopy(value['sections'][0]);second.update(id='s02',parent_id='s01',level=3,reader_progression=None)
+        value['sections'].append(second)
+        artifact['content_text']=json.dumps({k:v for k,v in value.items() if k not in ('sections','omissions')},ensure_ascii=False)[:-1]+',"sections":['+json.dumps(value['sections'][0],ensure_ascii=False)+',{"id":"cut'
+        store={};calls=[]
+        def send(job,step,r,client=None):
+            calls.append((step,copy.deepcopy(r)))
+            if step=='outline_suffix_completion':
+                store[step+'_incomplete']={'content_text':json.dumps({'sections':[second]},ensure_ascii=False)[:-1]+',"omissions":[{"research_id":"cut',
+                    'meta':{'request_sha256':oc.fingerprint(r),'stop_reason':'max_tokens','input_tokens':10,'output_tokens':20}}
+                raise ContentQualityError('品質検査の応答が完了していません。')
+            self.assertEqual(set(r['output_config']['format']['schema']['properties']),{'omissions'})
+            payload=json.loads(r['messages'][0]['content'])
+            self.assertEqual(payload['completed_fields']['sections'],value['sections'])
+            text=json.dumps({'omissions':[]},ensure_ascii=False)
+            store[step]={'content_text':text,'meta':{'request_sha256':oc.fingerprint(r),'result_sha256':oc.digest(text)}}
+            return {'omissions':[]},NS(input_tokens=2,output_tokens=3)
+        with patch.object(oc,'get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch('pipeline.tiered_research.get_optional_artifact',side_effect=lambda j,s:copy.deepcopy(store.get(s))),patch('pipeline.tiered_research.checked_request',side_effect=send):
+            result,usage=oc.complete('j',artifact,request,ctx,None)
+            again,_=oc.complete('j',artifact,request,ctx,None)
+        self.assertEqual(result,value);self.assertEqual(again,value)
+        self.assertEqual([s for s,_ in calls],['outline_suffix_completion','outline_suffix_completion_2'])
+        self.assertEqual(usage.input_tokens,12);self.assertEqual(usage.output_tokens,23)
+        self.assertEqual(qb.review_operation('outline_suffix_completion_2'),('outline','suffix_completion',1))
+
+    def test_partial_suffix_cannot_rewrite_finished_sections_or_make_no_progress(self):
+        ctx,value,request,artifact=self.setup_value()
+        fixed,key,head,remaining,_=oc.prefix(artifact['content_text'],bp.schema())
+        for text in ('{"omissions":[{"research_id":"cut','{"sections":[]}'):
+            with self.assertRaises(ContentQualityError):oc.advance(fixed,key,head,remaining,text)
+        fixed={'sections':[]};key='sections';head=value['sections'];remaining={'type':'object','properties':{'sections':bp.schema()['properties']['sections']},'required':['sections'],'additionalProperties':False}
+        with self.assertRaises(ContentQualityError):oc.advance({},key,head,remaining,json.dumps({'sections':head})[:-1])
+
+    def test_incomplete_provider_output_is_classified_separately_from_article_quality(self):
+        from pipeline.content_quality import response_text,ResponseIncompleteError
+        from pipeline.autofix import classify_error
+        with self.assertRaises(ResponseIncompleteError) as error:response_text(NS(stop_reason='max_tokens'))
+        diagnosis=classify_error(error.exception)
+        self.assertEqual(diagnosis['reason'],'AI応答の中断・出力上限')
+        self.assertFalse(diagnosis['retryable']) # This is suffix completion, not whole-job retry.
