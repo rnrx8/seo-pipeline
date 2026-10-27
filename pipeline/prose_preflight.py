@@ -32,8 +32,20 @@ def complete(job_id,client,*,text,check_candidate):
         output_config=scoped_repair_output_config(packet['target_block_ids']),output_budget_includes_thinking=True),client=client)
     # Numbers/links/quotations are immutable. Counting words like 必要/ない
     # cannot establish meaning preservation; the subsequent whole QA must do so.
-    candidate=apply(text,proposal,packet,anchor_fn=immutable_anchors);check_candidate(candidate)
     from .db import upsert_artifact
+    try:
+        candidate=apply(text,proposal,packet,anchor_fn=immutable_anchors)
+        check_candidate(candidate)
+    except ContentQualityError as exc:
+        # This optional shortening proposal is not the semantic audit. Reject
+        # its changes, record why, and let the ordinary full QA inspect the
+        # unchanged manuscript. Provider failures remain outside this catch.
+        upsert_artifact(job_id=job_id,step='article_prose_preflight',content_type='application/json',
+            content_text=json.dumps({'origin':'mechanical_preflight_not_semantic_QA','status':'rejected',
+                'base_text':text,'issues':issues,'proposal':proposal,'rejection_reason':str(exc),
+                'semantic_quality_verified':False,'next_action':'ordinary_full_article_qa'},ensure_ascii=False),
+            meta={'audited':False,'proposal_accepted':False})
+        return text
     upsert_artifact(job_id=job_id,step='article_prose_preflight',content_type='application/json',
         content_text=json.dumps({'origin':'mechanical_preflight_not_semantic_QA','base_text':text,'candidate_text':candidate,
             'issues':issues,'proposal':proposal,'semantic_quality_verified':False},ensure_ascii=False),meta={'audited':False})
