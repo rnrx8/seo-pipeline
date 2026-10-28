@@ -130,3 +130,19 @@ class ReviewRecoveryTests(unittest.TestCase):
             with patch.object(tr,'checked_request') as send,self.assertRaises(ContentQualityError):
                 rc.recover_and_save('j','s',changed,bad,None,0)
             send.assert_not_called()
+
+    def test_revised_material_starts_new_review_without_applying_or_erasing_old_partial(self):
+        old_text='{"coverage_sufficient":false,'
+        old_hash='a'*64
+        saved={'tiered_coverage_incomplete':{'content_text':old_text,'meta':{
+            'completion_policy':rc.POLICY,'request_sha256':old_hash,
+            'partial_sha256':rc.digest(old_text),'stop_reason':'max_tokens'}}}
+        calls=[]
+        def send(client,**request):
+            calls.append(request)
+            if len(calls)==1:raise oa.OutputLimitResponse(self.terminal(''))
+            return NS(stop_reason='end_turn',content=[NS(type='text',text=json.dumps(self.verdict))],usage=NS(input_tokens=1,output_tokens=1))
+        value,_=self.run_checked(send,saved)
+        self.assertEqual(value,self.verdict)
+        self.assertEqual(saved['tiered_coverage_incomplete_'+old_hash]['content_text'],old_text)
+        self.assertNotEqual(saved['tiered_coverage_incomplete']['meta']['request_sha256'],old_hash)
