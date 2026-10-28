@@ -98,11 +98,23 @@ def structured_review_output_limit(request):
   original=max(original,min(32000,2000+500*len(headings)+200*children+2*quote_chars))
  journeys=props.get('reader_journeys',{}).get('properties',{})
  if journeys:
-  return max(original,min(32000,2000+2200*len(journeys)))
+  original=max(original,min(32000,2000+2200*len(journeys)))
  rows=props.get('blueprint_reviews',{}).get('properties',{})
- if not rows and not props.get('reader_progression_reviews'):return original
+ decisions=props.get('decision_reviews',{}).get('properties',{})
+ design=props.get('decision_design_checks',{}).get('properties',{})
+ # decision_reviews is also a standalone research/plan review. Its output is
+ # required even when no blueprint or article progression exists yet.
+ if not any((rows,decisions,design,props.get('reader_progression_reviews'),props.get('lead_review'))):return original
  verdicts=sum(len(row['properties']['requirements']['properties'])+1 for row in rows.values())
- verdicts+=len(props.get('decision_reviews',{}).get('properties',{}))
+ verdicts+=len(decisions)+len(design)
+ requirements=sum(row.get('properties',{}).get('missing_requirements',{}).get('items',{}).get('maximum',-1)+1
+                  for row in decisions.values())
+ if 'coverage_issues' in props:
+  try:question_count=len(json.loads(request['messages'][0]['content']).get('plan',{}).get('items',[]))
+  except (ValueError,KeyError,IndexError,TypeError):question_count=0
+  # Allow reasons and question IDs for every actual gap, including reasoning
+  # tokens. The cap reserves capacity, not a target length or a larger fee cap.
+  original=max(original,min(32000,4000+250*question_count+250*requirements))
  progression=props.get('reader_progression_reviews',{}).get('properties',{})
  for row in progression.values():
   journey=row.get('properties',{}).get('journey',{}).get('properties',{})
@@ -111,7 +123,7 @@ def structured_review_output_limit(request):
  return max(original,min(32000,4000+400*verdicts))
 
 
-def checked_request(job_id,step,request,*,client=None):
+def checked_request(job_id,step,request,*,client=None,_completion_round=0):
  from .editorial_contract import enrich_request
  request=enrich_request(request)
  old=cached_result(job_id,step,request)
@@ -143,6 +155,10 @@ def checked_request(job_id,step,request,*,client=None):
    print('[tiered] Reuse '+step,flush=True)
    return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
+ interrupted=get_optional_artifact(job_id,step+'_incomplete') if request.get('model','').startswith('gpt-') else None
+ if interrupted and interrupted.get('meta',{}).get('completion_policy')=='structured-review-v1':
+  from .review_completion import recover_and_save
+  return recover_and_save(job_id,step,request,interrupted,client,_completion_round)
  props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})
  section_map=props.get('sections',{})
  if (not step.endswith('_suffix') and section_map.get('type')=='object'
@@ -157,8 +173,14 @@ def checked_request(job_id,step,request,*,client=None):
              'input_tokens':usage.input_tokens,'output_tokens':usage.output_tokens,'suffix_completion':provenance})
    return value,usage
  from .quality_budget import request_scope
- with request_scope(job_id,step,fingerprint,request):
-  msg=create_with_retry(client,**request)
+ from .openai_review import OutputLimitResponse
+ try:
+  with request_scope(job_id,step,fingerprint,request):
+   msg=create_with_retry(client,**request)
+ except OutputLimitResponse as exc:
+  from .review_completion import preserve, recover_and_save
+  interrupted=preserve(job_id,step,request,exc.response)
+  return recover_and_save(job_id,step,request,interrupted,client,_completion_round)
  if getattr(msg,'stop_reason',None)!='end_turn':
   # Preserve incomplete visible output for diagnosis, but never cache it as a
   # successful response or apply its partial JSON to the article.

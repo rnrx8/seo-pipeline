@@ -7,6 +7,14 @@ import time
 from types import SimpleNamespace
 
 import requests
+from .content_quality import ContentQualityError
+
+
+class OutputLimitResponse(ContentQualityError):
+    """Known terminal output limit; retain visible JSON, never a success verdict."""
+    def __init__(self, response):
+        super().__init__('品質確認の応答が出力上限に達しました。不足部分を補完します。')
+        self.response = response
 
 
 def count_review_input(payload):
@@ -92,6 +100,13 @@ def _completed_response(response, started, diagnostics=None):
                                        error_sha256=hashlib.sha256(json.dumps(error, sort_keys=True).encode()).hexdigest())
                     if details.get('reason') in ('max_output_tokens', 'content_filter'):
                         diagnostics['incomplete_reason'] = details['reason']
+                terminal = event.get('response') or {}
+                if (event['type'] == 'response.incomplete' and details.get('reason') == 'max_output_tokens'
+                        and terminal.get('status') == 'incomplete' and not terminal.get('error')
+                        and isinstance(terminal.get('usage'), dict)
+                        and all(type(terminal['usage'].get(k)) is int and terminal['usage'][k] >= 0
+                                for k in ('input_tokens', 'output_tokens'))):
+                    raise OutputLimitResponse(terminal)
                 if code == 'credit_balance_exhausted':
                     raise ContentQualityError('OpenAI APIの利用残高がありません。残高追加後に確認工程から再開してください。')
                 if code == 'insufficient_quota' or kind == 'insufficient_quota':
