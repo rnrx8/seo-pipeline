@@ -38,6 +38,15 @@ def preserve(job_id, step, request, response):
         'partial_sha256':digest(text), 'model':request['model'],
         'stop_reason':'max_tokens', 'max_tokens':request['max_tokens'],
         'response_id':response.get('id'), 'usage':copy.deepcopy(response['usage'])}}
+    prior = get_optional_artifact(job_id,step+'_incomplete')
+    if prior and prior.get('meta',{}).get('request_sha256') != artifact['meta']['request_sha256']:
+        # A deliberate material revision can start a new review. Preserve its
+        # predecessor; an old partial must neither block it nor be transplanted.
+        old_hash = prior.get('meta',{}).get('request_sha256')
+        if not isinstance(old_hash,str) or len(old_hash)!=64:
+            raise ContentQualityError('以前の未完了確認の識別情報を保全できません。')
+        upsert_artifact(job_id=job_id,step=step+'_incomplete_'+old_hash,
+            content_type='text/plain',content_text=prior['content_text'],meta=prior['meta'])
     upsert_artifact(job_id=job_id, step=step+'_incomplete', content_type='text/plain', **artifact)
     return artifact
 

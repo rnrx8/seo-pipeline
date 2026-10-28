@@ -156,7 +156,8 @@ def checked_request(job_id,step,request,*,client=None,_completion_round=0):
    return old,SimpleNamespace(input_tokens=0,output_tokens=0)
  fingerprint=digest(json.dumps(request,ensure_ascii=False,sort_keys=True))
  interrupted=get_optional_artifact(job_id,step+'_incomplete') if request.get('model','').startswith('gpt-') else None
- if interrupted and interrupted.get('meta',{}).get('completion_policy')=='structured-review-v1':
+ if (interrupted and interrupted.get('meta',{}).get('completion_policy')=='structured-review-v1'
+     and interrupted['meta'].get('request_sha256')==fingerprint):
   from .review_completion import recover_and_save
   return recover_and_save(job_id,step,request,interrupted,client,_completion_round)
  props=request.get('output_config',{}).get('format',{}).get('schema',{}).get('properties',{})

@@ -28,9 +28,9 @@ The adapter discarded partial output by raising an untyped quality error.
 
 ## Verification
 
-Eight focused tests cover sizing, terminal SSE/usage accounting, nested partial
+Nine focused tests cover sizing, terminal SSE/usage accounting, nested partial
 fields, failure retention, schema rejection, exact-material binding, restart
-reuse, and bounded nonprogress. All 1,335 offline tests pass.
+reuse, bounded nonprogress, and a changed assignment retaining its earlier partial. All 1,336 offline tests pass.
 
 A native replay of the actual saved 54 artifacts reuses all 6 completed source
 review responses. Only `tiered_coverage` reaches the provider boundary. Its input,
