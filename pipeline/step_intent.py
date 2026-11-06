@@ -109,10 +109,21 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                     content_text=json.dumps({'version':NEEDS_VERSION, 'status':'analyzing'}))
     upsert_artifact(job_id=job_id, step='intent_chains', content_type='application/json',
                     content_text=json.dumps({'chains':[], 'superseded_by':'reader_needs'}))
-    attrs = _generate_query_attrs(client, job_id, keyword, serp_text)
     sources = {'keyword':keyword, 'serp':serp_text,
                'request':json.dumps(brief['request'], ensure_ascii=False)}
     new_product = bool(brief['product'] and not cached)
+    previous_failure = get_optional_artifact(job_id, 'search_intent_failures')
+    if previous_failure:
+        from .intent_response_recovery import recover
+        reused = recover(json.loads(previous_failure['content_text']), brief=brief,
+                         sources=sources, product_input=product_input, model=MODEL)
+        if reused:
+            value, receipt, usage = reused
+            upsert_artifact(job_id=job_id, step='search_intent_response_reuse',
+                content_type='application/json', content_text=json.dumps(receipt, ensure_ascii=False))
+            return _persist_analysis(job_id, value, brief, product_input, cached, cache_status,
+                                     new_product=new_product, usage=usage, sources=sources)
+    attrs = _generate_query_attrs(client, job_id, keyword, serp_text)
     payload = {'input_sources':sources, 'production_brief':brief,
                'query_hints':attrs, 'product_context':cached,
                'product_materials':model_product_input(product_input) if new_product else None}
@@ -138,6 +149,17 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
             from .content_quality import ContentQualityError
             raise ContentQualityError('不合格の検索意図応答を保存できませんでした: ' + str(error)) from save_error
         raise
+    return _persist_analysis(job_id, value, brief, product_input, cached, cache_status,
+                            new_product=new_product, usage={'model':MODEL,
+                            'input_tokens':message.usage.input_tokens,
+                            'output_tokens':message.usage.output_tokens}, sources=sources)
+
+
+def _persist_analysis(job_id, value, brief, product_input, cached, cache_status, *, new_product, usage, sources):
+    """Same canonical artifacts for new and safely reused complete responses."""
+    if value.get('_transport_repairs'):
+        upsert_artifact(job_id=job_id, step='search_intent_transport', content_type='application/json',
+                        content_text=json.dumps({'repairs':value['_transport_repairs']}, ensure_ascii=False))
     if new_product:
         product = product_record(value['product_understanding'], product_input)
     else:
@@ -150,6 +172,6 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
         content_text=json.dumps(needs, ensure_ascii=False), meta={'version':NEEDS_VERSION, 'analysis_method_version':METHOD_VERSION,
               'analysis_method_sha256':needs['analysis_method_sha256']})
     return upsert_artifact(job_id=job_id, step='search_intent', content_type='text/markdown',
-        content_text=value['analysis'], meta={'model':MODEL, 'reader_needs_version':NEEDS_VERSION,
+        content_text=value['analysis'], meta={'model':usage['model'], 'reader_needs_version':NEEDS_VERSION,
         'analysis_method_version':METHOD_VERSION, 'analysis_method_sha256':needs['analysis_method_sha256'],
-        'input_tokens':message.usage.input_tokens, 'output_tokens':message.usage.output_tokens})
+        'input_tokens':usage['input_tokens'], 'output_tokens':usage['output_tokens']})

@@ -102,7 +102,12 @@ def _shape(value, schema):
 def decode(value):
     """Normalize wire encoding only; never edit generated wording or conclusions."""
     if isinstance(value.get('exploration'), str):
-        try: value['exploration'] = json.loads(value['exploration'])
+        from .json_transport import decode as decode_json
+        try:
+            value['exploration'], receipt = decode_json(
+                value['exploration'], lambda parsed: _shape(parsed, SCHEMA))
+            if receipt:
+                value.setdefault('_transport_repairs', []).append({'field': 'exploration', **receipt})
         except ValueError as error: _fail('探索のJSONテキストを読み取れません。')
     _shape(value.get('exploration'), SCHEMA)
     return value

@@ -223,6 +223,7 @@ class ReaderValueFlowTests(unittest.TestCase):
             records[data['step']]={**data,'id':data['step']};return records[data['step']]
         with patch.object(intent,'prepare',return_value=(brief,material,None,'miss')),\
              patch.object(intent,'get_artifact',return_value={'content_text':sources['serp']}),\
+             patch.object(intent,'get_optional_artifact',return_value=None),\
              patch.object(intent.anthropic,'Anthropic'),patch.object(intent,'upsert_artifact',side_effect=save),\
              patch.object(intent,'create_with_retry',side_effect=[response({}),response(value)]):
             intent.run('j',brief['keyword'])
@@ -304,6 +305,7 @@ class ReaderValueFlowTests(unittest.TestCase):
             records[data['step']]={**data,'id':data['step']};return records[data['step']]
         with patch.object(intent,'prepare',return_value=(brief,material,product,'reused' if cached else 'miss')),\
              patch.object(intent,'get_artifact',return_value={'content_text':sources['serp']}),\
+             patch.object(intent,'get_optional_artifact',return_value=None),\
              patch.object(intent.anthropic,'Anthropic'),\
              patch.object(intent,'upsert_artifact',side_effect=save),\
              patch.object(intent,'create_with_retry',side_effect=[response({'searcher_stage':'情報収集'}),response(value,stop)]) as calls:

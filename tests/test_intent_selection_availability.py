@@ -78,6 +78,7 @@ class IntentSelectionAvailabilityTests(unittest.TestCase):
 
         with patch.object(intent, 'prepare', return_value=(brief, material, None, 'not_applicable')), \
              patch.object(intent, 'get_artifact', return_value={'content_text': sources['serp']}), \
+             patch.object(intent, 'get_optional_artifact', return_value=None), \
              patch.object(intent, '_generate_query_attrs', return_value={}), \
              patch.object(intent.anthropic, 'Anthropic'), \
              patch.object(intent, 'upsert_artifact', side_effect=save), \
