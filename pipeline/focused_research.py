@@ -118,6 +118,8 @@ def review_pending(job_id, index, value, questions, compact_plan, scope, selecte
                    'source_revision':source_revision, 'sources_complete':complete, 'searches':searches}
         relevant=[copy.deepcopy(f) for f in previous_findings or [] if f.get('id') in ids]
         if relevant:payload['previous_findings']=relevant
+        from .registered_materials import attach
+        attach(payload,questions=[q for q in questions if q['id'] in ids])
         request = dict(model=model, max_tokens=min(6000 if model == 'gpt-6-luna' else 10000, 2000+len(ids)*900),
                        system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+policy+'\n回答対象はplan.itemsのみ。',
                        output_config=schema, messages=[{'role':'user','content':json.dumps(payload, ensure_ascii=False)}])

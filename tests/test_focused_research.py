@@ -69,6 +69,30 @@ class FocusedResearchTests(unittest.TestCase):
             return {**self.unknown(),'needs_more_sources':False}
         return {**self.answer,'needs_more_sources':False}
 
+    def test_registered_original_reaches_focused_rereading_and_adjudication(self):
+        from pipeline import registered_materials
+        original = {'id': 'source:guide', 'title': '登録ガイド', 'text': '後半の選択情報' * 400,
+                    'origin': 'registered_material', 'verification': 'supplied_not_verified', 'truncated': False}
+        self.plan['items'][0]['question'] += '（登録ガイド参照）'
+        def respond(request, payload):
+            if 'decisions' not in payload and 'candidate_answers' not in payload:
+                candidate = self.unknown()
+                candidate['items'][0]['evidence'] = copy.deepcopy(self.answer['items'][0]['evidence'])
+                candidate['items'][0]['answer'] = self.answer['items'][0]['answer']
+                return candidate
+            if 'candidate_answers' in payload and request['model'] == 'gpt-6-luna':
+                partial = copy.deepcopy(self.answer)
+                partial['items'][0].update(status='searched_not_found', reason='保存した候補を再照合')
+                return {**partial, 'needs_more_sources': False}
+            return self.responder(request, payload)
+        with patch.object(registered_materials, 'documents', return_value=[original]):
+            self.run_flow(respond)
+        focused_inputs = [p for r,p in self.calls if 'candidate_answers' in p]
+        self.assertTrue(focused_inputs)
+        self.assertTrue(all(p['registered_materials'] == [original] for p in focused_inputs))
+        self.assertEqual({r['model'] for r,p in self.calls if 'candidate_answers' in p},
+                         {'gpt-6-luna', 'gpt-6.1-sol'})
+
     def test_publication_scope_reaches_cross_subject_and_coverage_checks(self):
         self.plan['items'].append({**self.plan['items'][0],'id':'q2','subject':'共通','question':'Aの料金の比較条件'})
         self.answer['items'][0].update(publication_conditions=['男性・3か月契約・税込'],
