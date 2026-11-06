@@ -93,7 +93,12 @@ def structured_review_output_limit(request):
  headings=props.get('heading_answer_reviews',{}).get('properties',{})
  scopes=props.get('heading_scope_reviews',{}).get('properties',{})
  if headings or scopes:
-  quote_chars=sum(len(row.get('properties',{}).get('opening_quote',{}).get('enum',[''])[0]) for row in headings.values())
+  try:entries=json.loads(request['messages'][0]['content']).get('heading_answer_entries',[])
+  except (ValueError,KeyError,IndexError,TypeError):entries=[]
+  quoted={row['id']:row.get('opening_quote','') for row in entries if isinstance(row,dict) and 'id' in row}
+  # Read current literals from the input packet. Legacy saved requests still
+  # keep their original sizing without putting arbitrary prose in new schemas.
+  quote_chars=sum(len(quoted.get(sid,row.get('properties',{}).get('opening_quote',{}).get('enum',[''])[0])) for sid,row in headings.items())
   children=sum(len(row.get('properties',{})) for row in scopes.values())
   original=max(original,min(32000,2000+500*len(headings)+200*children+2*quote_chars))
  journeys=props.get('reader_journeys',{}).get('properties',{})

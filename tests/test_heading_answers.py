@@ -63,6 +63,25 @@ class HeadingAnswerTests(unittest.TestCase):
         blocks = {b['id']:b['text'] for b in content_blocks(text)}
         self.assertIn('### 子', blocks[rows[1]['opening_block_ids'][0]])
 
+    def test_multiline_opening_is_input_data_and_still_requires_an_exact_quote(self):
+        text='## 発信元\n\n**発信元・運営主体**\n株式会社サンプル（所在地）'
+        sections=ha.entries(text)
+        config=ha.output_config({'format':{'schema':{'type':'object','properties':{},'required':[],'additionalProperties':False}}},sections)
+        quote=config['format']['schema']['properties']['heading_answer_reviews']['properties']['heading-0001']['properties']['opening_quote']
+        self.assertEqual(quote,{'type':'string'})
+        value={'heading_answer_reviews':reviews(text)}
+        self.assertEqual(ha.checked(value,text),[])
+        value['heading_answer_reviews']['heading-0001']['opening_quote']=sections[0]['opening_quote'].replace('\n',' ')
+        with self.assertRaises(cq.ContentQualityError):ha.checked(value,text)
+
+    def test_quote_budget_survives_transport_literal_removal(self):
+        from pipeline.tiered_research import structured_review_output_limit
+        text='## 発信元\n\n**発信元・運営主体**\n株式会社サンプル（所在地）'
+        rows=ha.entries(text)
+        config=ha.output_config({'format':{'schema':{'type':'object','properties':{},'required':[],'additionalProperties':False}}},rows)
+        request={'model':'gpt-6.1-sol','max_tokens':100,'output_config':config,'messages':[{'role':'user','content':json.dumps({'heading_answer_entries':rows})}]}
+        self.assertEqual(structured_review_output_limit(request),2500+2*len(rows[0]['opening_quote']))
+
     def test_structural_opening_is_visible_and_code_heading_is_not_reviewed(self):
         text = '# 題\n\n```\n## コード内の見出し\n```\n\n## 手順\n\n- 一覧の項目。\n\n後ろの答え。'
         rows = ha.entries(text)

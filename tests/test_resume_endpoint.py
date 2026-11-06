@@ -30,6 +30,31 @@ class ResumeTests(unittest.TestCase):
             result, tasks=self.invoke()
             self.assertEqual(result.status,'running');self.assertFalse(tasks.tasks)
 
+    def test_saved_warning_article_resumes_only_qa_despite_old_prerequisite_failure(self):
+        self.job['status']='done'
+        article={'content_text':'保存済みの完成本文','meta':{'completion_with_warnings':True,'publication_approved':False}}
+        saved={'article':article,'pipeline_failure':{'content_text':'{"step":"outline"}'}}
+        with patch.dict(os.environ,{'SUPABASE_KEY':'fixture-only'}), \
+             patch('api_server.get_job',return_value=self.job), \
+             patch('pipeline.db.get_optional_artifact',side_effect=lambda j,k:saved.get(k)), \
+             patch('api_server.build_step_plan',return_value=[('research_completeness',None),('article',None),('content_audit',None),('final_structure_validation',None)]), \
+             patch('api_server.research_resume_stage',side_effect=AssertionError('saved article must not replay writing prerequisites')), \
+             patch('api_server.req_http_patch_claim',return_value=[self.job]) as claim:
+            result,tasks=self.invoke()
+        self.assertEqual(result.status,'started')
+        self.assertEqual(tasks.tasks[0].args,('job','keyword','content_audit'))
+        self.assertTrue(claim.call_args.kwargs['allow_completed'])
+
+    def test_approved_or_nonwarning_done_article_is_never_regenerated(self):
+        self.job['status']='done'
+        for meta in ({'completion_with_warnings':False}, {'completion_with_warnings':True,'publication_approved':True}):
+            with self.subTest(meta=meta),patch.dict(os.environ,{'SUPABASE_KEY':'fixture-only'}), \
+                 patch('api_server.get_job',return_value=self.job), \
+                 patch('pipeline.db.get_optional_artifact',return_value={'content_text':'完成本文','meta':meta}), \
+                 patch('api_server.req_http_patch_claim',side_effect=AssertionError('do not claim completed approved article')):
+                result,tasks=self.invoke()
+            self.assertEqual(result.status,'done');self.assertFalse(tasks.tasks)
+
     def test_outline_failure_returns_to_unfinished_research_without_replaying_discovery(self):
         saved = {'pipeline_failure': {'content_text':'{"step":"outline"}'},
                  'search_intent': {'meta':{'reader_needs_version':'v1'}},

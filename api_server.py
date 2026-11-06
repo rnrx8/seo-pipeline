@@ -268,9 +268,18 @@ async def resume(req: ResumeRequest, background_tasks: BackgroundTasks,
             authenticate_owner(authorization, job.get('tenant_id'))
         except BrowserAuthorizationError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from None
-    if job.get('status') in ('running', 'done'):
+    if job.get('status') == 'running':
         return GenerateResponse(job_id=job['id'], status=job['status'])
-    if job.get('status') not in ('failed', 'bug_fixing'):
+    review_saved_article = False
+    if job.get('status') == 'done':
+        article = get_optional_artifact(job['id'], 'article')
+        meta = (article or {}).get('meta') or {}
+        review_saved_article = bool(article and article.get('content_text')
+                                    and meta.get('completion_with_warnings') is True
+                                    and meta.get('publication_approved') is not True)
+        if not review_saved_article:
+            return GenerateResponse(job_id=job['id'], status='done')
+    if job.get('status') not in ('failed', 'bug_fixing') and not review_saved_article:
         raise HTTPException(status_code=409, detail='停止した記事だけ再開できます。')
     failure = get_optional_artifact(job['id'], 'pipeline_failure')
     stage = json.loads(failure['content_text']).get('step') if failure else None
@@ -281,17 +290,25 @@ async def resume(req: ResumeRequest, background_tasks: BackgroundTasks,
                  'research_completeness' if get_optional_artifact(job['id'], 'fact_sheet') else None)
     if stage not in keys:
         raise HTTPException(status_code=409, detail='再開できる途中成果がありません。')
-    stage = research_resume_stage(job['id'], stage, keys, get_optional_artifact)
-    claimed = req_http_patch_claim(job['id'], _base, _headers)
+    if review_saved_article:
+        # Generation is already saved. Its unavailable final review must never
+        # send the writer or discovery again, including through prerequisites.
+        if 'content_audit' not in keys:
+            raise HTTPException(status_code=409, detail='保存済み記事の確認工程がありません。')
+        stage = 'content_audit'
+        claimed = req_http_patch_claim(job['id'], _base, _headers, allow_completed=True)
+    else:
+        stage = research_resume_stage(job['id'], stage, keys, get_optional_artifact)
+        claimed = req_http_patch_claim(job['id'], _base, _headers)
     if not claimed:
         return GenerateResponse(job_id=job['id'], status=get_job(job['id'])['status'])
     background_tasks.add_task(_run_pipeline, job['id'], job['main_keyword'], stage)
     return GenerateResponse(job_id=job['id'], status='started')
 
 
-def req_http_patch_claim(job_id, base, headers):
+def req_http_patch_claim(job_id, base, headers, *, allow_completed=False):
     response = req.patch(base() + '/jobs', params={'id': 'eq.' + job_id,
-                         'status': 'in.(failed,bug_fixing)'},
+                         'status': 'in.(failed,bug_fixing,done)' if allow_completed else 'in.(failed,bug_fixing)'},
                          json={'status': 'running', 'error_message': ''},
                          headers=headers({'Prefer': 'return=representation'}), timeout=30)
     response.raise_for_status()

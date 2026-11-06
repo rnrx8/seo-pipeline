@@ -53,6 +53,23 @@ def _diagnostic_identifier(value):
     return None
 
 
+def _record_http_rejection(response, diagnostics, key):
+    """Retain a bounded, redacted provider reason before closing a rejection."""
+    try:
+        error = response.json().get('error')
+    except (ValueError, AttributeError, TypeError):
+        return
+    if not isinstance(error, dict):
+        return
+    safe = {}
+    for name in ('type', 'code', 'param', 'message'):
+        value = error.get(name)
+        if isinstance(value, str):
+            safe[name] = re.sub(r'sk-[A-Za-z0-9_-]+', '[redacted]', value.replace(key, '[redacted]'))[:2000]
+    diagnostics['provider_error'] = safe
+    diagnostics['error_sha256'] = hashlib.sha256(json.dumps(error, sort_keys=True).encode()).hexdigest()
+
+
 def _completed_response(response, started, diagnostics=None):
     """Consume SSE privately; partial JSON is never accepted or published."""
     from .content_quality import ContentQualityError
@@ -165,6 +182,7 @@ def create_review_response(*, model, max_tokens, system, messages, output_config
                     time.sleep(10 * (attempt + 1))
                     continue
             if response.status_code != 200:
+                _record_http_rejection(response, diagnostics, key)
                 raise ContentQualityError(f"品質確認に失敗しました（HTTP {response.status_code}）。")
             data = _completed_response(response, started, diagnostics)
             if tiered and data.get("usage"):

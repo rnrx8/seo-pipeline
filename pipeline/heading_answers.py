@@ -90,7 +90,9 @@ def output_config(config, sections):
     verdict = obj({'status': {'type': 'string', 'enum': ['pass', 'fail']},
                    'reason': {'type': 'string', 'minLength': 1}})
     rows = {s['id']: obj({'heading': copy.deepcopy(verdict), 'opening': copy.deepcopy(verdict),
-                          'opening_quote': {'type': 'string', 'enum': [s['opening_quote']]}}) for s in sections}
+                          # Article text is data, not a grammar literal. Exact
+                          # identity (including newlines) is checked below.
+                          'opening_quote': {'type': 'string'}}) for s in sections}
     root = result['format']['schema']
     root['properties']['heading_answer_reviews'] = obj(rows)
     root['required'].append('heading_answer_reviews')
