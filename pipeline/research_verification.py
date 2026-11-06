@@ -45,9 +45,10 @@ def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent
         from .tiered_research import audit_matrix as tiered_audit
         return tiered_audit(job_id,plan_value,pages,facts,intent_context or {})
     from .research_requirements import MATRIX_SYSTEM, MATRIX_SCHEMA, validate_matrix
+    from .registered_materials import attach
     if not all('subject' in i for i in plan_value['items']):
         msg=create_with_retry(client,model=model,max_tokens=budget,system=MATRIX_SYSTEM,output_config=MATRIX_SCHEMA,
-            messages=[{'role':'user','content':json.dumps({'plan':plan_value,'sources':pages,'facts':facts},ensure_ascii=False)}])
+            messages=[{'role':'user','content':json.dumps(attach({'plan':plan_value,'sources':pages,'facts':facts},questions=plan_value['items']),ensure_ascii=False)}])
         return json.loads(response_text(msg)),msg.usage
     records=[({'subject':saved.get('meta',{}).get('subject','')},saved) for saved in collection_records(job_id,get_optional_artifact)]
     historical=[]; previous_issues=[]
@@ -86,8 +87,8 @@ def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent
         selected=subject_sources(pages,urls) if urls else pages
         print(f'[research] Verifying {index}/{len(grouped)}: {subject}',flush=True)
         request=dict(model=model,max_tokens=budget,system=MATRIX_SYSTEM+'\n今回は対象別の資料照合。回答対象はplan.itemsだけだが、省略の位置づけはarticle_plan全体の検索意図から判断する。この対象の補助情報を省くことと記事全体の不足を混同しない。全体の最終判断は後段で独立実施する。',output_config=MATRIX_SCHEMA,
-            messages=[{'role':'user','content':json.dumps({'article_plan':plan_value,'plan':{**plan_value,'items':questions},'sources':selected,
-                'facts':notes or facts,'searches':[r.get('meta',{}).get('search_queries',[]) for r in matching]},ensure_ascii=False)}])
+            messages=[{'role':'user','content':json.dumps(attach({'article_plan':plan_value,'plan':{**plan_value,'items':questions},'sources':selected,
+                'facts':notes or facts,'searches':[r.get('meta',{}).get('search_queries',[]) for r in matching]},questions=questions),ensure_ascii=False)}])
         findings=[i for i in previous_issues if i.get('id') in question_ids]
         if findings:
             payload=json.loads(request['messages'][0]['content'])
@@ -128,6 +129,6 @@ def audit_matrix(job_id, client, plan_value, pages, facts, model, budget, intent
     propose_optional_omissions(items,plan_value,pages)
     print('[research] Checking overall coverage and omissions',flush=True)
     msg=create_with_retry(client,model=model,max_tokens=6000,system=COVERAGE_SYSTEM+'\n個別判定が合格でも、全体比較で矛盾・不足があればcoverage_issuesに既存の質問IDと具体的な修正・追加確認理由を列挙する。合格時は空配列。計画にないIDを作らない。',output_config=schema,
-        messages=[{'role':'user','content':json.dumps({'plan':plan_value,'decisions':items,'intent_context':intent_context or {}},ensure_ascii=False)}])
+        messages=[{'role':'user','content':json.dumps(attach({'plan':plan_value,'decisions':items,'intent_context':intent_context or {}},questions=plan_value['items']),ensure_ascii=False)}])
     overall=research_result(json.loads(response_text(msg)),plan_value.get('reader_decisions',[]));inputs+=msg.usage.input_tokens;outputs+=msg.usage.output_tokens
     return {**overall,'items':items},SimpleNamespace(input_tokens=inputs,output_tokens=outputs)

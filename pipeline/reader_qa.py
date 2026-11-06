@@ -7,13 +7,15 @@ from types import SimpleNamespace
 
 from . import reader_journey
 
-VERSION = 'reader-qa-v2-context-and-descendant-scope'
+VERSION = 'reader-qa-v3-shared-publication-policy'
 BATCH_SIZE = 6
 CONTEXT_POLICY = '''本文の章ごとの読者価値だけを確認する。設計は目標であり本文の実現の証拠ではない。
 評価範囲は各caseのarticle_blocksにある対象章とその子孫。親章の判定では子節の説明も含め、親章の導入に独立の共感や生活上の目的を重ねて要求しない。子節が担う固有の選択は子節内で確認する。
 reading_contextはリード・親章・前後で何を扱い、この章で何を新たに答えるかを判断する実本文。既に扱った実感の反復や、直接回答の節への独立した共感文を要求しない。ただし親・兄弟・後続章の文章でこの章独自の不足を相殺せず、周辺章をevidenceに引用しない。各章のarticle_blocksだけから引用する。
 記事全体の背景にある不安と、この節で新たに受け止めるべき実感を区別する。元分析の大きな願望があるだけで、全節へその再掲を要求しない。
 同じ記事の他の章の合否に揃えず、元分析とこの章の問い、実際の説明を読む。指定された全IDに個別のjourneyを返す。'''
+from .reader_presentation import PUBLICATION_DATE_POLICY
+CONTEXT_POLICY += '\n' + PUBLICATION_DATE_POLICY
 
 
 def digest(value):

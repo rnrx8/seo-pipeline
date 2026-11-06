@@ -1,4 +1,5 @@
 import json
+import hashlib
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -102,8 +103,9 @@ def _build_primary_sources_prompt(sources: list) -> str:
         records.append({
             "reference_id": f"registered-source-{index}",
             "title": s.get("title") or "（タイトルなし）",
-            "content_excerpt": full_text[:2000],
-            "truncated": len(full_text) > 2000,
+            "content_excerpt": full_text,
+            "text_sha256": hashlib.sha256(full_text.encode()).hexdigest(),
+            "truncated": False,
         })
     lines.append(json.dumps(records, ensure_ascii=False))
 
@@ -183,11 +185,16 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
     user_id = job.get("tenant_id")
     preset_id = job.get("preset_id")
     category = job.get("category")
-    if user_id and preset_id:
+    from .editorial_contract import CURRENT
+    assignment = CURRENT.get()
+    if assignment:
+        # A later catalog edit cannot silently change a running assignment.
+        sources = assignment['settings_snapshot'].get('primary_sources', [])
+    if not assignment and user_id and preset_id:
         sources = get_primary_sources_by_preset(user_id, preset_id)
         if sources:
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for preset_id='{preset_id}'")
-    if not sources and user_id and category:
+    if not assignment and not sources and user_id and category:
         sources = get_primary_sources(user_id, category)
         if sources:
             print(f"[fact_sheet] Loaded {len(sources)} primary sources for category='{category}'")

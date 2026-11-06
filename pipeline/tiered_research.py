@@ -298,6 +298,8 @@ def audit_matrix(job_id,plan,pages,facts,intent_context):
            'previous_findings':[i for i in previous_issues if i.get('id') in ids],
            'previous_candidates':[{k:i.get(k) for k in ('id','answer','reason','omission_candidate_from','unresolved_candidate')} for i in previous_candidates],
            'searches':[r.get('meta',{}).get('search_queries',[]) for r in notes]}
+  from .registered_materials import attach
+  attach(payload,questions=questions)
   request=dict(model='gpt-6-luna',max_tokens=18000,system=MATRIX_SYSTEM+POLICY+SPAN_POLICY+'\n記事全体の質問はarticle_plan.itemsとplan.itemsの和集合。今回の回答対象はplan.itemsのみ。',output_config=span_schema(MATRIX_SCHEMA,[q['id'] for q in questions],questions=questions),
                messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
   print('[tiered] Screen '+subject,flush=True)
@@ -359,7 +361,9 @@ def review_coverage(job_id,plan,pages,items,intent_context):
  from .reader_decisions import review_schema,research_result
  schema=review_schema(schema,plan.get('reader_decisions',[]))
  decisions=[coverage_decision(i) for i in items]
+ from .registered_materials import attach
+ payload=attach({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},questions=plan['items'])
  request=dict(model='gpt-6.1-sol',max_tokens=4000,system=COVERAGE_SYSTEM+POLICY+'\n不合格はcoverage_issuesに既存質問IDと理由を返す。合格時は空配列。',output_config=schema,
-  messages=[{'role':'user','content':json.dumps({'plan':compact_plan,'decisions':decisions,'intent_context':intent_context},ensure_ascii=False)}])
+  messages=[{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
  result,usage=checked_request(job_id,'tiered_coverage',request)
  return research_result(result,plan.get('reader_decisions',[])),usage

@@ -82,13 +82,14 @@ class SourceFreshnessTests(unittest.TestCase):
         ]
         self.assertEqual(sheet._search_result_urls(blocks), {OFFICIAL, "https://official.example/news"})
 
-    def test_registered_material_is_labeled_unverified_and_truncation_is_explicit(self):
+    def test_registered_material_is_labeled_unverified_and_full_text_survives(self):
         text = sheet._build_primary_sources_prompt([{"title": "古い料金資料", "content_text": "古" * 2001}])
         self.assertIn("今回の確認は未実施", text)
         self.assertNotIn("他のweb検索データよりも優先", text)
         records = json.loads(text[text.index("[{"):])
-        self.assertTrue(records[0]["truncated"])
-        self.assertEqual(len(records[0]["content_excerpt"]), 2000)
+        self.assertFalse(records[0]["truncated"])
+        self.assertEqual(records[0]["content_excerpt"], "古" * 2001)
+        self.assertEqual(len(records[0]["text_sha256"]), 64)
         self.assertEqual(sheet._build_primary_sources_prompt([{"content_text": ""}]), "")
 
     def test_fact_sheet_pipeline_records_search_evidence_and_rejects_source_only_claim(self):

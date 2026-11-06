@@ -209,6 +209,8 @@ def _plan_context(job_id, keyword):
             raise ContentQualityError('商品資料または制作依頼が分析後に変わりました。分析から確認してください。')
         product = json.loads(get_artifact(job_id,'product_context')['content_text'])
         validate_product(product,current_material)
+        from .registered_materials import attach
+        attach(payload, product_input=current_material)
         payload.update(production_brief=brief, reader_needs=needs,
                        product_context=product,
                        registered_companies=brief['registered_companies'], featured_service=brief['product'])

@@ -208,6 +208,8 @@ def intent_review_requirements(job: dict, keyword: str) -> dict:
 
 def final_review_requirements(job: dict, keyword: str, *, include_article_design: bool = True) -> dict:
     requirements = intent_review_requirements(job, keyword)
+    from .registered_materials import attach
+    attach(requirements)
     if job.get('id') and include_article_design:
         from .db import get_optional_artifact
         from .article_design import design_context
