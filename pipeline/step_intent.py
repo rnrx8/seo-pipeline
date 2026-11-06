@@ -118,7 +118,8 @@ def run(job_id: str, keyword: str, api_key: str | None = None) -> dict:
                'product_materials':model_product_input(product_input) if new_product else None}
     request = dict(model=MODEL, max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT + '\nselectedのidはi01等。採用した問いを調査・構成へ引き継ぐ。商品理解が既存の場合は資料全文を再分析せず、その不明点と条件を維持する。商品理解のvalue_connectionsはこのキーワードだけの訴求へ限定せず、資料から説明できる利用状況と価値を整理する。',
-        output_config=output_schema(new_product=new_product),
+        output_config=output_schema(new_product=new_product,
+                                   has_product=bool(brief['product']), has_cta=bool(brief['cta'])),
         messages=[{'role':'user','content':json.dumps(payload, ensure_ascii=False)}])
     from .editorial_contract import enrich_request
     request = enrich_request(request)

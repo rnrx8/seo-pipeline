@@ -20,7 +20,7 @@ class IntentExplorationTests(unittest.TestCase):
                            has_product=True, require_exploration=True)
 
     def test_generation_requires_method_and_selected_branch_links(self):
-        schema = rn.output_schema(new_product=False)['format']['schema']
+        schema = rn.output_schema(new_product=False, has_product=True, has_cta=False)['format']['schema']
         self.assertEqual(next(iter(schema['properties'])), 'exploration')
         self.assertIn('exploration', schema['required'])
         self.assertIn('hypothesis_ids', schema['properties']['selected']['items']['required'])

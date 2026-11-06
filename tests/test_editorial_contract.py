@@ -79,7 +79,7 @@ class EditorialSeparationTests(unittest.TestCase):
         from test_reader_value_flow import plan_fixture
         _, _, _, contract = fixture()
         with ec.use(contract):
-            ns = reader_needs.output_schema(new_product=False)['format']['schema']['properties']['selected']['items']
+            ns = reader_needs.output_schema(new_product=False, has_product=True, has_cta=False)['format']['schema']['properties']['selected']['items']
             self.assertIn('editorial_notes', ns['required'])
             self.assertIn('editorial_notes', reader_decisions.output_schema()['items']['required'])
             self.assertIn('internal_checks', bp.schema()['properties']['sections']['items']['required'])

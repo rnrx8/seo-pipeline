@@ -340,7 +340,7 @@ if __name__=='__main__':unittest.main()
 
 class ReaderReferenceContractTests(unittest.TestCase):
     def test_model_schema_exposes_only_real_reference_ids(self):
-        schema=rn.output_schema(new_product=True)['format']['schema']
+        schema=rn.output_schema(new_product=True, has_product=True, has_cta=False)['format']['schema']
         refs=schema['properties']['selected']['items']['properties']['support']['items']['properties']['source']['enum']
         self.assertEqual(set(refs),{'','keyword','serp','request'})
         self.assertNotIn('SERP position 3 title',refs)
