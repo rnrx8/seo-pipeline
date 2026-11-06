@@ -7,7 +7,7 @@ import copy
 import json
 from datetime import datetime, timezone
 
-POLICY_VERSION = 'scoped-review-v2-preserve-source-set'
+POLICY_VERSION = 'scoped-review-v3-owned-claim-addresses'
 ROUTING_POLICY = '''
 【今回の判定段階：上記の原文照合指定より優先】
 採用済み回答と条件、source_resolutions、source_excerptsを用いて現在の文書を判定する。
@@ -48,12 +48,36 @@ def pages_from(sources):
 
 def validate_routes(checks, blocks, requirements, pages, evidence_keys):
     ids = {b['id'] for b in blocks}
-    qids = {q['id'] for q in requirements.get('research_decisions', {}).get('items', [])}
+    rows = requirements.get('research_decisions', {}).get('items', [])
+    qids = {q['id'] for q in rows}
+    owners = {}
+    for row in rows:
+        for claim in row.get('claims', row.get('claim_states', [])):
+            if isinstance(claim, dict) and isinstance(claim.get('id'), str):
+                owners.setdefault(claim['id'], set()).add(row['id'])
     urls = {canonical(p['url']) for p in pages}
     for c in checks:
         locs = c.get('affected_blocks')
         refs, questions = c.get('source_urls'), c.get('research_ids')
+        # A claim ID is a typed child of an existing question, not an
+        # invented question. Only exact, uniquely owned records may resolve.
+        resolved_child = False
+        if isinstance(questions, list):
+            original_questions = questions
+            questions = list(dict.fromkeys(next(iter(owners[q]))
+                if isinstance(q, str) and q not in qids and len(owners.get(q, set())) == 1 else q
+                for q in questions)) if all(isinstance(q,str) for q in questions) else questions
+            resolved_child = questions != original_questions
+            c['research_ids'] = questions
         needed = c.get('requires_source_check')
+        # A child claim resolved into a question changes the review packet's
+        # address type. Confirm this exact claim in the existing source review
+        # before accepting a correction; already-valid question routes retain
+        # their established decisions and are never expanded.
+        if (c.get('status') == 'fail' and c.get('key') in evidence_keys
+                and resolved_child and needed is False and not c.get('correction_evidence')
+                and (refs or questions)):
+            needed = c['requires_source_check'] = True
         if (type(needed) is not bool or not isinstance(locs, list)
                 or not isinstance(refs, list) or not isinstance(questions, list)
                 or any(not isinstance(l, dict) or l.get('id') not in ids
