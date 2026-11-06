@@ -19,6 +19,52 @@ def fingerprint(request):
     return digest(json.dumps(request, ensure_ascii=False, sort_keys=True))
 
 
+def logical_prefix(text, schema):
+    """An end-turn can contain a blank suffix despite syntactically valid JSON.
+
+    Keep every completed value. Only a trailing sequence of unfinished rows
+    can be completed by this transport; interior edits belong to the ordinary
+    scoped editor. A blank row is never silently removed from an accepted plan.
+    """
+    from .editorial_blueprint import validate_shape
+    value = json.loads(text)
+    validate_shape(value, schema)
+    rows = value['sections']
+    unfinished = [i for i, row in enumerate(rows)
+                  if any(not row[k].strip() for k in ('title', 'question', 'conclusion'))]
+    if not unfinished:
+        return None
+    first = unfinished[0]
+    if not first or unfinished != list(range(first, len(rows))):
+        return None
+    fields = {k: copy.deepcopy(v) for k, v in value.items() if k not in ('sections', 'omissions')}
+    remaining = copy.deepcopy(schema)
+    remaining['properties'] = {k: remaining['properties'][k] for k in ('sections', 'omissions')}
+    remaining['required'] = ['sections', 'omissions']
+    remaining['properties']['sections']['minItems'] = 1
+    if 'maxItems' in remaining['properties']['sections']:
+        remaining['properties']['sections']['maxItems'] -= first
+    return fields, 'sections', copy.deepcopy(rows[:first]), remaining, json.dumps({
+        'unfinished_sections': rows[first:], 'preserved_omissions': value['omissions']}, ensure_ascii=False)
+
+
+def logical_artifact(text, request, usage):
+    """Bind a complete provider response to its actual unfinished design."""
+    from .editorial_blueprint import schema
+    try:
+        plan = logical_prefix(text, schema(json.loads(text)))
+    except (ValueError, TypeError, KeyError):
+        # Ordinary parse/reference errors retain their original diagnostic and
+        # raw-output persistence route; this detector must not swallow it.
+        return None
+    if plan is None:
+        return None
+    return {'content_text': text, 'meta': {'request_sha256': fingerprint(request),
+            'stop_reason': 'end_turn', 'completion_reason': 'unfinished_section_suffix',
+            'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens,
+            'complete': False}}
+
+
 def prefix(text, schema, *, preserved_array='sections', require_sections=True):
     """Keep only fully decoded values; never close strings or invent JSON values."""
     decoder = json.JSONDecoder()
@@ -96,14 +142,22 @@ def complete(job_id, artifact, request, context, client):
     from .tiered_research import checked_request, cached_result
     from .editorial_contract import enrich_request
     from types import SimpleNamespace
-    if (artifact.get('meta',{}).get('request_sha256') != fingerprint(request)
-            or artifact['meta'].get('stop_reason') != 'max_tokens'):
+    meta = artifact.get('meta', {})
+    logical = meta.get('stop_reason') == 'end_turn' and meta.get('completion_reason') == 'unfinished_section_suffix'
+    if (meta.get('request_sha256') != fingerprint(request)
+            or (meta.get('stop_reason') != 'max_tokens' and not logical)):
         raise ContentQualityError('未完成構成と現在の制作依頼が一致しません。再送しません。')
-    expected_schema = bp.schema()
-    fixed, key, head, remaining, fragment = prefix(artifact['content_text'], expected_schema)
+    expected_schema = bp.schema(json.loads(artifact['content_text'])) if logical else bp.schema()
+    plan = logical_prefix(artifact['content_text'], expected_schema) if logical else prefix(artifact['content_text'], expected_schema)
+    if plan is None:
+        raise ContentQualityError('保存構成に末尾補完で修復できる不足がありません。全体を再送しません。')
+    fixed, key, head, remaining, fragment = plan
     bp.validate_shape(fixed, {'type':'object','properties':{k:expected_schema['properties'][k] for k in fixed},'required':list(fixed),'additionalProperties':False})
     if key:
         for row in head: bp.validate_shape(row, expected_schema['properties'][key]['items'])
+    # Existing omissions are decisions too. Request the complete omissions
+    # array, but require every previous decision to remain byte-for-byte equal.
+    previous_omissions = json.loads(artifact['content_text'])['omissions'] if logical else []
     inputs=outputs=0
     chunk=1
     while remaining['properties']:
@@ -140,11 +194,14 @@ def complete(job_id, artifact, request, context, client):
     for name,value in tail.items():
         result[name] = copy.deepcopy(head)+value if name==key else value
     bp.validate_shape(result,expected_schema)
+    if any(row not in result['omissions'] for row in previous_omissions):
+        raise ContentQualityError('構成補完が保存済みの省略判断を変更しています。採用しません。')
     return result, SimpleNamespace(input_tokens=inputs,output_tokens=outputs)
 
 
 def saved(job_id, request):
-    artifact = get_optional_artifact(job_id,'outline_incomplete')
+    artifact = (get_optional_artifact(job_id,'outline_unfinished_design')
+                or get_optional_artifact(job_id,'outline_incomplete'))
     if artifact and not artifact.get('meta',{}).get('request_sha256'):
         binding=get_optional_artifact(job_id,'outline_incomplete_binding')
         value=json.loads(binding['content_text']) if binding else {}

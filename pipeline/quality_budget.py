@@ -259,8 +259,10 @@ def completion_evaluation(value):
 def guard_total(value, amount):
  """Optional stricter total cap for a bounded evaluation, never a budget reset."""
  from .content_quality import ContentQualityError
- if amount>incremental_remaining(value):
-  raise ContentQualityError('本人が指定した追加費用上限を超えるため、送信前に停止しました。原稿と費用履歴を保持します。')
+ remaining=incremental_remaining(value)
+ if amount>remaining:
+  from .content_quality import BudgetLimitError
+  raise BudgetLimitError(amount,remaining)
  if not spending_limits_enabled():return
  configured=os.getenv('QUALITY_TOTAL_LIMIT_USD')
  saved=value.get('total_limit_usd')

@@ -305,15 +305,18 @@ class IncompleteArticleResponse(ContentQualityError):
         super().__init__('本文生成が出力上限で中断されました。保存した続きだけを補完します。')
 
 
-def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = None) -> tuple[str, int, int]:
-    """Single API call. Returns (text, input_tokens, output_tokens)."""
-    msg = create_with_retry(
-        client,
+def _part_request(messages, max_tokens):
+    return dict(
         model=get_step_config("article")[0],
         max_tokens=max_tokens if max_tokens is not None else MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=messages,
     )
+
+
+def _call(client: anthropic.Anthropic, messages: list, max_tokens: int | None = None) -> tuple[str, int, int]:
+    """Single API call. Returns (text, input_tokens, output_tokens)."""
+    msg = create_with_retry(client, **_part_request(messages, max_tokens))
     if getattr(msg, 'stop_reason', None) == 'max_tokens':
         if getattr(msg,'content',None) and message_text(msg).strip():raise IncompleteArticleResponse(msg)
         raise ContentQualityError('本文生成が出力上限で中断されました。未完成のため保存・完了できません。')
@@ -349,22 +352,35 @@ def _write_complete_part(client, messages: list, max_tokens: int, outline: str,
     prefix=''
     for attempt in range(2):
         truncated=False
-        try:
-            text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
-        except IncompleteArticleResponse as exc:
-            text,ti,to=exc.text,exc.input_tokens,exc.output_tokens
-            truncated=True
+        from .article_checkpoint import saved as saved_part
+        reused = saved_part(job_id, part_number, attempt + 1, _part_request(attempt_messages, max_tokens))
+        if reused:
+            text = reused['content_text']
+            ti, to = (reused['meta'][k] for k in ('input_tokens', 'output_tokens'))
+            truncated = reused['meta']['stop_reason'] == 'max_tokens'
+        else:
+            try:
+                text, ti, to = _call(client, attempt_messages, max_tokens=max_tokens)
+            except IncompleteArticleResponse as exc:
+                text,ti,to=exc.text,exc.input_tokens,exc.output_tokens
+                truncated=True
         total_input += ti
         total_output += to
         raw=prefix+text
         cleaned = raw.replace(f'【PART{part_number}_END】', '').strip()
         # Preserve the exact response before parsing citations or completing a
         # suffix. An output limit is not a reason to resend the whole part.
-        if job_id:
+        if job_id and not reused:
+            from .ai import prepare_provider_request
+            from .content_quality import digest
+            wire, _ = prepare_provider_request(_part_request(attempt_messages, max_tokens))
+            request_key = digest(json.dumps(wire, ensure_ascii=False, sort_keys=True,
+                                           default=lambda block: block.model_dump(mode='json')))
             upsert_artifact(job_id=job_id,step=f'article_part_{part_number}_response_{attempt+1}',
                 content_type='text/markdown',content_text=text,
                 meta={'part':part_number,'attempt':attempt+1,'stop_reason':'max_tokens' if truncated else 'end_turn',
-                      'input_tokens':ti,'output_tokens':to,'audited':False})
+                      'input_tokens':ti,'output_tokens':to,'audited':False,
+                      'provider_request_sha256':request_key,'response_sha256':digest(text)})
         if citation_registry is not None:
             from .article_citations import render_draft
             try:

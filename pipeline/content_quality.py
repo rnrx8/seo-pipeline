@@ -35,6 +35,15 @@ class GenerationBusyError(ContentQualityError):
     """Another worker owns this job; never mutate its delivery state."""
 
 
+class BudgetLimitError(ContentQualityError):
+    """An unsent request needs funding; this says nothing about article quality."""
+    def __init__(self, required_usd, remaining_usd):
+        self.required_usd = required_usd
+        self.remaining_usd = remaining_usd
+        super().__init__('設定された追加費用上限に次の処理の予約額が収まらないため、送信していません。'
+                         '保存済みの構成・本文と費用履歴を保持します。')
+
+
 def confirmed_facts(text: str) -> str:
     """Only explicitly confirmed paragraphs cross the research/writing boundary.
 

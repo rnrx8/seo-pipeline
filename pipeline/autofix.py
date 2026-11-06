@@ -37,6 +37,11 @@ _RULES = [
 def classify_error(exc: Exception) -> dict:
     """Return {retryable, type, reason} for routing retry / autofix."""
     msg = f"{type(exc).__name__}: {exc}"
+    from .content_quality import BudgetLimitError
+    if isinstance(exc, BudgetLimitError):
+        return {'retryable': False, 'type': 'budget', 'reason': '追加費用枠の不足（要求は未送信）',
+                'detail': msg, 'required_reservation_usd': exc.required_usd,
+                'remaining_usd': exc.remaining_usd, 'request_sent': False}
     for pattern, retryable, err_type, reason in _RULES:
         if pattern.search(msg):
             return {"retryable": retryable, "type": err_type, "reason": reason, "detail": msg}

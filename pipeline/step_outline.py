@@ -485,7 +485,9 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
         from .outline_completion import saved, complete, fingerprint
         unfinished = saved(job_id, request)
     if unfinished:
-        value,usage = complete(job_id,unfinished,request,blueprint_context,client)
+        completion_context = ({**blueprint_context, 'content_contract': contract, 'volume_instruction': word_count_instruction}
+                              if unfinished['meta'].get('completion_reason') == 'unfinished_section_suffix' else blueprint_context)
+        value,usage = complete(job_id,unfinished,request,completion_context,client)
         total_input = unfinished['meta']['input_tokens'] + usage.input_tokens
         total_output = unfinished['meta']['output_tokens'] + usage.output_tokens
         outline_text = json.dumps(value,ensure_ascii=False)
@@ -517,6 +519,24 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
                 raise ContentQualityError('構成生成が正常終了していません。')
             outline_text = message_text(message)
     if structured_intent:
+        # Provider end_turn is a transport state, not proof that every design
+        # row is finished. Recover a blank trailing suffix through the same
+        # source-bound completion route used for an output-limit interruption.
+        if not blueprint_meta.get('suffix_completed'):
+            from .outline_completion import logical_artifact
+            logical = logical_artifact(outline_text, request, message.usage)
+            if logical:
+                if not recovered:
+                    upsert_artifact(job_id=job_id, step='outline_design_incomplete',
+                        content_type='application/json', content_text=logical['content_text'], meta=logical['meta'])
+                upsert_artifact(job_id=job_id, step='outline_unfinished_design',
+                    content_type='application/json', content_text=logical['content_text'], meta=logical['meta'])
+                value, usage = complete(job_id, logical, request,
+                    {**blueprint_context, 'content_contract': contract, 'volume_instruction': word_count_instruction}, client)
+                total_input += usage.input_tokens
+                total_output += usage.output_tokens
+                outline_text = json.dumps(value, ensure_ascii=False)
+                blueprint_meta['suffix_completed'] = True
         try:
             raw_value=json.loads(outline_text)
             blueprint_value = blueprint.validate(blueprint.canonicalize_research_refs(raw_value, blueprint_context), blueprint_context)
@@ -533,7 +553,7 @@ def run(job_id: str, keyword: str, api_key: str | None = None, research_gaps: st
                      + json.dumps(omissions,ensure_ascii=False))
         except (ValueError, TypeError, KeyError) as exc:
             upsert_artifact(job_id=job_id, step='outline_recovery_incomplete' if recovered else 'outline_design_incomplete', content_type='application/json',
-                content_text=message_text(message), meta={'audited':False,'error':str(exc)})
+                content_text=outline_text, meta={'audited':False,'error':str(exc)})
             raise ContentQualityError('編集設計が不完全です。保存した出力を確認してください: '+str(exc)) from exc
     upsert_artifact(job_id=job_id, step='outline_draft', content_type='text/markdown',
                     content_text=outline_text, meta={'model': MODEL, 'audited': False})
